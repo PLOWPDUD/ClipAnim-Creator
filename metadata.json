@@ -1,0 +1,5 @@
+{
+  "name": "ClipAnim Creator",
+  "description": "A robust 2D animation tool inspired by classic mobile animation apps. Features frame-by-frame editing, onion skinning, flood fill, and playback control.",
+  "requestFramePermissions": []
+}
