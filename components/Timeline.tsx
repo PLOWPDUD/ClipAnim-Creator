@@ -166,9 +166,9 @@ export const Timeline: React.FC<TimelineProps> = ({
             
              <div 
                 onClick={onAddFrame}
-                className="flex-shrink-0 w-16 h-20 mx-0.5 flex items-center justify-center border border-dashed border-gray-500 rounded-[4px] cursor-pointer hover:bg-white/10 text-gray-400 hover:text-white hover:border-white transition-colors scale-95 backdrop-blur-sm bg-black/20"
+                className="flex-shrink-0 w-16 h-20 mx-0.5 flex items-center justify-center bg-[#FF3B30] border border-[#FF3B30] rounded-[4px] cursor-pointer hover:bg-red-600 text-white shadow-lg transition-all scale-95"
             >
-                <Icons.Plus size={24} />
+                <Icons.Plus size={32} strokeWidth={3} />
             </div>
         </div>
         
