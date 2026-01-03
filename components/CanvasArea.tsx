@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { ToolType, Frame, Layer, SelectionState, ShapeType } from '../types';
 import { floodFill } from '../utils/drawingUtils';
 

@@ -102,7 +102,7 @@ export const Timeline: React.FC<TimelineProps> = ({
 
             {/* List of Tracks */}
             <div className="max-h-32 overflow-y-auto no-scrollbar space-y-1">
-                {audioTracks.map((track, i) => (
+                {audioTracks.map((track) => (
                     <div key={track.id} className="h-8 flex relative overflow-hidden bg-black/30 backdrop-blur-sm border border-white/5 rounded group">
                          {/* Controls */}
                         <div className="w-32 shrink-0 border-r border-white/10 flex items-center px-2 z-20 bg-black/20">
