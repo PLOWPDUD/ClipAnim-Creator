@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState } from 'react';
 import { ToolType, Frame, Layer, SelectionState, ShapeType } from '../types';
 import { floodFill } from '../utils/drawingUtils';
@@ -106,6 +107,11 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
     const layerData = currentFrame.layers?.[activeLayerId];
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // NOTE: The Active Canvas doesn't apply opacity/blendMode yet because 
+    // it is the "working" surface. We apply these CSS or during composition.
+    // For visual accuracy, we can apply style to the canvas element itself?
+    // Actually, usually the drawing canvas is raw, but displayed with CSS opacity.
     
     if (layerData) {
         const img = new Image();
@@ -556,22 +562,41 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 </div>
             )}
 
-            {/* Passive Layers */}
+            {/* Passive Layers (Render with Opacity & Blend Mode) */}
             {layers.map(layer => {
                 if (!layer.isVisible || layer.id === activeLayerId) return null;
                 const layerData = currentFrame.layers?.[layer.id];
                 if (!layerData) return null;
-                return <img key={layer.id} src={layerData} alt="" className="absolute inset-0 w-full h-full pointer-events-none z-10" />;
+                return (
+                    <img 
+                        key={layer.id} 
+                        src={layerData} 
+                        alt="" 
+                        className="absolute inset-0 w-full h-full pointer-events-none z-10" 
+                        style={{
+                            opacity: layer.opacity,
+                            mixBlendMode: layer.blendMode
+                        }}
+                    />
+                );
             })}
 
-            {/* Active Layer Canvas */}
+            {/* Active Layer Canvas (User draws here) */}
+            {/* 
+               The active layer canvas needs to visually reflect the opacity/blend mode 
+               WHILE drawing. We apply it via CSS style.
+            */}
             {layers.find(l => l.id === activeLayerId)?.isVisible && (
                 <canvas
                     ref={activeCanvasRef}
                     width={canvasWidth}
                     height={canvasHeight}
                     className="absolute inset-0 w-full h-full z-20"
-                    style={{ cursor: tool === 'select' ? 'default' : 'crosshair' }}
+                    style={{ 
+                        cursor: tool === 'select' ? 'default' : 'crosshair',
+                        opacity: layers.find(l => l.id === activeLayerId)?.opacity ?? 1,
+                        mixBlendMode: layers.find(l => l.id === activeLayerId)?.blendMode ?? 'normal'
+                    }}
                 />
             )}
 

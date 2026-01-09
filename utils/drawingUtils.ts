@@ -1,3 +1,4 @@
+
 import { Frame, Layer, SelectionState } from "../types";
 
 export const hexToRgba = (hex: string) => {
@@ -49,7 +50,11 @@ export const compositeLayers = async (
       await new Promise<void>((resolve) => {
         const img = new Image();
         img.onload = () => {
+          ctx.save();
+          ctx.globalAlpha = layer.opacity;
+          ctx.globalCompositeOperation = layer.blendMode;
           ctx.drawImage(img, 0, 0); // Layers are drawn at 0,0 relative to canvas size
+          ctx.restore();
           resolve();
         };
         img.onerror = () => resolve(); // Skip if fail

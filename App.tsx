@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType } from './types';
 import { CanvasArea } from './components/CanvasArea';
@@ -14,6 +15,8 @@ const createDefaultLayer = (id = '1', name = 'Layer 1'): Layer => ({
   name,
   isVisible: true,
   isLocked: false,
+  opacity: 1,
+  blendMode: 'source-over'
 });
 
 // Helper: Create a blank frame with initial layers
@@ -93,7 +96,7 @@ export default function App() {
 
   // Animation Loop Refs
   const requestRef = useRef<number>();
-  const lastTimeRef = useRef<number>(0);
+  const startTimeRef = useRef<number>(0);
 
   // Derived Stroke Width Logic
   const currentStrokeWidth = tool === 'eraser' ? eraserSize : tool === 'shape' ? shapeSize : penSize;
@@ -334,49 +337,58 @@ export default function App() {
   }, [currentFrameIndex, frames.length, isPlaying, isSettingsOpen, isExporting, historyIndex, history, selection, clipboard, view, layers, canvasSize, audioTracks]);
 
 
-  // --- Playback Logic ---
-  const animate = (time: number) => {
+  // --- Playback Logic (Advanced Audio Sync) ---
+  const animate = (timestamp: number) => {
     if (!isPlaying) return;
     
-    // Sync with the *first* audio track if available, else timer
+    let targetFrame = 0;
+    
+    // Priority: Sync to Audio if available
     const mainTrack = audioTracks[0];
     const mainAudio = mainTrack ? audioElementsRef.current.get(mainTrack.id) : null;
-
-    if (mainAudio && !mainAudio.paused) {
-        const currentTime = mainAudio.currentTime;
-        const targetFrame = Math.floor(currentTime * fps);
-        if (targetFrame < frames.length) {
-            setCurrentFrameIndex(targetFrame);
-        } else {
-            setIsPlaying(false);
-            return;
-        }
+    
+    if (mainAudio && !mainAudio.paused && mainAudio.duration > 0) {
+        // Use audio as master clock
+        targetFrame = Math.floor(mainAudio.currentTime * fps);
     } else {
-        const deltaTime = time - lastTimeRef.current;
-        const interval = 1000 / fps;
-        if (deltaTime > interval) {
-            setCurrentFrameIndex((prev) => (prev + 1) % frames.length);
-            lastTimeRef.current = time;
-        }
+        // Fallback: Use standard clock
+        if (startTimeRef.current === 0) startTimeRef.current = timestamp;
+        const elapsed = (timestamp - startTimeRef.current) / 1000; // seconds
+        targetFrame = Math.floor(elapsed * fps);
     }
+    
+    if (targetFrame >= frames.length) {
+        // Loop or Stop
+        setIsPlaying(false);
+        setCurrentFrameIndex(frames.length - 1);
+        return; 
+    }
+
+    if (targetFrame !== currentFrameIndex) {
+        setCurrentFrameIndex(targetFrame);
+    }
+    
     requestRef.current = requestAnimationFrame(animate);
   };
 
   useEffect(() => {
     if (isPlaying) {
-      // Start all audio
+      // 1. Setup Audio
       const startTime = currentFrameIndex / fps;
+      let hasAudio = false;
+      
       audioTracks.forEach(track => {
           const audio = audioElementsRef.current.get(track.id);
           if (audio) {
-              if (Math.abs(audio.currentTime - startTime) > 0.1 || audio.ended) {
-                  audio.currentTime = startTime;
-              }
+              audio.currentTime = startTime;
               audio.play().catch(console.error);
+              hasAudio = true;
           }
       });
       
-      lastTimeRef.current = performance.now();
+      // 2. Setup Timer Fallback
+      startTimeRef.current = performance.now() - (startTime * 1000);
+
       requestRef.current = requestAnimationFrame(animate);
     } else {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
@@ -384,15 +396,20 @@ export default function App() {
       audioElementsRef.current.forEach(audio => audio.pause());
     }
     return () => { if (requestRef.current) cancelAnimationFrame(requestRef.current); };
-  }, [isPlaying, audioTracks, fps]); 
+  }, [isPlaying, fps]); // Re-run if fps changes or toggled
 
   const handleSelectFrame = (index: number) => {
     setCurrentFrameIndex(index);
+    // Scrub Audio: When user manually selects a frame, sync audio position to it
     if (!isPlaying && audioTracks.length > 0) {
         const time = index / fps;
         audioTracks.forEach(track => {
             const audio = audioElementsRef.current.get(track.id);
-            if (audio) audio.currentTime = time;
+            if (audio) {
+                if (Number.isFinite(time)) {
+                    audio.currentTime = time;
+                }
+            }
         });
     }
   };
@@ -518,6 +535,15 @@ export default function App() {
   };
   const toggleLayerLock = (id: string) => setLayers(layers.map(l => l.id === id ? { ...l, isLocked: !l.isLocked } : l));
 
+  // Advanced Layer Settings
+  const updateLayerSettings = (id: string, opacity: number, blendMode: GlobalCompositeOperation) => {
+      const newLayers = layers.map(l => l.id === id ? { ...l, opacity, blendMode } : l);
+      setLayers(newLayers);
+      // NOTE: We don't necessarily update history for layer setting changes to avoid spam, 
+      // but we MUST regenerate thumbnails so the timeline looks correct.
+      regenerateThumbnails(frames, newLayers);
+  };
+
   const updateFramesWithHistory = (newFrames: Frame[]) => {
     setFrames(newFrames);
     const newHistory = history.slice(0, historyIndex + 1);
@@ -611,11 +637,10 @@ export default function App() {
       }
   };
 
-  // --- Export ---
+  // --- Export (Improved) ---
   const handleExport = async () => {
     if (isExporting || frames.length === 0) return;
     
-    // MP4/WebM logic
     const mimeTypes = [
         'video/mp4; codecs="avc1.424028, mp4a.40.2"',
         'video/mp4',
@@ -657,7 +682,7 @@ export default function App() {
         }));
 
         // @ts-ignore
-        const stream = exportCanvas.captureStream(60);
+        const stream = exportCanvas.captureStream(fps); // Hint the FPS to capture stream
         
         // Audio Mixing
         if (audioTracks.length > 0) {
@@ -665,17 +690,21 @@ export default function App() {
             const dest = audioContext.createMediaStreamDestination();
             
             // Connect all tracks
-            for (const track of audioTracks) {
-                const audioEl = new Audio(track.url);
-                await new Promise<void>(resolve => {
-                    audioEl.oncanplaythrough = () => resolve();
-                    audioEl.onerror = () => resolve();
-                    audioEl.load();
-                });
-                const source = audioContext.createMediaElementSource(audioEl);
+            const audioBufferPromises = audioTracks.map(async (track) => {
+                const response = await fetch(track.url);
+                const arrayBuffer = await response.arrayBuffer();
+                return audioContext!.decodeAudioData(arrayBuffer);
+            });
+
+            const audioBuffers = await Promise.all(audioBufferPromises);
+            
+            // Create buffer sources
+            audioBuffers.forEach(buffer => {
+                const source = audioContext!.createBufferSource();
+                source.buffer = buffer;
                 source.connect(dest);
-                audioEl.play(); // Must play to stream
-            }
+                source.start(0); // Start immediately at 0
+            });
             
             const audioTrack = dest.stream.getAudioTracks()[0];
             if (audioTrack) stream.addTrack(audioTrack);
@@ -715,12 +744,12 @@ export default function App() {
             await new Promise(resolve => setTimeout(resolve, frameDuration));
             setExportProgress(Math.round(((i + 1) / compositeImages.length) * 100));
         }
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 500)); // Buffer end
         mediaRecorder.stop();
 
     } catch (error: any) {
         console.error("Export failed", error);
-        alert("Export failed");
+        alert("Export failed: " + error.message);
         if (exportCanvas && document.body.contains(exportCanvas)) document.body.removeChild(exportCanvas);
         if (audioContext) audioContext.close();
         setIsExporting(false);
@@ -808,6 +837,7 @@ export default function App() {
              onRemoveLayer={removeLayer}
              onToggleVisibility={toggleLayerVisibility}
              onToggleLock={toggleLayerLock}
+             onUpdateLayerSettings={updateLayerSettings}
              onClose={() => setIsLayerPanelOpen(false)}
           />
       )}

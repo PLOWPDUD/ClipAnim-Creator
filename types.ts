@@ -1,3 +1,4 @@
+
 export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'shape';
 
 export type ShapeType = 'rectangle' | 'circle' | 'line';
@@ -12,6 +13,8 @@ export interface Layer {
   name: string;
   isVisible: boolean;
   isLocked: boolean;
+  opacity: number; // 0 to 1
+  blendMode: GlobalCompositeOperation;
 }
 
 export interface Frame {
