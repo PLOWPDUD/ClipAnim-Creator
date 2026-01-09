@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType } from './types';
 import { CanvasArea } from './components/CanvasArea';
@@ -375,14 +374,12 @@ export default function App() {
     if (isPlaying) {
       // 1. Setup Audio
       const startTime = currentFrameIndex / fps;
-      let hasAudio = false;
       
       audioTracks.forEach(track => {
           const audio = audioElementsRef.current.get(track.id);
           if (audio) {
               audio.currentTime = startTime;
               audio.play().catch(console.error);
-              hasAudio = true;
           }
       });
       

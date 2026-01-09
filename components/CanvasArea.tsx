@@ -30,6 +30,15 @@ interface CanvasAreaProps {
   backgroundImage: string | null;
 }
 
+// Helper to map Canvas GlobalCompositeOperation to CSS MixBlendMode safely
+const getMixBlendMode = (mode: GlobalCompositeOperation): any => {
+    if (mode === 'source-over') return 'normal';
+    // List of values shared between Canvas and CSS
+    const supported = ['multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity'];
+    if (supported.includes(mode)) return mode;
+    return 'normal';
+};
+
 export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
   currentFrame,
   layers,
@@ -575,7 +584,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                         className="absolute inset-0 w-full h-full pointer-events-none z-10" 
                         style={{
                             opacity: layer.opacity,
-                            mixBlendMode: layer.blendMode
+                            mixBlendMode: getMixBlendMode(layer.blendMode)
                         }}
                     />
                 );
@@ -595,7 +604,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                     style={{ 
                         cursor: tool === 'select' ? 'default' : 'crosshair',
                         opacity: layers.find(l => l.id === activeLayerId)?.opacity ?? 1,
-                        mixBlendMode: layers.find(l => l.id === activeLayerId)?.blendMode ?? 'normal'
+                        mixBlendMode: getMixBlendMode(layers.find(l => l.id === activeLayerId)?.blendMode ?? 'source-over')
                     }}
                 />
             )}
