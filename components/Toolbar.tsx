@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import { ToolType, ShapeType } from '../types';
 import { Icons } from './Icons';
@@ -64,7 +65,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
     if (currentTool === toolId) {
       // Toggle popover for tools that have options
-      if (['pen', 'eraser', 'shape'].includes(toolId)) {
+      if (['pen', 'eraser', 'shape', 'text'].includes(toolId)) {
         if (activePopover === toolId) {
             setActivePopover(null);
         } else {
@@ -74,9 +75,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       }
     } else {
       onSelectTool(toolId);
-      // Immediately show popover for these tools if they are clicked freshly? 
-      // No, standard behavior usually selects first. 
-      // But we can update position in case they double click later.
       setPopoverPos({ top, left });
     }
   };
@@ -91,6 +89,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         shapeType === 'line' ? Icons.Line : Icons.Square, 
       label: 'Shapes (U)' 
     },
+    { id: 'text', icon: Icons.Type, label: 'Text (T)' },
   ];
 
   const presets = ['#000000', '#FF3B30', '#007AFF', '#34C759', '#FF9500', '#FFFFFF'];
@@ -101,6 +100,15 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     }
     // Reset input
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const getPopoverTitle = (tool: ToolType) => {
+      switch(tool) {
+          case 'pen': return 'Pen Size';
+          case 'eraser': return 'Eraser Size';
+          case 'text': return 'Font Size';
+          default: return 'Size';
+      }
   };
 
   return (
@@ -119,7 +127,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <tool.icon size={24} />
             
             {/* Indicator dot for tools with settings */}
-            {['pen', 'eraser', 'shape'].includes(tool.id) && (
+            {['pen', 'eraser', 'shape', 'text'].includes(tool.id) && (
                 <div className={`absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full transition-colors ${currentTool === tool.id ? 'bg-white' : 'bg-gray-500 group-hover:bg-gray-300'}`} />
             )}
           </button>
@@ -210,8 +218,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       </div>
 
       {/* FIXED POPOVERS */}
-      {/* This ensures popovers are never clipped by the toolbar's scroll container */}
-      {(activePopover === 'pen' || activePopover === 'eraser') && (
+      {(activePopover === 'pen' || activePopover === 'eraser' || activePopover === 'text') && (
         <div 
           className="fixed bg-[#252525] p-3 rounded-lg shadow-xl w-48 border border-gray-700 z-50 animate-in fade-in zoom-in-95 duration-100"
           style={{ 
@@ -221,12 +228,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           }}
         >
           <div className="text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-            {activePopover === 'pen' ? 'Pen' : 'Eraser'} Size: {strokeWidth}px
+            {getPopoverTitle(activePopover)}: {strokeWidth}px
           </div>
           <input 
               type="range" 
-              min="1" 
-              max="50" 
+              min={activePopover === 'text' ? 12 : 1} 
+              max={activePopover === 'text' ? 100 : 50} 
               value={strokeWidth} 
               onChange={(e) => onChangeStrokeWidth(Number(e.target.value))}
               className="w-full accent-[#FF3B30] h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer"

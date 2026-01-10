@@ -1,3 +1,4 @@
+
 import { 
   Pencil, 
   Eraser, 
@@ -34,7 +35,8 @@ import {
   Minus, 
   Clipboard, 
   Home, 
-  Save 
+  Save,
+  Type
 } from 'lucide-react';
 
 export const Icons = {
@@ -73,5 +75,6 @@ export const Icons = {
   Line: Minus,
   Clipboard,
   Home,
-  Save
+  Save,
+  Type
 };

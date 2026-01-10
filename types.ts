@@ -1,5 +1,5 @@
 
-export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'shape';
+export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'shape' | 'text';
 
 export type ShapeType = 'rectangle' | 'circle' | 'line';
 

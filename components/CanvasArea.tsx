@@ -88,6 +88,10 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
   const selectionMode = useRef<'create' | 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | null>(null);
   const [isCreatingSelection, setIsCreatingSelection] = useState(false); // Only used to mount/unmount the marquee div
 
+  // Text Tool State
+  const [textInput, setTextInput] = useState<{x: number, y: number, value: string} | null>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
+
   // 1. Sync React Selection State to DOM Ref (when not dragging)
   useEffect(() => {
       if (selection && selectionOverlayRef.current) {
@@ -101,6 +105,13 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
           latestSelectionState.current = selection;
       }
   }, [selection]);
+
+  // Focus text input when it appears
+  useEffect(() => {
+      if (textInput && textInputRef.current) {
+          textInputRef.current.focus();
+      }
+  }, [textInput]);
 
   // 2. Render Active Canvas
   useEffect(() => {
@@ -158,6 +169,42 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
   };
 
+  const commitText = () => {
+      if (textInput && textInput.value.trim() !== '') {
+          // Render text to image
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+             const fontSize = Math.max(12, strokeWidth);
+             ctx.font = `bold ${fontSize}px sans-serif`;
+             const metrics = ctx.measureText(textInput.value);
+             const width = Math.ceil(metrics.width);
+             const height = Math.ceil(fontSize * 1.2);
+             
+             canvas.width = width;
+             canvas.height = height;
+             
+             // Reset context after resize
+             ctx.font = `bold ${fontSize}px sans-serif`;
+             ctx.fillStyle = color;
+             ctx.textBaseline = 'top';
+             ctx.fillText(textInput.value, 0, 0);
+
+             onSelectionCreate({
+                 x: textInput.x,
+                 y: textInput.y - (fontSize * 0.2), // Adjust for baseline roughly
+                 width,
+                 height,
+                 dataUrl: canvas.toDataURL(),
+                 rotation: 0,
+                 scaleX: 1,
+                 scaleY: 1
+             });
+          }
+      }
+      setTextInput(null);
+  };
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isPlaying || !currentFrame) return;
     
@@ -169,6 +216,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
         isGesture.current = true;
         isDrawing.current = false;
         selectionMode.current = null;
+        if(textInput) commitText(); // Commit if pinching
         
         const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
         if (points.length >= 2) {
@@ -180,6 +228,21 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
     const activeLayer = layers.find(l => l.id === activeLayerId);
+
+    // Text Tool Logic
+    if (tool === 'text') {
+        if (textInput) {
+            // If clicking away from active input, commit
+            commitText();
+            return;
+        }
+        if (selection) {
+             onSelectionCommit(); // Commit current selection/text
+        }
+        // Start new text input
+        setTextInput({ x, y, value: '' });
+        return;
+    }
 
     // Selection Logic
     if (tool === 'select') {
@@ -602,7 +665,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                     height={canvasHeight}
                     className="absolute inset-0 w-full h-full z-20"
                     style={{ 
-                        cursor: tool === 'select' ? 'default' : 'crosshair',
+                        cursor: tool === 'select' || tool === 'text' ? 'text' : 'crosshair',
                         opacity: layers.find(l => l.id === activeLayerId)?.opacity ?? 1,
                         mixBlendMode: getMixBlendMode(layers.find(l => l.id === activeLayerId)?.blendMode ?? 'source-over')
                     }}
@@ -659,11 +722,36 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                  />
             )}
 
+            {/* Text Input Overlay */}
+            {textInput && (
+                <input
+                    ref={textInputRef}
+                    type="text"
+                    value={textInput.value}
+                    onChange={(e) => setTextInput({ ...textInput, value: e.target.value })}
+                    onKeyDown={(e) => { if(e.key === 'Enter') commitText(); }}
+                    onBlur={() => { /* Optional: commit on blur, but often annoying if user clicked outside. Handled by pointerDown. */ }}
+                    className="absolute z-50 bg-transparent border-none outline-none p-0 m-0"
+                    style={{
+                        left: textInput.x,
+                        top: textInput.y,
+                        color: color,
+                        fontSize: `${Math.max(12, strokeWidth)}px`,
+                        fontFamily: 'sans-serif',
+                        fontWeight: 'bold',
+                        minWidth: '20px'
+                    }}
+                    placeholder="Type..."
+                    autoFocus
+                />
+            )}
+
         </div>
         
         <div className="absolute top-4 right-4 bg-black/50 text-white text-xs px-2 py-1 rounded pointer-events-none flex gap-2">
             <span>{Math.round(transform.current.scale * 100)}%</span>
             {tool === 'select' && <span>Select Mode</span>}
+            {tool === 'text' && <span>Text Mode</span>}
         </div>
     </div>
   );
