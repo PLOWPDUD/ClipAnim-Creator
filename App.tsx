@@ -94,7 +94,8 @@ export default function App() {
   const [exportFormat, setExportFormat] = useState('');
 
   // Animation Loop Refs
-  const requestRef = useRef<number>();
+  // Fix: Initialized with undefined to provide the expected argument for useRef when using generics.
+  const requestRef = useRef<number | undefined>(undefined);
   const startTimeRef = useRef<number>(0);
 
   // Derived Stroke Width Logic
@@ -634,7 +635,7 @@ export default function App() {
       }
   };
 
-  // --- Export (Improved) ---
+  // --- Export (Improved with last frame fix) ---
   const handleExport = async () => {
     if (isExporting || frames.length === 0) return;
     
@@ -732,16 +733,24 @@ export default function App() {
         };
 
         mediaRecorder.start();
+        // Give the recorder a moment to initialize before pumping frames
+        await new Promise(resolve => setTimeout(resolve, 200));
+
         const frameDuration = 1000 / fps;
         
         for (let i = 0; i < compositeImages.length; i++) {
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, width, height);
             ctx.drawImage(compositeImages[i], 0, 0);
+            
+            // Wait for one frame duration to ensure the recorder sees it
             await new Promise(resolve => setTimeout(resolve, frameDuration));
             setExportProgress(Math.round(((i + 1) / compositeImages.length) * 100));
         }
-        await new Promise(resolve => setTimeout(resolve, 500)); // Buffer end
+        
+        // HOLD the last frame for a substantial time to ensure the encoder registers it
+        // and doesn't cut the video prematurely.
+        await new Promise(resolve => setTimeout(resolve, 1000)); 
         mediaRecorder.stop();
 
     } catch (error: any) {
