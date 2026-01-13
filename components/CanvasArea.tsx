@@ -211,7 +211,15 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     e.currentTarget.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // Gesture (Pinch/Pan)
+    // Right Click Pan
+    if (e.button === 2) {
+        isGesture.current = true;
+        isDrawing.current = false;
+        lastPanPoint.current = { x: e.clientX, y: e.clientY };
+        return;
+    }
+
+    // Gesture (Pinch/Pan) - Touch
     if (pointers.current.size === 2) {
         isGesture.current = true;
         isDrawing.current = false;
@@ -290,6 +298,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
   const handleSelectionPointerDown = (e: React.PointerEvent) => {
       e.stopPropagation();
+      if (e.button === 2) return; // Ignore right-click on selection handles for move
       e.currentTarget.setPointerCapture(e.pointerId);
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       
@@ -302,6 +311,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
   const handleResizePointerDown = (e: React.PointerEvent, type: 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br') => {
       e.stopPropagation();
+      if (e.button === 2) return; // Ignore right-click on resize handles
       e.currentTarget.setPointerCapture(e.pointerId);
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -316,10 +326,22 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     if (isPlaying) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // Gesture Handling
-    if (isGesture.current && pointers.current.size === 2) {
-        const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
-        if (points.length >= 2) {
+    // Gesture Handling (Right-Click Pan or Two-Finger Pan)
+    if (isGesture.current) {
+        if (pointers.current.size === 1) {
+            // Right-click pan logic
+            if (lastPanPoint.current) {
+                const dx = e.clientX - lastPanPoint.current.x;
+                const dy = e.clientY - lastPanPoint.current.y;
+                transform.current.x += dx;
+                transform.current.y += dy;
+                updateTransformStyle();
+                lastPanPoint.current = { x: e.clientX, y: e.clientY };
+            }
+            return;
+        } else if (pointers.current.size === 2) {
+            // Touch pinch/pan logic
+            const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
             const newDistance = getDistance(points[0], points[1]);
             const newCenter = getCenter(points[0], points[1]);
 
@@ -339,8 +361,8 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 initialPinchDistance.current = newDistance;
                 lastPanPoint.current = newCenter;
             }
+            return;
         }
-        return;
     }
 
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
@@ -486,7 +508,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     pointers.current.delete(e.pointerId);
     e.currentTarget.releasePointerCapture(e.pointerId);
 
-    if (pointers.current.size < 2) {
+    if (pointers.current.size < 2 && ! (e.pointerType === 'mouse' && e.button === 2)) {
         isGesture.current = false;
         initialPinchDistance.current = null;
         lastPanPoint.current = null;
@@ -590,6 +612,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
       onPointerCancel={handlePointerUp}
+      onContextMenu={(e) => e.preventDefault()}
     >
         <div 
             ref={transformRef}
@@ -665,7 +688,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                     height={canvasHeight}
                     className="absolute inset-0 w-full h-full z-20"
                     style={{ 
-                        cursor: tool === 'select' || tool === 'text' ? 'text' : 'crosshair',
+                        cursor: isGesture.current ? 'grabbing' : (tool === 'select' || tool === 'text' ? 'text' : 'crosshair'),
                         opacity: layers.find(l => l.id === activeLayerId)?.opacity ?? 1,
                         mixBlendMode: getMixBlendMode(layers.find(l => l.id === activeLayerId)?.blendMode ?? 'source-over')
                     }}
