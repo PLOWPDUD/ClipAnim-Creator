@@ -9,7 +9,7 @@ interface CanvasAreaProps {
   activeLayerId: string;
   onUpdateLayer: (layerId: string, dataUrl: string) => void;
   tool: ToolType;
-  shapeType: ShapeType; // Added
+  shapeType: ShapeType;
   color: string;
   strokeWidth: number;
   prevFrame?: Frame | null;
@@ -30,10 +30,8 @@ interface CanvasAreaProps {
   backgroundImage: string | null;
 }
 
-// Helper to map Canvas GlobalCompositeOperation to CSS MixBlendMode safely
 const getMixBlendMode = (mode: GlobalCompositeOperation): any => {
     if (mode === 'source-over') return 'normal';
-    // List of values shared between Canvas and CSS
     const supported = ['multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity'];
     if (supported.includes(mode)) return mode;
     return 'normal';
@@ -65,12 +63,10 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
   const transformRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
-  // Refs for Direct DOM Manipulation (Performance)
   const selectionOverlayRef = useRef<HTMLDivElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
   const latestSelectionState = useRef<SelectionState | null>(null);
 
-  // Viewport State
   const transform = useRef({ scale: 1, x: 0, y: 0 });
   const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const isGesture = useRef(false);
@@ -78,21 +74,19 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
   const initialPinchDistance = useRef<number | null>(null);
   const lastPanPoint = useRef<{ x: number; y: number } | null>(null);
 
-  // Drawing State (Shapes)
+  // Tracking movement to distinguish tap from drag
+  const hasMoved = useRef(false);
   const drawStart = useRef<{x: number, y: number} | null>(null);
   const canvasSnapshot = useRef<ImageData | null>(null);
 
-  // Selection Interaction State
   const dragStart = useRef<{x: number, y: number} | null>(null);
   const initialSelection = useRef<SelectionState | null>(null);
   const selectionMode = useRef<'create' | 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | null>(null);
-  const [isCreatingSelection, setIsCreatingSelection] = useState(false); // Only used to mount/unmount the marquee div
+  const [isCreatingSelection, setIsCreatingSelection] = useState(false);
 
-  // Text Tool State
   const [textInput, setTextInput] = useState<{x: number, y: number, value: string} | null>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Sync React Selection State to DOM Ref (when not dragging)
   useEffect(() => {
       if (selection && selectionOverlayRef.current) {
           const s = selectionOverlayRef.current.style;
@@ -101,22 +95,18 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
           s.width = `${selection.width}px`;
           s.height = `${selection.height}px`;
           s.transform = `rotate(${selection.rotation}deg) scale(${selection.scaleX}, ${selection.scaleY})`;
-          // Update our local tracker
           latestSelectionState.current = selection;
       }
   }, [selection]);
 
-  // Focus text input when it appears
   useEffect(() => {
       if (textInput && textInputRef.current) {
           textInputRef.current.focus();
       }
   }, [textInput]);
 
-  // 2. Render Active Canvas
   useEffect(() => {
     if (!currentFrame) return;
-
     const canvas = activeCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -127,11 +117,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
     const layerData = currentFrame.layers?.[activeLayerId];
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // NOTE: The Active Canvas doesn't apply opacity/blendMode yet because 
-    // it is the "working" surface. We apply these CSS or during composition.
-    // For visual accuracy, we can apply style to the canvas element itself?
-    // Actually, usually the drawing canvas is raw, but displayed with CSS opacity.
     
     if (layerData) {
         const img = new Image();
@@ -171,7 +156,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
   const commitText = () => {
       if (textInput && textInput.value.trim() !== '') {
-          // Render text to image
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           if (ctx) {
@@ -184,7 +168,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
              canvas.width = width;
              canvas.height = height;
              
-             // Reset context after resize
              ctx.font = `bold ${fontSize}px sans-serif`;
              ctx.fillStyle = color;
              ctx.textBaseline = 'top';
@@ -192,7 +175,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
              onSelectionCreate({
                  x: textInput.x,
-                 y: textInput.y - (fontSize * 0.2), // Adjust for baseline roughly
+                 y: textInput.y - (fontSize * 0.2),
                  width,
                  height,
                  dataUrl: canvas.toDataURL(),
@@ -211,21 +194,19 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     e.currentTarget.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // Right Click Pan
-    if (e.button === 2) {
+    if (e.button === 2) { 
         isGesture.current = true;
         isDrawing.current = false;
         lastPanPoint.current = { x: e.clientX, y: e.clientY };
         return;
     }
-
-    // Gesture (Pinch/Pan) - Touch
-    if (pointers.current.size === 2) {
+    
+    if (pointers.current.size >= 2) { 
         isGesture.current = true;
-        isDrawing.current = false;
+        isDrawing.current = false; // Immediately stop drawing if second finger hits
         selectionMode.current = null;
-        if(textInput) commitText(); // Commit if pinching
-        
+        if (textInput) commitText();
+
         const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
         if (points.length >= 2) {
             initialPinchDistance.current = getDistance(points[0], points[1]);
@@ -234,71 +215,60 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
         return;
     }
 
+    isGesture.current = false;
+    hasMoved.current = false; // Reset movement tracking
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
     const activeLayer = layers.find(l => l.id === activeLayerId);
 
-    // Text Tool Logic
     if (tool === 'text') {
         if (textInput) {
-            // If clicking away from active input, commit
             commitText();
             return;
         }
-        if (selection) {
-             onSelectionCommit(); // Commit current selection/text
-        }
-        // Start new text input
+        if (selection) onSelectionCommit();
         setTextInput({ x, y, value: '' });
+        isDrawing.current = false;
         return;
     }
 
-    // Selection Logic
     if (tool === 'select') {
-        if (selection) {
-             onSelectionCommit(); // Commit current
-             // Start new selection immediately
-             selectionMode.current = 'create';
-             dragStart.current = { x, y };
-             setIsCreatingSelection(true);
-        } else {
-             selectionMode.current = 'create';
-             dragStart.current = { x, y };
-             setIsCreatingSelection(true);
-        }
+        if (selection) onSelectionCommit();
+        selectionMode.current = 'create';
+        dragStart.current = { x, y };
+        setIsCreatingSelection(true);
+        isDrawing.current = false;
         return;
     }
 
-    if (activeLayer?.isLocked || !activeLayer?.isVisible) return;
+    if (activeLayer?.isLocked || !activeLayer?.isVisible) {
+        isDrawing.current = false;
+        return;
+    }
 
-    // Drawing Logic
-    if (pointers.current.size === 1 && !isGesture.current) {
-        isDrawing.current = true;
-        const ctx = activeCanvasRef.current?.getContext('2d');
-        if (!ctx) return;
+    isDrawing.current = true;
+    drawStart.current = { x, y };
+    const ctx = activeCanvasRef.current?.getContext('2d');
+    if (!ctx) return;
 
-        if (tool === 'fill') {
-            floodFill(ctx, Math.floor(x), Math.floor(y), color);
-            saveCanvas();
-            isDrawing.current = false;
-        } else if (tool === 'shape') {
-            drawStart.current = { x, y };
-            canvasSnapshot.current = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-        } else {
-            // Pen / Eraser
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            ctx.lineWidth = strokeWidth;
-            ctx.strokeStyle = color;
-            ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
-            ctx.lineTo(x, y);
-            ctx.stroke();
-        }
+    if (tool === 'fill') {
+        floodFill(ctx, Math.floor(x), Math.floor(y), color);
+        saveCanvas();
+        isDrawing.current = false;
+    } else if (tool === 'shape') {
+        canvasSnapshot.current = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    } else {
+        // Prepare context but DO NOT stroke/lineTo yet to avoid dots on multi-touch
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineWidth = strokeWidth;
+        ctx.strokeStyle = color;
+        ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
     }
   };
 
   const handleSelectionPointerDown = (e: React.PointerEvent) => {
       e.stopPropagation();
-      if (e.button === 2) return; // Ignore right-click on selection handles for move
+      if (e.button === 2) return;
       e.currentTarget.setPointerCapture(e.pointerId);
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       
@@ -311,7 +281,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
   const handleResizePointerDown = (e: React.PointerEvent, type: 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br') => {
       e.stopPropagation();
-      if (e.button === 2) return; // Ignore right-click on resize handles
+      if (e.button === 2) return;
       e.currentTarget.setPointerCapture(e.pointerId);
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -326,10 +296,8 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     if (isPlaying) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // Gesture Handling (Right-Click Pan or Two-Finger Pan)
     if (isGesture.current) {
-        if (pointers.current.size === 1) {
-            // Right-click pan logic
+        if (e.pointerType === 'mouse' && e.buttons === 2) {
             if (lastPanPoint.current) {
                 const dx = e.clientX - lastPanPoint.current.x;
                 const dy = e.clientY - lastPanPoint.current.y;
@@ -339,8 +307,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 lastPanPoint.current = { x: e.clientX, y: e.clientY };
             }
             return;
-        } else if (pointers.current.size === 2) {
-            // Touch pinch/pan logic
+        } else if (pointers.current.size >= 2) {
             const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
             const newDistance = getDistance(points[0], points[1]);
             const newCenter = getCenter(points[0], points[1]);
@@ -348,14 +315,12 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
             if (initialPinchDistance.current && lastPanPoint.current) {
                 const zoomFactor = newDistance / initialPinchDistance.current;
                 const newScale = Math.min(Math.max(transform.current.scale * zoomFactor, 0.1), 10);
-                
                 const dx = newCenter.x - lastPanPoint.current.x;
                 const dy = newCenter.y - lastPanPoint.current.y;
 
                 transform.current.scale = newScale;
                 transform.current.x += dx;
                 transform.current.y += dy;
-
                 updateTransformStyle();
                 
                 initialPinchDistance.current = newDistance;
@@ -363,14 +328,19 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
             }
             return;
         }
+        return;
     }
 
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
 
-    // Selection Handling
+    // Track movement
+    if (drawStart.current) {
+        const dist = getDistance(drawStart.current, { x, y });
+        if (dist > 2) hasMoved.current = true;
+    }
+
     if (tool === 'select' && selectionMode.current && dragStart.current) {
         if (selectionMode.current === 'create') {
-            // Update Marquee DOM directly
             if (marqueeRef.current) {
                 const startX = dragStart.current.x;
                 const startY = dragStart.current.y;
@@ -378,7 +348,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 const height = Math.abs(y - startY);
                 const left = Math.min(x, startX);
                 const top = Math.min(y, startY);
-                
                 const s = marqueeRef.current.style;
                 s.left = `${left}px`;
                 s.top = `${top}px`;
@@ -386,15 +355,10 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 s.height = `${height}px`;
             }
         } else if (initialSelection.current) {
-            // Update Selection Transform Logic
             const dx = x - dragStart.current.x;
             const dy = y - dragStart.current.y;
             const init = initialSelection.current;
-
-            let newW = init.width;
-            let newH = init.height;
-            let newX = init.x;
-            let newY = init.y;
+            let newW = init.width, newH = init.height, newX = init.x, newY = init.y;
 
             if (selectionMode.current === 'move') {
                 newX = init.x + dx;
@@ -420,37 +384,15 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                     else if (handle === 'resize-br') handle = 'resize-tr';
                  }
 
-                 if (handle === 'resize-br') {
-                     newW = init.width + ldx;
-                     newH = init.height + ldy;
-                 } else if (handle === 'resize-bl') {
-                     newW = init.width - ldx;
-                     newH = init.height + ldy;
-                     newX = init.x + ldx;
-                 } else if (handle === 'resize-tr') {
-                     newW = init.width + ldx;
-                     newH = init.height - ldy;
-                     newY = init.y + ldy;
-                 } else if (handle === 'resize-tl') {
-                     newW = init.width - ldx;
-                     newH = init.height - ldy;
-                     newX = init.x + ldx;
-                     newY = init.y + ldy;
-                 }
+                 if (handle === 'resize-br') { newW = init.width + ldx; newH = init.height + ldy; }
+                 else if (handle === 'resize-bl') { newW = init.width - ldx; newH = init.height + ldy; newX = init.x + ldx; }
+                 else if (handle === 'resize-tr') { newW = init.width + ldx; newH = init.height - ldy; newY = init.y + ldy; }
+                 else if (handle === 'resize-tl') { newW = init.width - ldx; newH = init.height - ldy; newX = init.x + ldx; newY = init.y + ldy; }
 
-                 if (newW < 5) { 
-                     const diff = 5 - newW; 
-                     newW = 5; 
-                     if (handle.includes('l')) newX -= diff;
-                 }
-                 if (newH < 5) { 
-                     const diff = 5 - newH; 
-                     newH = 5; 
-                     if (handle.includes('t')) newY -= diff;
-                 }
+                 if (newW < 5) { const diff = 5 - newW; newW = 5; if (handle.includes('l')) newX -= diff; }
+                 if (newH < 5) { const diff = 5 - newH; newH = 5; if (handle.includes('t')) newY -= diff; }
             }
 
-            // Update DOM directly (Lag fix)
             if (selectionOverlayRef.current) {
                 const s = selectionOverlayRef.current.style;
                 s.left = `${newX}px`;
@@ -458,22 +400,16 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 s.width = `${newW}px`;
                 s.height = `${newH}px`;
             }
-            
-            // Store for commit
             latestSelectionState.current = { ...init, x: newX, y: newY, width: newW, height: newH };
         }
     }
     
-    // Drawing Handling
     if (isDrawing.current) {
         const ctx = activeCanvasRef.current?.getContext('2d');
         if (!ctx) return;
 
         if (tool === 'shape' && drawStart.current && canvasSnapshot.current) {
-            // 1. Restore previous state
             ctx.putImageData(canvasSnapshot.current, 0, 0);
-            
-            // 2. Calculate dimensions
             const startX = drawStart.current.x;
             const startY = drawStart.current.y;
             const w = x - startX;
@@ -483,11 +419,8 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
             ctx.lineWidth = strokeWidth;
             ctx.strokeStyle = color;
             ctx.globalCompositeOperation = 'source-over';
-
-            if (shapeType === 'rectangle') {
-                ctx.rect(startX, startY, w, h);
-            } else if (shapeType === 'circle') {
-                // Ellipse based on bounding box
+            if (shapeType === 'rectangle') ctx.rect(startX, startY, w, h);
+            else if (shapeType === 'circle') {
                 const cx = startX + w / 2;
                 const cy = startY + h / 2;
                 ctx.ellipse(cx, cy, Math.abs(w / 2), Math.abs(h / 2), 0, 0, 2 * Math.PI);
@@ -496,7 +429,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 ctx.lineTo(x, y);
             }
             ctx.stroke();
-
         } else if (tool === 'pen' || tool === 'eraser') {
             ctx.lineTo(x, y);
             ctx.stroke();
@@ -508,7 +440,10 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     pointers.current.delete(e.pointerId);
     e.currentTarget.releasePointerCapture(e.pointerId);
 
-    if (pointers.current.size < 2 && ! (e.pointerType === 'mouse' && e.button === 2)) {
+    if (e.button === 2) {
+        isGesture.current = false;
+        lastPanPoint.current = null;
+    } else if (pointers.current.size < 2) {
         isGesture.current = false;
         initialPinchDistance.current = null;
         lastPanPoint.current = null;
@@ -516,11 +451,9 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
     if (tool === 'select') {
         if (selectionMode.current === 'create' && dragStart.current) {
-            // Commit Marquee
             const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
             const startX = dragStart.current.x;
             const startY = dragStart.current.y;
-            
             const width = Math.abs(x - startX);
             const height = Math.abs(y - startY);
             const left = Math.min(x, startX);
@@ -537,22 +470,11 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                     tempCtx?.putImageData(imageData, 0, 0);
                     ctx.clearRect(left, top, width, height);
                     saveCanvas(); 
-                    
-                    onSelectionCreate({
-                        x: left,
-                        y: top,
-                        width,
-                        height,
-                        dataUrl: tempCanvas.toDataURL(),
-                        rotation: 0,
-                        scaleX: 1,
-                        scaleY: 1
-                    });
+                    onSelectionCreate({ x: left, y: top, width, height, dataUrl: tempCanvas.toDataURL(), rotation: 0, scaleX: 1, scaleY: 1 });
                 }
             }
             setIsCreatingSelection(false);
         } else if (selectionMode.current && latestSelectionState.current) {
-            // Commit Drag/Resize
             onSelectionUpdate(latestSelectionState.current);
         }
     }
@@ -564,12 +486,17 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     if (isDrawing.current) {
         const ctx = activeCanvasRef.current?.getContext('2d');
         if (ctx) {
-            if (tool === 'pen' || tool === 'eraser' || tool === 'shape') {
-                // For shapes, the final stroke happened in PointerMove, or we can ensure it here.
-                // It's safer to ensure closePath if needed, but for stroke rects it's fine.
-                // We just need to save.
+            if (tool === 'pen' || tool === 'eraser') {
+                // Handle single tap for dots
+                if (!hasMoved.current && drawStart.current) {
+                    ctx.lineTo(drawStart.current.x, drawStart.current.y);
+                    ctx.stroke();
+                }
                 ctx.closePath();
                 ctx.globalCompositeOperation = 'source-over';
+                saveCanvas();
+            } else if (tool === 'shape') {
+                ctx.closePath();
                 saveCanvas();
             }
         }
@@ -623,16 +550,10 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 height: canvasHeight 
             }}
         >
-            {/* Background Image Layer */}
             {backgroundImage && (
-                <img 
-                    src={backgroundImage} 
-                    alt="Background" 
-                    className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none select-none"
-                />
+                <img src={backgroundImage} alt="Background" className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none select-none" />
             )}
             
-            {/* Grid Layer */}
             {showGrid && !isPlaying && (
                 <div 
                     className="absolute inset-0 pointer-events-none z-[25] opacity-20"
@@ -643,21 +564,18 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 />
             )}
 
-            {/* Onion Skin - Previous */}
             {onionSkin && prevFrame?.thumbnailUrl && !isPlaying && (
                 <div className="absolute inset-0 pointer-events-none z-0 opacity-30">
                     <img src={prevFrame.thumbnailUrl} alt="" className="w-full h-full object-contain" />
                 </div>
             )}
             
-            {/* Onion Skin - Next */}
             {onionSkin && nextFrame?.thumbnailUrl && !isPlaying && (
                 <div className="absolute inset-0 pointer-events-none z-0 opacity-30">
                      <img src={nextFrame.thumbnailUrl} alt="" className="w-full h-full object-contain" />
                 </div>
             )}
 
-            {/* Passive Layers (Render with Opacity & Blend Mode) */}
             {layers.map(layer => {
                 if (!layer.isVisible || layer.id === activeLayerId) return null;
                 const layerData = currentFrame.layers?.[layer.id];
@@ -676,11 +594,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 );
             })}
 
-            {/* Active Layer Canvas (User draws here) */}
-            {/* 
-               The active layer canvas needs to visually reflect the opacity/blend mode 
-               WHILE drawing. We apply it via CSS style.
-            */}
             {layers.find(l => l.id === activeLayerId)?.isVisible && (
                 <canvas
                     ref={activeCanvasRef}
@@ -695,7 +608,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 />
             )}
 
-            {/* Selection Overlay */}
             {selection && (
                 <div 
                     ref={selectionOverlayRef}
@@ -711,41 +623,19 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                         cursor: 'move'
                     }}
                 >
-                    <img 
-                        src={selection.dataUrl} 
-                        className="w-full h-full select-none pointer-events-none" 
-                        alt="selection"
-                    />
-                    
+                    <img src={selection.dataUrl} className="w-full h-full select-none pointer-events-none" alt="selection" />
                     <div className="absolute inset-0 border-2 border-[#007AFF] pointer-events-none"></div>
-
-                    <div 
-                        onPointerDown={(e) => handleResizePointerDown(e, 'resize-tl')}
-                        className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-[#007AFF] rounded-full cursor-nwse-resize z-40 pointer-events-auto"
-                    />
-                    <div 
-                        onPointerDown={(e) => handleResizePointerDown(e, 'resize-tr')}
-                        className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-[#007AFF] rounded-full cursor-nesw-resize z-40 pointer-events-auto"
-                    />
-                     <div 
-                        onPointerDown={(e) => handleResizePointerDown(e, 'resize-bl')}
-                        className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-[#007AFF] rounded-full cursor-nesw-resize z-40 pointer-events-auto"
-                    />
-                    <div 
-                        onPointerDown={(e) => handleResizePointerDown(e, 'resize-br')}
-                        className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-[#007AFF] rounded-full cursor-nwse-resize z-40 pointer-events-auto"
-                    />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tl')} className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-[#007AFF] rounded-full cursor-nwse-resize z-40 pointer-events-auto" />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tr')} className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-[#007AFF] rounded-full cursor-nesw-resize z-40 pointer-events-auto" />
+                     <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-bl')} className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-[#007AFF] rounded-full cursor-nesw-resize z-40 pointer-events-auto" />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-br')} className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-[#007AFF] rounded-full cursor-nwse-resize z-40 pointer-events-auto" />
                 </div>
             )}
             
             {tool === 'select' && isCreatingSelection && (
-                 <div 
-                      ref={marqueeRef}
-                      className="absolute border border-dashed border-red-500 bg-red-500/10 pointer-events-none z-50" 
-                 />
+                 <div ref={marqueeRef} className="absolute border border-dashed border-red-500 bg-red-500/10 pointer-events-none z-50" />
             )}
 
-            {/* Text Input Overlay */}
             {textInput && (
                 <input
                     ref={textInputRef}
@@ -753,22 +643,12 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                     value={textInput.value}
                     onChange={(e) => setTextInput({ ...textInput, value: e.target.value })}
                     onKeyDown={(e) => { if(e.key === 'Enter') commitText(); }}
-                    onBlur={() => { /* Optional: commit on blur, but often annoying if user clicked outside. Handled by pointerDown. */ }}
                     className="absolute z-50 bg-transparent border-none outline-none p-0 m-0"
-                    style={{
-                        left: textInput.x,
-                        top: textInput.y,
-                        color: color,
-                        fontSize: `${Math.max(12, strokeWidth)}px`,
-                        fontFamily: 'sans-serif',
-                        fontWeight: 'bold',
-                        minWidth: '20px'
-                    }}
+                    style={{ left: textInput.x, top: textInput.y, color: color, fontSize: `${Math.max(12, strokeWidth)}px`, fontFamily: 'sans-serif', fontWeight: 'bold', minWidth: '20px' }}
                     placeholder="Type..."
                     autoFocus
                 />
             )}
-
         </div>
         
         <div className="absolute top-4 right-4 bg-black/50 text-white text-xs px-2 py-1 rounded pointer-events-none flex gap-2">
