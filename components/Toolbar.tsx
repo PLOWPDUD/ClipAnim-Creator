@@ -113,7 +113,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   return (
     <>
-      <div className="w-16 shrink-0 bg-[#1e1e1e] flex flex-col items-center py-4 space-y-4 border-r border-gray-700 z-20 shadow-xl overflow-y-auto no-scrollbar h-full">
+      <div className="w-16 min-w-[64px] shrink-0 bg-[#1e1e1e] flex flex-col items-center py-4 space-y-4 border-r border-gray-700 z-20 shadow-xl overflow-y-auto no-scrollbar h-full">
         {tools.map((tool) => (
           <button
             key={tool.id}
@@ -149,25 +149,25 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onChange={handleImageUpload} 
         />
 
-        <div className="w-8 h-px bg-gray-700 my-2" />
+        <div className="w-8 h-px bg-gray-700 my-2 shrink-0" />
 
         {/* Transform Controls (Only visible when selection is active) */}
         {hasSelection ? (
-          <>
-              <button onClick={onRotate} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg shrink-0" title="Rotate 90°">
+          <div className="flex flex-col gap-2 shrink-0">
+              <button onClick={onRotate} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title="Rotate 90°">
                   <Icons.RotateCw size={20} />
               </button>
-              <button onClick={onFlipHorizontal} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg shrink-0" title="Flip Horizontal">
+              <button onClick={onFlipHorizontal} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title="Flip Horizontal">
                   <Icons.FlipHorizontal size={20} />
               </button>
-              <button onClick={onFlipVertical} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg shrink-0" title="Flip Vertical">
+              <button onClick={onFlipVertical} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title="Flip Vertical">
                   <Icons.FlipVertical size={20} />
               </button>
-              <div className="w-8 h-px bg-gray-700 my-2" />
-          </>
+              <div className="w-8 h-px bg-gray-700 my-2 self-center" />
+          </div>
         ) : (
           /* Color Picker */
-          <>
+          <div className="flex flex-col gap-2 shrink-0 items-center">
             <div className="relative group">
               <input 
                   type="color" 
@@ -188,13 +188,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               ))}
             </div>
             <div className="w-8 h-px bg-gray-700 my-2" />
-          </>
+          </div>
         )}
 
         {/* Toggles */}
         <button 
           onClick={onToggleOnionSkin}
-          className={`p-3 rounded-xl transition-colors ${onionSkin ? 'text-[#FF3B30] bg-white/10' : 'text-gray-400 hover:text-white'}`}
+          className={`p-3 rounded-xl transition-colors shrink-0 ${onionSkin ? 'text-[#FF3B30] bg-white/10' : 'text-gray-400 hover:text-white'}`}
           title="Onion Skin"
         >
           <Icons.Ghost size={24} />
@@ -202,7 +202,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
         <button 
           onClick={onToggleGrid}
-          className={`p-3 rounded-xl transition-colors ${showGrid ? 'text-[#FF3B30] bg-white/10' : 'text-gray-400 hover:text-white'}`}
+          className={`p-3 rounded-xl transition-colors shrink-0 ${showGrid ? 'text-[#FF3B30] bg-white/10' : 'text-gray-400 hover:text-white'}`}
           title="Grid (G)"
         >
           <Icons.Grid size={24} />
@@ -210,7 +210,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
         <button 
           onClick={onToggleFocusMode}
-          className={`p-3 rounded-xl transition-colors ${isFocusMode ? 'text-[#FF3B30] bg-white/10' : 'text-gray-400 hover:text-white'}`}
+          className={`p-3 rounded-xl transition-colors shrink-0 ${isFocusMode ? 'text-[#FF3B30] bg-white/10' : 'text-gray-400 hover:text-white'}`}
           title="Focus Mode"
         >
           {isFocusMode ? <Icons.Minimize2 size={24} /> : <Icons.Maximize2 size={24} />}
