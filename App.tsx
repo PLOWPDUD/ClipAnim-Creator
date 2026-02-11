@@ -7,7 +7,13 @@ import { Toolbar } from './components/Toolbar';
 import { Icons } from './components/Icons';
 import { SettingsModal } from './components/SettingsModal';
 import { LayerPanel } from './components/LayerPanel';
+import { ExportModal, ExportFormat } from './components/ExportModal';
 import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
+
+// @ts-ignore
+import JSZip from 'jszip';
+// @ts-ignore
+import gifshot from 'gifshot';
 
 // Helper: Create default layer
 const createDefaultLayer = (id = '1', name = 'Layer 1'): Layer => ({
@@ -92,9 +98,9 @@ export default function App() {
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   
   // Export State
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
-  const [exportFormat, setExportFormat] = useState('');
 
   // Animation Loop Refs
   const requestRef = useRef<number | undefined>(undefined);
@@ -272,7 +278,7 @@ export default function App() {
     if (view !== 'editor') return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isSettingsOpen || isExporting || showExitConfirm) return;
+      if (isSettingsOpen || isExporting || showExitConfirm || isExportModalOpen) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') { if (selection) { e.preventDefault(); handleCopy(); } }
@@ -297,7 +303,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentFrameIndex, frames.length, isPlaying, isSettingsOpen, isExporting, historyIndex, history, selection, clipboard, view, layers, canvasSize, audioTracks, showExitConfirm]);
+  }, [currentFrameIndex, frames.length, isPlaying, isSettingsOpen, isExporting, historyIndex, history, selection, clipboard, view, layers, canvasSize, audioTracks, showExitConfirm, isExportModalOpen]);
 
   const animate = (timestamp: number) => {
     if (!isPlaying) return;
@@ -518,19 +524,90 @@ export default function App() {
       setHasUnsavedChanges(true);
   };
 
-  const handleExport = async () => {
+  const handleExportStart = async (format: ExportFormat) => {
     if (isExporting || frames.length === 0) return;
-    const mimeTypes = ['video/mp4; codecs="avc1.424028, mp4a.40.2"', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'];
-    const selectedMimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
-    if (!selectedMimeType) { alert("No supported video format."); return; }
     setIsExporting(true);
     setExportProgress(0);
-    setExportFormat(selectedMimeType.includes('mp4') ? 'MP4' : 'WebM');
+
+    const width = canvasSize.width;
+    const height = canvasSize.height;
+
+    // Helper to composite all frames first (used by multiple formats)
+    const compositeImages = await Promise.all(frames.map(async (f, idx) => {
+        const url = await compositeLayers(f, layers, width, height, '#ffffff', backgroundImage);
+        setExportProgress(Math.round(((idx + 1) / frames.length) * 30)); // First 30% for rendering
+        return new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = url;
+        });
+    }));
+
+    if (format === 'png-seq') {
+        try {
+            const zip = new JSZip();
+            const folder = zip.folder(`${projectName}_frames`);
+            compositeImages.forEach((img, idx) => {
+                const data = img.src.split(',')[1];
+                folder?.file(`frame_${(idx + 1).toString().padStart(4, '0')}.png`, data, { base64: true });
+                setExportProgress(30 + Math.round(((idx + 1) / frames.length) * 60)); 
+            });
+            const content = await zip.generateAsync({ type: "blob" });
+            const url = URL.createObjectURL(content);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${projectName}_sequence.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000); // Safe clean up
+            setExportProgress(100);
+        } catch (e) {
+            alert("ZIP Export failed");
+        }
+        setIsExporting(false);
+        setIsExportModalOpen(false);
+        return;
+    }
+
+    if (format === 'gif') {
+        try {
+            const images = compositeImages.map(img => img.src);
+            gifshot.createGIF({
+                images: images,
+                interval: 1 / fps,
+                gifWidth: width,
+                gifHeight: height,
+                progressCallback: (captureProgress: number) => {
+                    setExportProgress(30 + Math.round(captureProgress * 70));
+                }
+            }, (obj: any) => {
+                if (!obj.error) {
+                    const a = document.createElement('a');
+                    a.href = obj.image;
+                    a.download = `${projectName}.gif`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                } else {
+                    alert("GIF Export failed: " + obj.error);
+                }
+                setIsExporting(false);
+                setIsExportModalOpen(false);
+            });
+        } catch (e) {
+            alert("GIF Export failed");
+            setIsExporting(false);
+            setIsExportModalOpen(false);
+        }
+        return;
+    }
+
+    // Video Formats (MP4, WebM, AVI)
     let exportCanvas: HTMLCanvasElement | null = null;
     let audioContext: AudioContext | null = null;
     try {
-        const width = canvasSize.width;
-        const height = canvasSize.height;
         exportCanvas = document.createElement('canvas');
         exportCanvas.width = width;
         exportCanvas.height = height;
@@ -539,15 +616,15 @@ export default function App() {
         document.body.appendChild(exportCanvas);
         const ctx = exportCanvas.getContext('2d');
         if (!ctx) throw new Error('Ctx error');
-        const compositeImages = await Promise.all(frames.map(async (f) => {
-            const url = await compositeLayers(f, layers, width, height, '#ffffff', backgroundImage);
-            return new Promise<HTMLImageElement>((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => resolve(img);
-                img.onerror = reject;
-                img.src = url;
-            });
-        }));
+
+        const mimeTypes: Record<string, string[]> = {
+            mp4: ['video/mp4; codecs="avc1.424028, mp4a.40.2"', 'video/mp4'],
+            webm: ['video/webm;codecs=vp9,opus', 'video/webm'],
+            avi: ['video/x-msvideo', 'video/avi', 'video/webm'] // Browsers don't support AVI encoding naturally, fallback to webm
+        };
+
+        const selectedMimeType = mimeTypes[format]?.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+        
         // @ts-ignore
         const stream = exportCanvas.captureStream(fps);
         if (audioTracks.length > 0) {
@@ -568,33 +645,65 @@ export default function App() {
             const audioTrack = dest.stream.getAudioTracks()[0];
             if (audioTrack) stream.addTrack(audioTrack);
         }
+
         const mediaRecorder = new MediaRecorder(stream, { mimeType: selectedMimeType, videoBitsPerSecond: 8000000 });
         const chunks: BlobPart[] = [];
         mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
         mediaRecorder.onstop = () => {
+             if (chunks.length === 0) {
+                 alert("Export failed: No data recorded.");
+                 setIsExporting(false);
+                 setIsExportModalOpen(false);
+                 return;
+             }
+
              const blob = new Blob(chunks, { type: selectedMimeType });
+             if (blob.size === 0) {
+                 alert("Export failed: Output file is empty.");
+                 setIsExporting(false);
+                 setIsExportModalOpen(false);
+                 return;
+             }
+
              const url = URL.createObjectURL(blob);
              const a = document.createElement('a');
              a.href = url;
-             a.download = `${projectName || 'animation'}.${selectedMimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+             
+             // Detect correct extension to prevent browser download failure "Failed - Download error"
+             let finalExtension = format;
+             // If we requested MP4 but got WebM (common in Chrome), use .webm to avoid error
+             if (format === 'mp4' && selectedMimeType.includes('webm')) {
+                 finalExtension = 'webm';
+             } else if (format === 'avi') {
+                 finalExtension = 'avi'; // AVI is usually just a container here
+             }
+
+             a.download = `${projectName}.${finalExtension}`;
              document.body.appendChild(a);
              a.click();
              document.body.removeChild(a);
-             URL.revokeObjectURL(url);
+             
+             // Delay cleanup to ensure download starts
+             setTimeout(() => URL.revokeObjectURL(url), 1000);
+
              if (audioContext) audioContext.close();
              if (exportCanvas && document.body.contains(exportCanvas)) document.body.removeChild(exportCanvas);
              setIsExporting(false);
+             setIsExportModalOpen(false);
         };
+
         mediaRecorder.start();
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Small delay to ensure recorder is ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const frameDuration = 1000 / fps;
         for (let i = 0; i < compositeImages.length; i++) {
             ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, height);
             ctx.drawImage(compositeImages[i], 0, 0);
             await new Promise(resolve => setTimeout(resolve, frameDuration));
-            setExportProgress(Math.round(((i + 1) / compositeImages.length) * 100));
+            setExportProgress(30 + Math.round(((i + 1) / compositeImages.length) * 70));
         }
-        await new Promise(resolve => setTimeout(resolve, 1000)); 
+        await new Promise(resolve => setTimeout(resolve, 500)); 
         mediaRecorder.stop();
     } catch (error: any) {
         console.error("Export failed", error);
@@ -602,6 +711,7 @@ export default function App() {
         if (exportCanvas && document.body.contains(exportCanvas)) document.body.removeChild(exportCanvas);
         if (audioContext) audioContext.close();
         setIsExporting(false);
+        setIsExportModalOpen(false);
     }
   };
 
@@ -649,15 +759,14 @@ export default function App() {
         </div>
       )}
 
-      {isExporting && (
-        <div className="fixed inset-0 z-[60] bg-black/80 flex flex-col items-center justify-center">
-            <div className="w-64 space-y-4 text-center">
-                <h2 className="text-xl font-bold">Exporting {exportFormat}...</h2>
-                <div className="w-full bg-gray-700 h-2 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#FF3B30] transition-all duration-300" style={{ width: `${exportProgress}%` }} />
-                </div>
-            </div>
-        </div>
+      {isExportModalOpen && (
+          <ExportModal 
+            isOpen={isExportModalOpen} 
+            onClose={() => !isExporting && setIsExportModalOpen(false)} 
+            onExport={handleExportStart}
+            isExporting={isExporting}
+            progress={exportProgress}
+          />
       )}
 
       {isLayerPanelOpen && (
@@ -685,37 +794,40 @@ export default function App() {
             <div className="flex items-center space-x-2">
                 <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className={`p-2 rounded-full transition-colors ${isLayerPanelOpen ? 'bg-gray-700 text-white' : 'hover:bg-gray-700 text-gray-400'}`} title="Layers"><Icons.Layers size={20} /></button>
                 <button onClick={saveProject} className={`p-2 hover:bg-gray-700 rounded-full transition-colors ${hasUnsavedChanges ? 'text-[#FF3B30]' : 'text-gray-400'}`} title="Save Project (Ctrl+S)"><Icons.Save size={20} /></button>
-                <button onClick={handleExport} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-[#FF3B30]" title="Export Movie"><Icons.Download size={20} /></button>
+                <button onClick={() => setIsExportModalOpen(true)} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-[#FF3B30]" title="Export Movie"><Icons.Download size={20} /></button>
                 <button onClick={() => setIsSettingsOpen(true)} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white"><Icons.Settings size={20} /></button>
             </div>
         </header>
       )}
 
       {/* Main Workspace Layout Fix */}
-      <main className="flex-1 relative flex flex-row overflow-hidden w-full min-h-0">
-        <Toolbar 
-            currentTool={tool}
-            onSelectTool={setTool}
-            currentColor={color}
-            onChangeColor={setColor}
-            strokeWidth={currentStrokeWidth}
-            onChangeStrokeWidth={handleStrokeWidthChange}
-            onionSkin={onionSkin}
-            onToggleOnionSkin={() => { setOnionSkin(!onionSkin); setHasUnsavedChanges(true); }}
-            showGrid={showGrid}
-            onToggleGrid={() => { setShowGrid(!showGrid); setHasUnsavedChanges(true); }}
-            isFocusMode={isFocusMode}
-            onToggleFocusMode={() => setIsFocusMode(!isFocusMode)}
-            onImportImage={handleImportImage}
-            hasSelection={!!selection}
-            onFlipHorizontal={handleFlipHorizontal}
-            onFlipVertical={handleFlipVertical}
-            onRotate={handleRotate}
-            shapeType={shapeType}
-            onSelectShapeType={setShapeType}
-        />
-        <div className="flex-1 relative min-h-0 flex flex-col overflow-hidden">
-            <div className="flex-1 relative overflow-hidden min-h-0">
+      <main className="flex-1 relative flex flex-row overflow-hidden min-h-0">
+        <div className="h-full shrink-0">
+          <Toolbar 
+              currentTool={tool}
+              onSelectTool={setTool}
+              currentColor={color}
+              onChangeColor={setColor}
+              strokeWidth={currentStrokeWidth}
+              onChangeStrokeWidth={handleStrokeWidthChange}
+              onionSkin={onionSkin}
+              onToggleOnionSkin={() => { setOnionSkin(!onionSkin); setHasUnsavedChanges(true); }}
+              showGrid={showGrid}
+              onToggleGrid={() => { setShowGrid(!showGrid); setHasUnsavedChanges(true); }}
+              isFocusMode={isFocusMode}
+              onToggleFocusMode={() => setIsFocusMode(!isFocusMode)}
+              onImportImage={handleImportImage}
+              hasSelection={!!selection}
+              onFlipHorizontal={handleFlipHorizontal}
+              onFlipVertical={handleFlipVertical}
+              onRotate={handleRotate}
+              shapeType={shapeType}
+              onSelectShapeType={setShapeType}
+          />
+        </div>
+        <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
+            {/* Canvas Area takes full parent height now */}
+            <div className="absolute inset-0">
                 <CanvasArea 
                     currentFrame={frames[currentFrameIndex]}
                     layers={layers}
@@ -739,7 +851,8 @@ export default function App() {
                     backgroundImage={backgroundImage}
                 />
             </div>
-            <div className="shrink-0 z-30 pointer-events-none">
+            {/* Timeline is now an absolute overlay at the bottom */}
+            <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
                 <Timeline frames={frames} currentFrameIndex={currentFrameIndex} onSelectFrame={handleSelectFrame} onAddFrame={addFrame} onDeleteFrame={deleteFrame} onCopyFrame={copyFrame} isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)} audioTracks={audioTracks} onAddAudioTrack={handleAddAudioTrack} onRemoveAudioTrack={handleRemoveAudioTrack} />
             </div>
         </div>
@@ -749,4 +862,3 @@ export default function App() {
     </div>
   );
 }
-

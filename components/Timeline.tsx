@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState } from 'react';
 import { Frame, AudioTrack } from '../types';
 import { Icons } from './Icons';
@@ -44,16 +45,16 @@ export const Timeline: React.FC<TimelineProps> = ({
   }, [currentFrameIndex]);
 
   return (
-    <div className="flex flex-col shrink-0 pointer-events-auto bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-4 pb-[env(safe-area-inset-bottom)]">
+    <div className="flex flex-col shrink-0 pointer-events-auto bg-transparent pt-8 pb-4 pb-[env(safe-area-inset-bottom)]">
       {/* Playback Controls & Stats */}
       <div className="h-10 flex items-center px-4 justify-between">
         <div className="flex items-center space-x-2">
-            <span className="text-[10px] text-gray-300 font-mono uppercase tracking-wider drop-shadow-md">
+            <span className="text-[10px] text-white font-mono uppercase tracking-wider drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
                 Frame {currentFrameIndex + 1} / {frames.length}
             </span>
             <button 
                 onClick={() => setShowAudio(!showAudio)}
-                className={`p-1.5 rounded-full transition-colors ${showAudio ? 'text-[#FF3B30] bg-white/10' : 'text-gray-400 hover:text-white'}`}
+                className={`p-1.5 rounded-full transition-colors ${showAudio ? 'text-[#FF3B30] bg-black/40' : 'text-gray-300 hover:text-white drop-shadow-md'}`}
                 title="Toggle Audio Tracks"
             >
                 <Icons.Music size={16} />
@@ -75,10 +76,10 @@ export const Timeline: React.FC<TimelineProps> = ({
         </button>
 
         <div className="flex items-center space-x-1 bg-black/40 rounded-lg p-1 backdrop-blur-sm">
-             <button onClick={() => onDeleteFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white" disabled={frames.length <= 1}>
+             <button onClick={() => onDeleteFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-gray-300 hover:text-white" disabled={frames.length <= 1}>
                 <Icons.Trash2 size={16} />
              </button>
-             <button onClick={() => onCopyFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white">
+             <button onClick={() => onCopyFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-gray-300 hover:text-white">
                 <Icons.Copy size={16} />
              </button>
         </div>
@@ -88,8 +89,8 @@ export const Timeline: React.FC<TimelineProps> = ({
       {showAudio && (
         <div className="mb-2 flex flex-col gap-1 px-2 animate-in fade-in slide-in-from-bottom-2">
             {/* Header / Add Button */}
-            <div className="flex justify-between items-center bg-black/40 p-1 rounded text-xs">
-                <span className="text-gray-400 font-bold uppercase tracking-wider px-2">Audio Layers</span>
+            <div className="flex justify-between items-center bg-black/60 backdrop-blur-md p-1 rounded text-xs">
+                <span className="text-gray-200 font-bold uppercase tracking-wider px-2">Audio Layers</span>
                 <button 
                     onClick={() => audioInputRef.current?.click()}
                     className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 px-2"
@@ -103,12 +104,12 @@ export const Timeline: React.FC<TimelineProps> = ({
             {/* List of Tracks */}
             <div className="max-h-32 overflow-y-auto no-scrollbar space-y-1">
                 {audioTracks.map((track) => (
-                    <div key={track.id} className="h-8 flex relative overflow-hidden bg-black/30 backdrop-blur-sm border border-white/5 rounded group">
+                    <div key={track.id} className="h-8 flex relative overflow-hidden bg-black/50 backdrop-blur-md border border-white/10 rounded group">
                          {/* Controls */}
                         <div className="w-32 shrink-0 border-r border-white/10 flex items-center px-2 z-20 bg-black/20">
-                            <Icons.Volume2 size={12} className="text-gray-400 mr-2" />
-                            <span className="text-[10px] text-gray-300 truncate flex-1">{track.name}</span>
-                            <button onClick={() => onRemoveAudioTrack(track.id)} className="text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Icons.Volume2 size={12} className="text-gray-300 mr-2" />
+                            <span className="text-[10px] text-gray-100 truncate flex-1">{track.name}</span>
+                            <button onClick={() => onRemoveAudioTrack(track.id)} className="text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <Icons.X size={12}/>
                             </button>
                         </div>
@@ -119,10 +120,10 @@ export const Timeline: React.FC<TimelineProps> = ({
                                 className="absolute inset-y-0 left-[50vw] flex items-center pointer-events-none transition-transform duration-100"
                                 style={{ transform: `translateX(-${currentFrameIndex * 66}px)` }}
                             >
-                                <div className="h-full flex items-center gap-0.5 rounded px-2" style={{ width: `${frames.length * 66}px`, backgroundColor: `${track.color}20` }}>
+                                <div className="h-full flex items-center gap-0.5 rounded px-2" style={{ width: `${frames.length * 66}px`, backgroundColor: `${track.color}40` }}>
                                     {/* Fake bars pattern */}
                                     {Array.from({ length: Math.ceil(frames.length * 10) }).map((_, i) => (
-                                        <div key={i} className="w-1 rounded-full opacity-60" style={{ height: `${30 + Math.random() * 70}%`, backgroundColor: track.color }} />
+                                        <div key={i} className="w-1 rounded-full opacity-80" style={{ height: `${30 + Math.random() * 70}%`, backgroundColor: track.color }} />
                                     ))}
                                 </div>
                             </div>
@@ -130,7 +131,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                     </div>
                 ))}
                 {audioTracks.length === 0 && (
-                    <div className="h-8 flex items-center justify-center text-gray-500 text-xs italic">
+                    <div className="h-8 flex items-center justify-center bg-black/40 backdrop-blur-sm rounded text-gray-300 text-xs italic">
                         No audio tracks. Tap + to add.
                     </div>
                 )}
@@ -150,7 +151,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                     onClick={() => onSelectFrame(index)}
                     className={`
                         relative flex-shrink-0 w-16 h-20 mx-0.5 bg-white rounded-[4px] overflow-hidden border transition-all duration-150 select-none cursor-pointer
-                        ${currentFrameIndex === index ? 'border-[#FF3B30] ring-2 ring-[#FF3B30]/50 scale-100 z-10 shadow-lg' : 'border-gray-600 opacity-60 hover:opacity-100 scale-95'}
+                        ${currentFrameIndex === index ? 'border-[#FF3B30] ring-2 ring-[#FF3B30]/50 scale-100 z-10 shadow-lg' : 'border-gray-600 opacity-80 hover:opacity-100 scale-95 shadow-md'}
                     `}
                 >
                     {frame.thumbnailUrl ? (

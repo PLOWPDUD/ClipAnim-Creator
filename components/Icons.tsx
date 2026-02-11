@@ -36,7 +36,11 @@ import {
   Clipboard, 
   Home, 
   Save,
-  Type
+  Type,
+  FileVideo,
+  FileImage,
+  FileArchive,
+  Loader2
 } from 'lucide-react';
 
 export const Icons = {
@@ -76,5 +80,9 @@ export const Icons = {
   Clipboard,
   Home,
   Save,
-  Type
+  Type,
+  FileVideo,
+  FileImage,
+  FileArchive,
+  Loader2
 };
