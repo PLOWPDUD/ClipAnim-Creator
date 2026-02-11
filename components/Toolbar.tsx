@@ -113,7 +113,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   return (
     <>
-      <div className="w-16 bg-[#1e1e1e] flex flex-col items-center py-4 space-y-4 border-r border-gray-700 z-20 shadow-xl overflow-y-auto no-scrollbar">
+      <div className="w-16 shrink-0 bg-[#1e1e1e] flex flex-col items-center py-4 space-y-4 border-r border-gray-700 z-20 shadow-xl overflow-y-auto no-scrollbar h-full">
         {tools.map((tool) => (
           <button
             key={tool.id}
