@@ -1,3 +1,4 @@
+
 {
   "name": "clipanim-creator",
   "private": true,
@@ -11,13 +12,16 @@
   "dependencies": {
     "lucide-react": "^0.344.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "jszip": "^3.10.1",
+    "gifshot": "^0.4.5"
   },
   "devDependencies": {
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
     "@vitejs/plugin-react": "^4.2.1",
     "typescript": "^5.4.2",
-    "vite": "^5.1.6"
+    "vite": "^5.1.6",
+    "@types/jszip": "^3.10.0"
   }
 }
