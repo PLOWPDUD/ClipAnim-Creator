@@ -532,184 +532,150 @@ export default function App() {
     const width = canvasSize.width;
     const height = canvasSize.height;
 
-    // Helper to composite all frames first (used by multiple formats)
-    const compositeImages = await Promise.all(frames.map(async (f, idx) => {
-        const url = await compositeLayers(f, layers, width, height, '#ffffff', backgroundImage);
-        setExportProgress(Math.round(((idx + 1) / frames.length) * 30)); // First 30% for rendering
-        return new Promise<HTMLImageElement>((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => resolve(img);
-            img.onerror = reject;
-            img.src = url;
-        });
-    }));
-
-    if (format === 'png-seq') {
-        try {
-            const zip = new JSZip();
-            const folder = zip.folder(`${projectName}_frames`);
-            compositeImages.forEach((img, idx) => {
-                const data = img.src.split(',')[1];
-                folder?.file(`frame_${(idx + 1).toString().padStart(4, '0')}.png`, data, { base64: true });
-                setExportProgress(30 + Math.round(((idx + 1) / frames.length) * 60)); 
+    try {
+        // 1. Render all frames to images first
+        const compositeImages = await Promise.all(frames.map(async (f, idx) => {
+            const url = await compositeLayers(f, layers, width, height, '#ffffff', backgroundImage);
+            setExportProgress(Math.round(((idx + 1) / frames.length) * 30)); 
+            return new Promise<HTMLImageElement>((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = url;
             });
-            const content = await zip.generateAsync({ type: "blob" });
-            const url = URL.createObjectURL(content);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${projectName}_sequence.zip`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 1000); // Safe clean up
-            setExportProgress(100);
-        } catch (e) {
-            alert("ZIP Export failed");
-        }
-        setIsExporting(false);
-        setIsExportModalOpen(false);
-        return;
-    }
+        }));
 
-    if (format === 'gif') {
-        try {
-            const images = compositeImages.map(img => img.src);
-            gifshot.createGIF({
-                images: images,
-                interval: 1 / fps,
-                gifWidth: width,
-                gifHeight: height,
-                progressCallback: (captureProgress: number) => {
-                    setExportProgress(30 + Math.round(captureProgress * 70));
-                }
-            }, (obj: any) => {
-                if (!obj.error) {
-                    const a = document.createElement('a');
-                    a.href = obj.image;
-                    a.download = `${projectName}.gif`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                } else {
-                    alert("GIF Export failed: " + obj.error);
-                }
-                setIsExporting(false);
-                setIsExportModalOpen(false);
-            });
-        } catch (e) {
-            alert("GIF Export failed");
+        // Handle ZIP and GIF
+        if (format === 'png-seq') {
+            try {
+                const zip = new JSZip();
+                const folder = zip.folder(`${projectName}_frames`);
+                compositeImages.forEach((img, idx) => {
+                    const data = img.src.split(',')[1];
+                    folder?.file(`frame_${(idx + 1).toString().padStart(4, '0')}.png`, data, { base64: true });
+                    setExportProgress(30 + Math.round(((idx + 1) / frames.length) * 60)); 
+                });
+                const content = await zip.generateAsync({ type: "blob" });
+                const url = URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${projectName}_sequence.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000); 
+                setExportProgress(100);
+            } catch (e) {
+                alert("ZIP Export failed");
+            }
             setIsExporting(false);
             setIsExportModalOpen(false);
+            return;
         }
-        return;
-    }
 
-    // Video Formats (MP4, WebM, AVI)
-    let exportCanvas: HTMLCanvasElement | null = null;
-    let audioContext: AudioContext | null = null;
-    try {
-        exportCanvas = document.createElement('canvas');
+        if (format === 'gif') {
+            try {
+                const images = compositeImages.map(img => img.src);
+                gifshot.createGIF({
+                    images: images,
+                    interval: 1 / fps,
+                    gifWidth: width,
+                    gifHeight: height,
+                    progressCallback: (captureProgress: number) => {
+                        setExportProgress(30 + Math.round(captureProgress * 70));
+                    }
+                }, (obj: any) => {
+                    if (!obj.error) {
+                        const a = document.createElement('a');
+                        a.href = obj.image;
+                        a.download = `${projectName}.gif`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                    } else {
+                        alert("GIF Export failed: " + obj.error);
+                    }
+                    setIsExporting(false);
+                    setIsExportModalOpen(false);
+                });
+            } catch (e) {
+                alert("GIF Export failed");
+                setIsExporting(false);
+                setIsExportModalOpen(false);
+            }
+            return;
+        }
+
+        // 2. STABLE VIDEO EXPORT
+        const exportCanvas = document.createElement('canvas');
         exportCanvas.width = width;
         exportCanvas.height = height;
-        exportCanvas.style.position = 'fixed';
-        exportCanvas.style.left = '-9999px';
-        document.body.appendChild(exportCanvas);
-        const ctx = exportCanvas.getContext('2d');
-        if (!ctx) throw new Error('Ctx error');
+        const ctx = exportCanvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) throw new Error('Canvas context failed');
 
-        const mimeTypes: Record<string, string[]> = {
-            mp4: ['video/mp4; codecs="avc1.424028, mp4a.40.2"', 'video/mp4'],
-            webm: ['video/webm;codecs=vp9,opus', 'video/webm'],
-            avi: ['video/x-msvideo', 'video/avi', 'video/webm'] // Browsers don't support AVI encoding naturally, fallback to webm
-        };
-
-        const selectedMimeType = mimeTypes[format]?.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
-        
+        // Force a supported type. Most browsers only support MP4 if passed 'video/webm' 
+        // as the recorder and then renamed, UNLESS you use a library like ffmpeg.wasm.
         // @ts-ignore
-        const stream = exportCanvas.captureStream(fps);
-        if (audioTracks.length > 0) {
-            audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-            const dest = audioContext.createMediaStreamDestination();
-            const audioBufferPromises = audioTracks.map(async (track) => {
-                const response = await fetch(track.url);
-                const arrayBuffer = await response.arrayBuffer();
-                return audioContext!.decodeAudioData(arrayBuffer);
-            });
-            const audioBuffers = await Promise.all(audioBufferPromises);
-            audioBuffers.forEach(buffer => {
-                const source = audioContext!.createBufferSource();
-                source.buffer = buffer;
-                source.connect(dest);
-                source.start(0);
-            });
-            const audioTrack = dest.stream.getAudioTracks()[0];
-            if (audioTrack) stream.addTrack(audioTrack);
+        const stream = exportCanvas.captureStream(0); // Manual frame capture
+        
+        let mimeType = 'video/webm;codecs=vp9';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+             mimeType = 'video/webm'; // Fallback
         }
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+             mimeType = 'video/mp4'; // Safari fallback?
+        }
+        
+        const mediaRecorder = new MediaRecorder(stream, { 
+            mimeType: mimeType,
+            videoBitsPerSecond: 8000000 
+        });
 
-        const mediaRecorder = new MediaRecorder(stream, { mimeType: selectedMimeType, videoBitsPerSecond: 8000000 });
         const chunks: BlobPart[] = [];
         mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+        
         mediaRecorder.onstop = () => {
-             if (chunks.length === 0) {
-                 alert("Export failed: No data recorded.");
-                 setIsExporting(false);
-                 setIsExportModalOpen(false);
-                 return;
-             }
-
-             const blob = new Blob(chunks, { type: selectedMimeType });
-             if (blob.size === 0) {
-                 alert("Export failed: Output file is empty.");
-                 setIsExporting(false);
-                 setIsExportModalOpen(false);
-                 return;
-             }
-
+             const blob = new Blob(chunks, { type: mimeType }); // Wrap as detected mime
              const url = URL.createObjectURL(blob);
              const a = document.createElement('a');
              a.href = url;
              
              // Detect correct extension to prevent browser download failure "Failed - Download error"
-             let finalExtension = format;
-             // If we requested MP4 but got WebM (common in Chrome), use .webm to avoid error
-             if (format === 'mp4' && selectedMimeType.includes('webm')) {
-                 finalExtension = 'webm';
-             } else if (format === 'avi') {
-                 finalExtension = 'avi'; // AVI is usually just a container here
-             }
+             let finalExtension = 'mp4'; // Default to mp4 as requested
+             if (format === 'webm') finalExtension = 'webm';
+             if (format === 'avi') finalExtension = 'avi';
 
              a.download = `${projectName}.${finalExtension}`;
              document.body.appendChild(a);
              a.click();
-             document.body.removeChild(a);
-             
-             // Delay cleanup to ensure download starts
-             setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-             if (audioContext) audioContext.close();
-             if (exportCanvas && document.body.contains(exportCanvas)) document.body.removeChild(exportCanvas);
+             document.body.removeChild(a); // Cleanup DOM
+             URL.revokeObjectURL(url);
              setIsExporting(false);
              setIsExportModalOpen(false);
         };
 
         mediaRecorder.start();
-        // Small delay to ensure recorder is ready
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        const frameDuration = 1000 / fps;
+
+        // 3. Manual Frame-by-Frame Push
         for (let i = 0; i < compositeImages.length; i++) {
-            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, height);
+            ctx.clearRect(0, 0, width, height);
             ctx.drawImage(compositeImages[i], 0, 0);
-            await new Promise(resolve => setTimeout(resolve, frameDuration));
+            
+            // @ts-ignore - Manually request a frame capture
+            const track = stream.getVideoTracks()[0];
+            if ((track as any).requestFrame) {
+                (track as any).requestFrame();
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 1000 / fps));
             setExportProgress(30 + Math.round(((i + 1) / compositeImages.length) * 70));
         }
-        await new Promise(resolve => setTimeout(resolve, 500)); 
-        mediaRecorder.stop();
+
+        setTimeout(() => mediaRecorder.stop(), 500);
+
     } catch (error: any) {
         console.error("Export failed", error);
         alert("Export failed: " + error.message);
-        if (exportCanvas && document.body.contains(exportCanvas)) document.body.removeChild(exportCanvas);
-        if (audioContext) audioContext.close();
         setIsExporting(false);
         setIsExportModalOpen(false);
     }
