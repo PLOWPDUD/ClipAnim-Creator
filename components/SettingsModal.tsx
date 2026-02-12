@@ -1,3 +1,4 @@
+
 import React, { useRef } from 'react';
 import { Icons } from './Icons';
 
@@ -12,6 +13,7 @@ interface SettingsModalProps {
   setCanvasSize: (size: { width: number, height: number }) => void;
   backgroundImage: string | null;
   setBackgroundImage: (url: string | null) => void;
+  onBackupProject: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -24,7 +26,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   canvasSize,
   setCanvasSize,
   backgroundImage,
-  setBackgroundImage
+  setBackgroundImage,
+  onBackupProject
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -156,6 +159,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                 )}
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+            </div>
+
+            <div className="w-full h-px bg-gray-700" />
+
+            {/* Backup/Export Project File */}
+            <div>
+                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Backup</label>
+                 <button 
+                    onClick={onBackupProject}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-gray-800 border border-gray-600 text-gray-200 font-bold rounded-xl hover:bg-gray-700 hover:text-white transition-colors"
+                 >
+                    <Icons.FolderDown size={18} />
+                    <span>Save Project File (.json)</span>
+                 </button>
+                 <p className="text-[10px] text-gray-500 mt-2 text-center">
+                    Download a file containing all layers, frames, and settings to edit later.
+                 </p>
             </div>
         </div>
 

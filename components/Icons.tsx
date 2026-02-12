@@ -40,7 +40,10 @@ import {
   FileVideo,
   FileImage,
   FileArchive,
-  Loader2
+  Loader2,
+  Upload,
+  FolderDown,
+  FileJson
 } from 'lucide-react';
 
 export const Icons = {
@@ -64,25 +67,28 @@ export const Icons = {
   Unlock,
   Music,
   X,
-  Volume2,
-  Ghost,
-  Maximize2,
-  Minimize2,
-  MousePointer2,
+  Volume2, 
+  Ghost, 
+  Maximize2, 
+  Minimize2, 
+  MousePointer2, 
   Image,
-  FlipHorizontal,
-  FlipVertical,
-  RotateCw,
+  FlipHorizontal, 
+  FlipVertical, 
+  RotateCw, 
   Grid: Grid3X3,
-  Square,
-  Circle,
+  Square, 
+  Circle, 
   Line: Minus,
-  Clipboard,
-  Home,
+  Clipboard, 
+  Home, 
   Save,
   Type,
   FileVideo,
   FileImage,
   FileArchive,
-  Loader2
+  Loader2,
+  Upload,
+  FolderDown,
+  FileJson
 };

@@ -102,6 +102,9 @@ export default function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
 
+  // Import State
+  const importFileRef = useRef<HTMLInputElement>(null);
+
   // Animation Loop Refs
   const requestRef = useRef<number | undefined>(undefined);
   const startTimeRef = useRef<number>(0);
@@ -229,6 +232,101 @@ export default function App() {
           localStorage.removeItem(`clipanim_project_${id}`);
       }
   }
+
+  // --- IMPORT / EXPORT PROJECT FILE ---
+
+  const handleBackupProject = () => {
+    const projectData = {
+        id: projectId,
+        name: projectName,
+        canvasSize,
+        backgroundImage,
+        layers,
+        frames,
+        fps,
+        audioTracks
+    };
+    
+    const blob = new Blob([JSON.stringify(projectData)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${projectName.replace(/\s+/g, '_')}_backup.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setIsSettingsOpen(false);
+  };
+
+  const handleImportProjectFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        try {
+            const data = JSON.parse(event.target?.result as string);
+            
+            // Basic validation
+            if (!data.frames || !data.layers || !data.canvasSize) {
+                alert("Invalid project file.");
+                return;
+            }
+
+            // Assign a new ID to avoid conflict with existing local projects if it's a duplicate import
+            const newId = crypto.randomUUID();
+            setProjectId(newId);
+            setProjectName(data.name || "Imported Project");
+            setCanvasSize(data.canvasSize);
+            setBackgroundImage(data.backgroundImage || null);
+            setLayers(data.layers);
+            setFrames(data.frames);
+            setFps(data.fps || 12);
+            setAudioTracks(data.audioTracks || []);
+
+            // Re-init editor state
+            setCurrentFrameIndex(0);
+            setHistory([data.frames]);
+            setHistoryIndex(0);
+            setSelection(null);
+            setTool('pen');
+            setHasUnsavedChanges(true); // Mark as unsaved so user knows to save it to local list
+
+            // Generate thumbnail for the list
+            let thumb = '';
+            if (data.frames.length > 0) {
+                 thumb = await compositeLayers(data.frames[0], data.layers, data.canvasSize.width, data.canvasSize.height, '#ffffff', data.backgroundImage);
+            }
+
+            // Auto-add to saved projects list temporarily (persist will happen on manual save or exit)
+            // But let's actually save it immediately so it appears in the list
+            const newMeta: ProjectMeta = {
+                id: newId,
+                name: data.name || "Imported Project",
+                lastModified: Date.now(),
+                thumbnailUrl: thumb
+            };
+
+            // Save full data
+            const fullData = { ...data, id: newId };
+            localStorage.setItem(`clipanim_project_${newId}`, JSON.stringify(fullData));
+            
+            // Update meta list
+            const newProjectList = [newMeta, ...savedProjects];
+            setSavedProjects(newProjectList);
+            localStorage.setItem('clipanim_meta', JSON.stringify(newProjectList));
+
+            setHasUnsavedChanges(false);
+            setView('editor');
+        } catch (err) {
+            console.error(err);
+            alert("Failed to parse project file.");
+        }
+    };
+    reader.readAsText(file);
+    if (importFileRef.current) importFileRef.current.value = '';
+  };
 
   const handleGoHome = () => {
       if (hasUnsavedChanges) {
@@ -684,15 +782,26 @@ export default function App() {
   if (view === 'menu') {
       return (
         <div className="flex flex-col h-screen bg-[#121212] text-white p-6 overflow-hidden">
-             <div className="mb-8">
-                 <h1 className="text-3xl font-bold mb-2">My Animations</h1>
-                 <p className="text-gray-400">Create, edit and share your stories.</p>
+             <div className="mb-8 flex justify-between items-end">
+                 <div>
+                    <h1 className="text-3xl font-bold mb-2">My Animations</h1>
+                    <p className="text-gray-400">Create, edit and share your stories.</p>
+                 </div>
+                 {/* Hidden Import Input */}
+                 <input ref={importFileRef} type="file" accept=".json" onChange={handleImportProjectFile} className="hidden" />
              </div>
              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-10">
                  <button onClick={createNewProject} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-[#FF3B30] hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
                      <div className="w-16 h-16 rounded-full bg-[#FF3B30]/20 flex items-center justify-center text-[#FF3B30] mb-3 group-hover:scale-110 transition-transform"><Icons.Plus size={32} /></div>
                      <span className="font-bold text-gray-300 group-hover:text-white">New Animation</span>
                  </button>
+                 
+                 {/* Import Button */}
+                 <button onClick={() => importFileRef.current?.click()} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-blue-500 hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
+                     <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-500 mb-3 group-hover:scale-110 transition-transform"><Icons.Upload size={32} /></div>
+                     <span className="font-bold text-gray-300 group-hover:text-white">Import Project</span>
+                 </button>
+
                  {savedProjects.map(project => (
                      <div key={project.id} onClick={() => loadProject(project.id)} className="relative group aspect-[4/3] bg-[#1e1e1e] rounded-2xl overflow-hidden cursor-pointer hover:ring-2 ring-[#FF3B30] transition-all shadow-lg">
                          {project.thumbnailUrl ? ( <img src={project.thumbnailUrl} alt={project.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" /> ) : ( <div className="w-full h-full flex items-center justify-center text-gray-700"><Icons.Image size={48} /></div> )}
@@ -824,7 +933,19 @@ export default function App() {
         </div>
       </main>
 
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} fps={fps} setFps={(v) => { setFps(v); setHasUnsavedChanges(true); }} projectName={projectName} setProjectName={(v) => { setProjectName(v); setHasUnsavedChanges(true); }} canvasSize={canvasSize} setCanvasSize={(v) => { setCanvasSize(v); setHasUnsavedChanges(true); }} backgroundImage={backgroundImage} setBackgroundImage={(v) => { setBackgroundImage(v); setHasUnsavedChanges(true); }} />
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+        fps={fps} 
+        setFps={(v) => { setFps(v); setHasUnsavedChanges(true); }} 
+        projectName={projectName} 
+        setProjectName={(v) => { setProjectName(v); setHasUnsavedChanges(true); }} 
+        canvasSize={canvasSize} 
+        setCanvasSize={(v) => { setCanvasSize(v); setHasUnsavedChanges(true); }} 
+        backgroundImage={backgroundImage} 
+        setBackgroundImage={(v) => { setBackgroundImage(v); setHasUnsavedChanges(true); }}
+        onBackupProject={handleBackupProject} 
+      />
     </div>
   );
 }
