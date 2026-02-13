@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect, useState } from 'react';
 import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType } from '../types';
 import { floodFill } from '../utils/drawingUtils';
@@ -203,7 +202,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
       setTextInput(null);
   };
 
-  // Helper: Draw a line of rectangles (Bresenham-like) for Pixel Brush
   const drawPixelLine = (ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number) => {
       const size = Math.floor(strokeWidth);
       const dx = Math.abs(x1 - x0);
@@ -227,7 +225,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
       }
   };
 
-  // Setup brush styles
   const setupBrush = (ctx: CanvasRenderingContext2D) => {
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
@@ -239,7 +236,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
           ctx.lineCap = 'round';
           ctx.globalAlpha = 1;
       } else if (tool === 'pen') {
-          // Check Brush Type
           if (brushType === 'pen') {
               ctx.lineWidth = strokeWidth;
               ctx.lineCap = 'round';
@@ -247,10 +243,10 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
           } else if (brushType === 'marker') {
               ctx.lineWidth = strokeWidth;
               ctx.lineCap = 'round';
-              ctx.globalAlpha = 0.5; // Build-up effect
+              ctx.globalAlpha = 0.5;
           } else if (brushType === 'highlighter') {
               ctx.lineWidth = strokeWidth * 2;
-              ctx.lineCap = 'square'; // Square cap for highlighter feel
+              ctx.lineCap = 'square';
               ctx.globalAlpha = 0.3;
           } else if (brushType === 'spray') {
               ctx.globalAlpha = 1;
@@ -276,7 +272,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     
     if (pointers.current.size >= 2) { 
         isGesture.current = true;
-        isDrawing.current = false; // Immediately stop drawing if second finger hits
+        isDrawing.current = false;
         selectionMode.current = null;
         if (textInput) commitText();
 
@@ -289,7 +285,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     }
 
     isGesture.current = false;
-    hasMoved.current = false; // Reset movement tracking
+    hasMoved.current = false;
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
     const activeLayer = layers.find(l => l.id === activeLayerId);
 
@@ -334,7 +330,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     } else {
         setupBrush(ctx);
         if (brushType === 'pixel' && tool === 'pen') {
-            // No immediate draw. Wait for Move or Up.
         } else if (brushType !== 'spray') {
             ctx.beginPath();
             ctx.moveTo(x, y);
@@ -409,7 +404,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
 
-    // Track movement
     if (drawStart.current) {
         const dist = getDistance(drawStart.current, { x, y });
         if (dist > 2) hasMoved.current = true;
@@ -506,18 +500,15 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
             }
             ctx.stroke();
         } else if (tool === 'pen' && brushType === 'pixel') {
-            // Pixel Brush Drawing
              if (lastPoint.current) {
                  drawPixelLine(ctx, lastPoint.current.x, lastPoint.current.y, x, y);
                  lastPoint.current = { x, y };
              }
         } else if (tool === 'pen' && brushType === 'spray') {
-             // Spray Effect
              const density = Math.max(1, strokeWidth * 2);
              for (let i = 0; i < density; i++) {
                  const offsetX = (Math.random() - 0.5) * strokeWidth * 2;
                  const offsetY = (Math.random() - 0.5) * strokeWidth * 2;
-                 // Circular spray pattern check
                  if (offsetX * offsetX + offsetY * offsetY <= strokeWidth * strokeWidth) {
                      ctx.fillRect(x + offsetX, y + offsetY, 1, 1);
                  }
@@ -580,7 +571,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
         const ctx = activeCanvasRef.current?.getContext('2d');
         if (ctx) {
             if ((tool === 'pen' && brushType !== 'spray' && brushType !== 'pixel') || tool === 'eraser') {
-                // Handle single tap for dots for normal brushes
                 if (!hasMoved.current && drawStart.current) {
                     ctx.lineTo(drawStart.current.x, drawStart.current.y);
                     ctx.stroke();
@@ -589,7 +579,6 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 ctx.globalCompositeOperation = 'source-over';
                 saveCanvas();
             } else if (brushType === 'pixel') {
-                // Handle single tap for pixel dot (deferred to avoid pinch dots)
                 if (!hasMoved.current && drawStart.current) {
                     setupBrush(ctx);
                     const size = Math.floor(strokeWidth);
@@ -618,18 +607,10 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
   };
 
   const handleWheel = (e: React.WheelEvent) => {
-     if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const zoomSensitivity = 0.001;
-        const zoomDelta = -e.deltaY * zoomSensitivity;
-        const newScale = Math.min(Math.max(transform.current.scale + zoomDelta, 0.1), 10);
-        transform.current.scale = newScale;
-        updateTransformStyle();
-     } else {
-        transform.current.x -= e.deltaX;
-        transform.current.y -= e.deltaY;
-        updateTransformStyle();
-     }
+    // Standard panning with wheel, zoom is handled by multi-touch/pinch in onPointerMove
+    transform.current.x -= e.deltaX;
+    transform.current.y -= e.deltaY;
+    updateTransformStyle();
   };
 
   if (!currentFrame) return null;

@@ -1,7 +1,6 @@
-
 import React, { useRef, useEffect, useState } from 'react';
 import { Frame, AudioTrack } from '../types';
-import { Icons } from './Icons';
+import { Icons } from '../Icons';
 
 interface TimelineProps {
   frames: Frame[];
@@ -48,7 +47,6 @@ export const Timeline: React.FC<TimelineProps> = ({
 
   return (
     <div className={`flex flex-col shrink-0 bg-transparent pb-4 pb-[env(safe-area-inset-bottom)] transition-all duration-300 ${isFocusMode ? 'pt-0 pointer-events-none' : 'pt-8 pointer-events-auto'}`}>
-      {/* Playback Controls & Stats - Hidden in Focus Mode */}
       {!isFocusMode && (
         <div className="h-10 flex items-center px-4 justify-between animate-in fade-in slide-in-from-bottom-2">
           <div className="flex items-center space-x-2">
@@ -89,7 +87,6 @@ export const Timeline: React.FC<TimelineProps> = ({
         </div>
       )}
 
-      {/* Audio Tracks - Hidden in Focus Mode */}
       {showAudio && !isFocusMode && (
         <div className="mb-2 flex flex-col gap-1 px-2 animate-in fade-in slide-in-from-bottom-2">
             <div className="flex justify-between items-center bg-black/60 backdrop-blur-md p-1 rounded text-xs">
@@ -132,7 +129,6 @@ export const Timeline: React.FC<TimelineProps> = ({
         </div>
       )}
 
-      {/* Frames Strip - Interaction disabled in Focus Mode except for Add button */}
       <div className={`relative w-full overflow-hidden h-24`}>
         <div 
             ref={scrollContainerRef}
@@ -168,7 +164,6 @@ export const Timeline: React.FC<TimelineProps> = ({
             </div>
         </div>
         
-        {/* Center Indicator Line */}
         <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-[#FF3B30] z-20 pointer-events-none transform -translate-x-1/2 shadow-[0_0_8px_rgba(255,59,48,0.8)]" />
       </div>
     </div>

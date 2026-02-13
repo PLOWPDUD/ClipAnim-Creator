@@ -1,6 +1,5 @@
-
 import React, { useRef } from 'react';
-import { Icons } from './Icons';
+import { Icons } from '../Icons';
 
 interface SettingsModalProps {
   isOpen: boolean;

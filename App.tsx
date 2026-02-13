@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType } from './types';
 import { CanvasArea } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
-import { Icons } from './components/Icons';
+import { Icons } from './Icons';
 import { SettingsModal } from './components/SettingsModal';
 import { LayerPanel } from './components/LayerPanel';
 import { ExportModal, ExportFormat } from './components/ExportModal';
@@ -16,8 +15,9 @@ import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB
 import JSZip from 'jszip';
 // @ts-ignore
 import gifshot from 'gifshot';
+// @ts-ignore
+import * as Mp4Muxer from 'mp4-muxer';
 
-// Helper: Create default layer
 const createDefaultLayer = (id = '1', name = 'Layer 1'): Layer => ({
   id,
   name,
@@ -27,7 +27,6 @@ const createDefaultLayer = (id = '1', name = 'Layer 1'): Layer => ({
   blendMode: 'source-over'
 });
 
-// Helper: Create a blank frame with initial layers
 const createBlankFrame = (layers: Layer[], width: number, height: number, id: string = crypto.randomUUID()): Frame => {
   const layerData: Record<string, string> = {};
   layers.forEach(layer => {
@@ -42,32 +41,25 @@ const createBlankFrame = (layers: Layer[], width: number, height: number, id: st
 const COLORS = ['#FF3B30', '#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF2D55'];
 
 export default function App() {
-  // View State
   const [view, setView] = useState<'menu' | 'editor'>('menu');
   const [savedProjects, setSavedProjects] = useState<ProjectMeta[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Project Settings
   const [projectId, setProjectId] = useState<string>(crypto.randomUUID());
   const [projectName, setProjectName] = useState('My Animation');
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
 
-  // Layers State
   const [layers, setLayers] = useState<Layer[]>([createDefaultLayer()]);
   const [activeLayerId, setActiveLayerId] = useState<string>('1');
   const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(false);
 
-  // Frames State
   const [frames, setFrames] = useState<Frame[]>([]);
-  
-  // History
   const [history, setHistory] = useState<Frame[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
-  // Editor State
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [tool, setTool] = useState<ToolType>('pen');
@@ -75,7 +67,6 @@ export default function App() {
   const [shapeType, setShapeType] = useState<ShapeType>('rectangle');
   const [color, setColor] = useState('#000000');
   
-  // Tool Sizes (Separated)
   const [penSize, setPenSize] = useState(5);
   const [eraserSize, setEraserSize] = useState(30);
   const [shapeSize, setShapeSize] = useState(5);
@@ -87,27 +78,20 @@ export default function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
   
-  // Selection State
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const [clipboard, setClipboard] = useState<SelectionState | null>(null);
 
-  // Audio State (Multiple Tracks)
   const [audioTracks, setAudioTracks] = useState<AudioTrack[]>([]);
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   
-  // Export State
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
 
-  // Import State
   const importFileRef = useRef<HTMLInputElement>(null);
-
-  // Animation Loop Refs
   const requestRef = useRef<number | undefined>(undefined);
   const startTimeRef = useRef<number>(0);
 
-  // Derived Stroke Width Logic
   const currentStrokeWidth = tool === 'eraser' ? eraserSize : tool === 'shape' ? shapeSize : penSize;
 
   const handleStrokeWidthChange = (width: number) => {
@@ -116,7 +100,6 @@ export default function App() {
       else setPenSize(width);
   };
 
-  // Load project list on mount from IndexedDB
   useEffect(() => {
       const fetchProjects = async () => {
           try {
@@ -129,12 +112,371 @@ export default function App() {
       fetchProjects();
   }, []);
 
+  const addLayer = () => {
+    const newLayerId = crypto.randomUUID();
+    const newLayer = createDefaultLayer(newLayerId, `Layer ${layers.length + 1}`);
+    const newLayers = [...layers, newLayer];
+    setLayers(newLayers);
+    setActiveLayerId(newLayerId);
+
+    const updatedFrames = frames.map(frame => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasSize.width;
+      canvas.height = canvasSize.height;
+      return {
+        ...frame,
+        layers: { ...frame.layers, [newLayerId]: canvas.toDataURL() }
+      };
+    });
+    updateFramesWithHistory(updatedFrames);
+    setHasUnsavedChanges(true);
+  };
+
+  const removeLayer = (id: string) => {
+    if (layers.length <= 1) return;
+    const newLayers = layers.filter(l => l.id !== id);
+    setLayers(newLayers);
+    if (activeLayerId === id) setActiveLayerId(newLayers[newLayers.length - 1].id);
+
+    const updatedFrames = frames.map(frame => {
+      const { [id]: removed, ...rest } = frame.layers;
+      return { ...frame, layers: rest };
+    });
+    updateFramesWithHistory(updatedFrames);
+    setHasUnsavedChanges(true);
+  };
+
+  const duplicateLayer = (id: string) => {
+    const layerIndex = layers.findIndex(l => l.id === id);
+    if (layerIndex === -1) return;
+    const layerToCopy = layers[layerIndex];
+
+    const newLayerId = crypto.randomUUID();
+    const newLayer: Layer = {
+        ...layerToCopy,
+        id: newLayerId,
+        name: `${layerToCopy.name} Copy`,
+        isVisible: true
+    };
+
+    const newLayers = [...layers];
+    newLayers.splice(layerIndex + 1, 0, newLayer);
+    setLayers(newLayers);
+    setActiveLayerId(newLayerId);
+
+    const updatedFrames = frames.map(frame => {
+        const sourceData = frame.layers[id];
+        if (!sourceData) {
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasSize.width;
+            canvas.height = canvasSize.height;
+            return {
+                ...frame,
+                layers: { ...frame.layers, [newLayerId]: canvas.toDataURL() }
+            };
+        }
+        return {
+            ...frame,
+            layers: { ...frame.layers, [newLayerId]: sourceData }
+        };
+    });
+    
+    updateFramesWithHistory(updatedFrames);
+    setHasUnsavedChanges(true);
+  };
+
+  const toggleLayerVisibility = (id: string) => {
+    setLayers(layers.map(l => l.id === id ? { ...l, isVisible: !l.isVisible } : l));
+    setHasUnsavedChanges(true);
+  };
+
+  const toggleLayerLock = (id: string) => {
+    setLayers(layers.map(l => l.id === id ? { ...l, isLocked: !l.isLocked } : l));
+    setHasUnsavedChanges(true);
+  };
+
+  const updateLayerSettings = (id: string, opacity: number, blendMode: GlobalCompositeOperation) => {
+    setLayers(layers.map(l => l.id === id ? { ...l, opacity, blendMode } : l));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleImportImage = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        setSelection({
+          x: (canvasSize.width - img.width) / 2,
+          y: (canvasSize.height - img.height) / 2,
+          width: img.width,
+          height: img.height,
+          dataUrl,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1
+        });
+        setTool('select');
+        setHasUnsavedChanges(true);
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAddAudioTrack = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const id = crypto.randomUUID();
+      const newTrack: AudioTrack = {
+          id,
+          url,
+          name: file.name,
+          color: COLORS[audioTracks.length % COLORS.length],
+          volume: 1
+      };
+      const audio = new Audio(url);
+      audioElementsRef.current.set(id, audio);
+      setAudioTracks([...audioTracks, newTrack]);
+      setHasUnsavedChanges(true);
+  };
+
+  const handleRemoveAudioTrack = (id: string) => {
+      const audio = audioElementsRef.current.get(id);
+      if (audio) {
+          audio.pause();
+          URL.revokeObjectURL(audio.src);
+          audioElementsRef.current.delete(id);
+      }
+      setAudioTracks(audioTracks.filter(t => t.id !== id));
+      setHasUnsavedChanges(true);
+  };
+
+  const handleSelectionCommit = async () => {
+      if (!selection) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasSize.width;
+      canvas.height = canvasSize.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const layerData = frames[currentFrameIndex].layers[activeLayerId];
+      if (layerData) {
+          const currentImg = await new Promise<HTMLImageElement>((resolve) => {
+              const img = new Image();
+              img.onload = () => resolve(img);
+              img.src = layerData;
+          });
+          ctx.drawImage(currentImg, 0, 0);
+      }
+
+      await drawSelectionOntoCanvas(ctx, selection);
+      
+      const newDataUrl = canvas.toDataURL();
+      handleUpdateLayer(activeLayerId, newDataUrl);
+      setSelection(null);
+  };
+
+  const handleExportStart = async (format: ExportFormat) => {
+    setIsExporting(true);
+    setExportProgress(0);
+
+    const total = frames.length;
+    const compositeFrames: string[] = [];
+
+    // Pre-render all frames
+    for (let i = 0; i < total; i++) {
+      const dataUrl = await compositeLayers(frames[i], layers, canvasSize.width, canvasSize.height, '#ffffff', backgroundImage);
+      compositeFrames.push(dataUrl);
+      setExportProgress(Math.round(((i + 1) / total) * 30));
+    }
+
+    if (format === 'mp4') {
+        try {
+            // Using mp4-muxer for valid MP4 generation
+            const muxer = new Mp4Muxer.Muxer({
+                target: new Mp4Muxer.ArrayBufferTarget(),
+                video: {
+                    codec: 'avc',
+                    width: canvasSize.width,
+                    height: canvasSize.height
+                },
+                fastStart: 'in-memory',
+                firstTimestampBehavior: 'offset',
+            });
+
+            const videoEncoder = new VideoEncoder({
+                output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+                error: (e) => { console.error(e); alert("Video encoding error: " + e.message); }
+            });
+
+            videoEncoder.configure({
+                codec: 'avc1.42001f', // Standard AVC
+                width: canvasSize.width,
+                height: canvasSize.height,
+                bitrate: 4_000_000,
+                framerate: fps
+            });
+
+            // Loop frames
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasSize.width;
+            canvas.height = canvasSize.height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error("No context");
+
+            for (let i = 0; i < compositeFrames.length; i++) {
+                 const img = new Image();
+                 await new Promise<void>((resolve) => { img.onload = () => resolve(); img.src = compositeFrames[i]; });
+                 
+                 ctx.fillStyle = '#ffffff';
+                 ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+                 ctx.drawImage(img, 0, 0);
+
+                 const frame = new VideoFrame(canvas, { timestamp: i * 1000000 / fps });
+                 videoEncoder.encode(frame);
+                 frame.close();
+
+                 setExportProgress(30 + Math.round(((i + 1) / total) * 60));
+            }
+
+            await videoEncoder.flush();
+            muxer.finalize();
+
+            const { buffer } = muxer.target;
+            const blob = new Blob([buffer], { type: 'video/mp4' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${projectName}.mp4`;
+            a.click();
+            
+            setIsExporting(false);
+            setExportProgress(100);
+            setIsExportModalOpen(false);
+
+        } catch (e: any) {
+            console.error("MP4 Export failed", e);
+            alert("MP4 Export failed. Your browser might not support WebCodecs or the format.");
+            setIsExporting(false);
+            setIsExportModalOpen(false);
+        }
+    } else if (format === 'gif') {
+      // @ts-ignore
+      gifshot.createGIF({
+        images: compositeFrames,
+        interval: 1 / fps,
+        gifWidth: canvasSize.width,
+        gifHeight: canvasSize.height,
+        progressCallback: (w: number) => setExportProgress(30 + (w * 70))
+      }, (obj: any) => {
+        if (!obj.error) {
+          const a = document.createElement('a');
+          a.href = obj.image;
+          a.download = `${projectName}.gif`;
+          a.click();
+        } else {
+            alert("GIF creation failed: " + obj.error);
+        }
+        setIsExporting(false);
+        setExportProgress(100);
+        setIsExportModalOpen(false);
+      });
+    } else if (format === 'png-seq') {
+      const zip = new JSZip();
+      compositeFrames.forEach((data, i) => {
+        const base64Data = data.split(',')[1];
+        zip.file(`frame_${String(i + 1).padStart(4, '0')}.png`, base64Data, { base64: true });
+      });
+      const content = await zip.generateAsync({ type: 'blob' }, (metadata: any) => {
+        setExportProgress(30 + Math.round(metadata.percent * 0.7));
+      });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${projectName}_frames.zip`;
+      a.click();
+      setIsExporting(false);
+      setExportProgress(100);
+      setIsExportModalOpen(false);
+    } else {
+      // Fallback for WebM/AVI using MediaRecorder
+      try {
+          const exportCanvas = document.createElement('canvas');
+          exportCanvas.width = canvasSize.width;
+          exportCanvas.height = canvasSize.height;
+          const ctx = exportCanvas.getContext('2d');
+          
+          if(!ctx) throw new Error("Could not create canvas context");
+
+          const stream = exportCanvas.captureStream(fps);
+          
+          const mimeTypes: Record<string, string[]> = {
+            webm: ['video/webm;codecs=vp9', 'video/webm'],
+            avi: ['video/webm'] // Hack: Browsers don't support AVI encoding
+          };
+
+          const selectedMimeType = mimeTypes[format]?.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+
+          const mediaRecorder = new MediaRecorder(stream, {
+              mimeType: selectedMimeType,
+              videoBitsPerSecond: 8000000
+          });
+
+          const chunks: BlobPart[] = [];
+          mediaRecorder.ondataavailable = (e) => {
+              if (e.data.size > 0) chunks.push(e.data);
+          };
+
+          mediaRecorder.onstop = () => {
+              const blob = new Blob(chunks, { type: selectedMimeType });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              const ext = format === 'avi' ? 'avi' : 'webm';
+              a.download = `${projectName}.${ext}`;
+              a.click();
+              
+              setIsExporting(false);
+              setExportProgress(100);
+              setIsExportModalOpen(false);
+          };
+
+          mediaRecorder.start();
+
+          for (let i = 0; i < compositeFrames.length; i++) {
+              const img = new Image();
+              await new Promise<void>((resolve) => {
+                  img.onload = () => resolve();
+                  img.src = compositeFrames[i];
+              });
+              
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+              ctx.drawImage(img, 0, 0);
+              
+              await new Promise(r => setTimeout(r, 1000 / fps));
+              setExportProgress(30 + Math.round(((i + 1) / total) * 70));
+          }
+          
+          await new Promise(r => setTimeout(r, 200));
+          mediaRecorder.stop();
+
+      } catch (e: any) {
+          console.error(e);
+          alert("Export failed: " + e.message);
+          setIsExporting(false);
+          setIsExportModalOpen(false);
+      }
+    }
+  };
+
   const saveProject = async () => {
       let thumb = '';
       if (frames.length > 0) {
           thumb = await compositeLayers(frames[0], layers, canvasSize.width, canvasSize.height, '#ffffff', backgroundImage);
       }
-
       const projectData: ProjectData = {
           id: projectId,
           name: projectName,
@@ -147,17 +489,14 @@ export default function App() {
           fps,
           audioTracks
       };
-
       try {
         await saveProjectToDB(projectData);
-        
-        // Refresh List
         const updatedList = await getProjectList();
         setSavedProjects(updatedList);
         setHasUnsavedChanges(false);
       } catch (e) {
           console.error(e);
-          alert("Failed to save. Disk might be full.");
+          alert("Failed to save.");
       }
   };
 
@@ -170,7 +509,6 @@ export default function App() {
             setIsLoading(false);
             return;
         }
-        
         setProjectId(data.id);
         setProjectName(data.name);
         setCanvasSize(data.canvasSize);
@@ -179,8 +517,6 @@ export default function App() {
         setFrames(data.frames);
         setFps(data.fps);
         setAudioTracks(data.audioTracks || []);
-        
-        // Reset Editor State
         setCurrentFrameIndex(0);
         setHistory([data.frames]);
         setHistoryIndex(0);
@@ -202,19 +538,13 @@ export default function App() {
       setProjectId(pid);
       setProjectName("New Animation");
       setCanvasSize({ width: 800, height: 600 });
-      backgroundImage && setBackgroundImage(null);
-      
       const defaultL = [createDefaultLayer()];
       setLayers(defaultL);
       setActiveLayerId(defaultL[0].id);
-      
       const initialFrame = createBlankFrame(defaultL, 800, 600);
-      initialFrame.thumbnailUrl = ''; 
-
       setFrames([initialFrame]);
       setHistory([[initialFrame]]);
       setHistoryIndex(0);
-      
       setFps(12);
       setAudioTracks([]);
       setCurrentFrameIndex(0);
@@ -232,7 +562,6 @@ export default function App() {
               setSavedProjects(updatedList);
           } catch (e) {
               console.error("Failed to delete", e);
-              alert("Could not delete project.");
           }
       }
   };
@@ -250,15 +579,12 @@ export default function App() {
           fps,
           audioTracks
       };
-      
       const blob = new Blob([JSON.stringify(projectData)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `${projectName.replace(/\s+/g, '_')}_backup.json`;
-      document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
       URL.revokeObjectURL(url);
       setIsSettingsOpen(false);
   };
@@ -266,62 +592,21 @@ export default function App() {
   const handleImportProjectFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = async (event) => {
         try {
             const data = JSON.parse(event.target?.result as string) as ProjectData;
-            
-            // Basic validation
-            if (!data.frames || !data.layers || !data.canvasSize) {
-                alert("Invalid project file.");
-                return;
-            }
-
-            // Assign a new ID to avoid conflict with existing local projects if it's a duplicate import
             const newId = crypto.randomUUID();
-            
-            // Generate thumb if missing
             let thumb = data.thumbnailUrl;
             if (!thumb && data.frames.length > 0) {
                  thumb = await compositeLayers(data.frames[0], data.layers, data.canvasSize.width, data.canvasSize.height, '#ffffff', data.backgroundImage);
             }
-
-            const fullData: ProjectData = { 
-                ...data, 
-                id: newId,
-                lastModified: Date.now(),
-                thumbnailUrl: thumb || ''
-            };
-
-            // Save directly to DB
+            const fullData: ProjectData = { ...data, id: newId, lastModified: Date.now(), thumbnailUrl: thumb || '' };
             await saveProjectToDB(fullData);
-            
-            // Refresh list
             const updatedList = await getProjectList();
             setSavedProjects(updatedList);
-
-            // Load into editor
-            setProjectId(newId);
-            setProjectName(fullData.name);
-            setCanvasSize(fullData.canvasSize);
-            setBackgroundImage(fullData.backgroundImage);
-            setLayers(fullData.layers);
-            setFrames(fullData.frames);
-            setFps(fullData.fps || 12);
-            setAudioTracks(fullData.audioTracks || []);
-
-            setCurrentFrameIndex(0);
-            setHistory([fullData.frames]);
-            setHistoryIndex(0);
-            setSelection(null);
-            setTool('pen');
-            setBrushType('pen');
-            setHasUnsavedChanges(false);
-            
-            setView('editor');
+            loadProject(newId);
         } catch (err) {
-            console.error(err);
             alert("Failed to parse project file.");
         }
     };
@@ -330,35 +615,16 @@ export default function App() {
   };
 
   const handleGoHome = () => {
-      if (hasUnsavedChanges) {
-          setShowExitConfirm(true);
-      } else {
-          setView('menu');
-      }
+      if (hasUnsavedChanges) setShowExitConfirm(true);
+      else setView('menu');
   };
 
   const confirmExit = (saveFirst: boolean) => {
-      if (saveFirst) {
-          saveProject().then(() => {
-              setShowExitConfirm(false);
-              setView('menu');
-          });
-      } else {
-          setShowExitConfirm(false);
-              setView('menu');
-      }
+      if (saveFirst) saveProject().then(() => { setShowExitConfirm(false); setView('menu'); });
+      else { setShowExitConfirm(false); setView('menu'); }
   };
 
-  useEffect(() => {
-     if (view === 'editor' && frames.length > 0) {
-         regenerateThumbnails(frames, layers);
-     }
-  }, [backgroundImage, canvasSize, view]);
-
-  const handleCopy = () => {
-    if (selection) setClipboard(selection);
-  };
-
+  const handleCopy = () => { if (selection) setClipboard(selection); };
   const handlePaste = () => {
     if (clipboard) {
       const newX = (canvasSize.width - clipboard.width) / 2;
@@ -368,92 +634,32 @@ export default function App() {
       setHasUnsavedChanges(true);
     }
   };
-
-  const handleDeleteSelection = () => {
-    if (selection) { setSelection(null); setHasUnsavedChanges(true); }
-  };
-
-  useEffect(() => {
-    if (view !== 'editor') return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isSettingsOpen || isExporting || showExitConfirm || isExportModalOpen || isHelpOpen) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') { if (selection) { e.preventDefault(); handleCopy(); } }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') { if (clipboard) { e.preventDefault(); handlePaste(); } }
-      if (e.key === 'Delete' || e.key === 'Backspace') { if (selection) { e.preventDefault(); handleDeleteSelection(); } }
-
-      if (e.key.toLowerCase() === 'b') setTool('pen');
-      if (e.key.toLowerCase() === 'e') setTool('eraser');
-      if (e.key.toLowerCase() === 'f') setTool('fill');
-      if (e.key.toLowerCase() === 's') setTool('select');
-      if (e.key.toLowerCase() === 'u') setTool('shape'); 
-      if (e.key.toLowerCase() === 'g') setShowGrid(prev => !prev);
-      
-      if (e.code === 'Space') { e.preventDefault(); setIsPlaying(prev => !prev); }
-
-      if (e.key === 'ArrowLeft') { if (currentFrameIndex > 0) handleSelectFrame(currentFrameIndex - 1); }
-      if (e.key === 'ArrowRight') { if (currentFrameIndex < frames.length - 1) handleSelectFrame(currentFrameIndex + 1); }
-      
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveProject(); }
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'e') { e.preventDefault(); setIsExportModalOpen(true); }
-      
-      // Help Shortcut
-      if (e.key === '?') setIsHelpOpen(true);
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentFrameIndex, frames.length, isPlaying, isSettingsOpen, isExporting, historyIndex, history, selection, clipboard, view, layers, canvasSize, audioTracks, showExitConfirm, isExportModalOpen, isHelpOpen]);
+  const handleDeleteSelection = () => { if (selection) { setSelection(null); setHasUnsavedChanges(true); } };
 
   const animate = (timestamp: number) => {
     if (!isPlaying) return;
     let targetFrame = 0;
-    
-    // Precise Audio Sync: Use the first audio track as the master clock if available
     const mainTrack = audioTracks[0];
     const mainAudio = mainTrack ? audioElementsRef.current.get(mainTrack.id) : null;
-    
     if (mainAudio && !mainAudio.paused && mainAudio.duration > 0) {
-        // Sync visual frame to audio time
         targetFrame = Math.floor(mainAudio.currentTime * fps);
     } else {
-        // Fallback to performance.now() clock
         if (startTimeRef.current === 0) startTimeRef.current = timestamp;
         const elapsed = (timestamp - startTimeRef.current) / 1000;
         targetFrame = Math.floor(elapsed * fps);
     }
-
-    if (targetFrame >= frames.length) { 
-        setIsPlaying(false); 
-        setCurrentFrameIndex(frames.length - 1); 
-        return; 
-    }
-    
-    if (targetFrame !== currentFrameIndex) {
-        setCurrentFrameIndex(targetFrame);
-    }
-    
+    if (targetFrame >= frames.length) { setIsPlaying(false); return; }
+    if (targetFrame !== currentFrameIndex) setCurrentFrameIndex(targetFrame);
     requestRef.current = requestAnimationFrame(animate);
   };
 
   useEffect(() => {
     if (isPlaying) {
       const startTime = currentFrameIndex / fps;
-      
-      // Sync all audio tracks
       audioTracks.forEach(track => {
           const audio = audioElementsRef.current.get(track.id);
-          if (audio) { 
-              // Set time slightly ahead if possible to allow for play() latency, though usually negligible in browser
-              audio.currentTime = startTime; 
-              audio.play().catch(console.error); 
-          }
+          if (audio) { audio.currentTime = startTime; audio.play().catch(console.error); }
       });
-      
-      // Reset generic timer fallback
       startTimeRef.current = performance.now() - (startTime * 1000);
       requestRef.current = requestAnimationFrame(animate);
     } else {
@@ -474,91 +680,14 @@ export default function App() {
     }
   };
 
-  const handleSelectionCreate = (newSelection: SelectionState) => { setSelection(newSelection); setHasUnsavedChanges(true); };
-  const handleSelectionUpdate = (updatedSelection: SelectionState) => { setSelection(updatedSelection); setHasUnsavedChanges(true); };
-  const handleFlipHorizontal = () => { if (selection) { setSelection({ ...selection, scaleX: selection.scaleX * -1 }); setHasUnsavedChanges(true); } };
-  const handleFlipVertical = () => { if (selection) { setSelection({ ...selection, scaleY: selection.scaleY * -1 }); setHasUnsavedChanges(true); } };
-  const handleRotate = () => { if (selection) { setSelection({ ...selection, rotation: (selection.rotation + 90) % 360 }); setHasUnsavedChanges(true); } };
-
-  const handleSelectionCommit = async () => {
-    if (!selection) return;
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvasSize.width;
-    tempCanvas.height = canvasSize.height;
-    const ctx = tempCanvas.getContext('2d');
-    if (!ctx) return;
-    const baseData = frames[currentFrameIndex].layers[activeLayerId];
-    if (baseData) {
-        await new Promise<void>(resolve => {
-            const img = new Image();
-            img.onload = () => { ctx.drawImage(img, 0, 0); resolve(); };
-            img.src = baseData;
-        });
-    }
-    await drawSelectionOntoCanvas(ctx, selection);
-    handleUpdateLayer(activeLayerId, tempCanvas.toDataURL());
-    setSelection(null);
-  };
-
-  const handleImportImage = (file: File) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-          const result = e.target?.result as string;
-          const img = new Image();
-          img.onload = () => {
-              const maxWidth = canvasSize.width * 0.5;
-              const ratio = img.width / img.height;
-              const width = Math.min(img.width, maxWidth);
-              const height = width / ratio;
-              const x = (canvasSize.width - width) / 2;
-              const y = (canvasSize.height - height) / 2;
-              setSelection({ x, y, width, height, dataUrl: result, rotation: 0, scaleX: 1, scaleY: 1 });
-              setTool('select');
-              setHasUnsavedChanges(true);
-          };
-          img.src = result;
-      };
-      reader.readAsDataURL(file);
-  };
-
-  const addLayer = () => {
-    const newId = crypto.randomUUID();
-    const newLayer = createDefaultLayer(newId, `Layer ${layers.length + 1}`);
-    const newLayers = [...layers, newLayer]; 
-    setLayers(newLayers);
-    setActiveLayerId(newId);
-    const newFrames = frames.map(f => {
-        const canvas = document.createElement('canvas');
-        canvas.width = canvasSize.width;
-        canvas.height = canvasSize.height;
-        return { ...f, layers: { ...f.layers, [newId]: canvas.toDataURL() } };
-    });
+  const handleUpdateLayer = async (layerId: string, dataUrl: string) => {
+    const newFrames = [...frames];
+    const currentFrame = { ...newFrames[currentFrameIndex] };
+    currentFrame.layers = { ...currentFrame.layers, [layerId]: dataUrl };
+    currentFrame.thumbnailUrl = await compositeLayers(currentFrame, layers, canvasSize.width, canvasSize.height, 'transparent', backgroundImage);
+    newFrames[currentFrameIndex] = currentFrame;
     updateFramesWithHistory(newFrames);
     setHasUnsavedChanges(true);
-  };
-
-  const removeLayer = (id: string) => {
-    if (layers.length <= 1) return;
-    const newLayers = layers.filter(l => l.id !== id);
-    setLayers(newLayers);
-    if (activeLayerId === id) setActiveLayerId(newLayers[newLayers.length - 1].id);
-    regenerateThumbnails(frames, newLayers);
-    setHasUnsavedChanges(true);
-  };
-
-  const toggleLayerVisibility = (id: string) => {
-      const newLayers = layers.map(l => l.id === id ? { ...l, isVisible: !l.isVisible } : l);
-      setLayers(newLayers);
-      regenerateThumbnails(frames, newLayers);
-      setHasUnsavedChanges(true);
-  };
-  const toggleLayerLock = (id: string) => { setLayers(layers.map(l => l.id === id ? { ...l, isLocked: !l.isLocked } : l)); setHasUnsavedChanges(true); };
-
-  const updateLayerSettings = (id: string, opacity: number, blendMode: GlobalCompositeOperation) => {
-      const newLayers = layers.map(l => l.id === id ? { ...l, opacity, blendMode } : l);
-      setLayers(newLayers);
-      regenerateThumbnails(frames, newLayers);
-      setHasUnsavedChanges(true);
   };
 
   const updateFramesWithHistory = (newFrames: Frame[]) => {
@@ -589,16 +718,6 @@ export default function App() {
     }
   };
 
-  const handleUpdateLayer = async (layerId: string, dataUrl: string) => {
-    const newFrames = [...frames];
-    const currentFrame = { ...newFrames[currentFrameIndex] };
-    currentFrame.layers = { ...currentFrame.layers, [layerId]: dataUrl };
-    currentFrame.thumbnailUrl = await compositeLayers(currentFrame, layers, canvasSize.width, canvasSize.height, 'transparent', backgroundImage);
-    newFrames[currentFrameIndex] = currentFrame;
-    updateFramesWithHistory(newFrames);
-    setHasUnsavedChanges(true);
-  };
-
   const addFrame = async () => {
     const newFrame = createBlankFrame(layers, canvasSize.width, canvasSize.height);
     newFrame.thumbnailUrl = await compositeLayers(newFrame, layers, canvasSize.width, canvasSize.height, 'transparent', backgroundImage);
@@ -608,7 +727,6 @@ export default function App() {
     setCurrentFrameIndex(currentFrameIndex + 1);
     setHasUnsavedChanges(true);
   };
-  
   const deleteFrame = (index: number) => {
     if (frames.length <= 1) return;
     const newFrames = frames.filter((_, i) => i !== index);
@@ -625,174 +743,6 @@ export default function App() {
     setCurrentFrameIndex(index + 1);
     setHasUnsavedChanges(true);
   };
-  const regenerateThumbnails = async (frames: Frame[], layers: Layer[]) => {
-      const updated = await Promise.all(frames.map(async f => ({...f, thumbnailUrl: await compositeLayers(f, layers, canvasSize.width, canvasSize.height, 'transparent', backgroundImage)})));
-      setFrames(updated);
-  };
-
-  const handleAddAudioTrack = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-          const url = URL.createObjectURL(file);
-          const id = crypto.randomUUID();
-          const newTrack: AudioTrack = { id, url, name: file.name, color: COLORS[audioTracks.length % COLORS.length], volume: 1 };
-          setAudioTracks([...audioTracks, newTrack]);
-          audioElementsRef.current.set(id, new Audio(url));
-          setHasUnsavedChanges(true);
-      }
-  };
-
-  const handleRemoveAudioTrack = (id: string) => {
-      setAudioTracks(audioTracks.filter(t => t.id !== id));
-      const audio = audioElementsRef.current.get(id);
-      if (audio) { audio.pause(); audioElementsRef.current.delete(id); }
-      setHasUnsavedChanges(true);
-  };
-
-  const handleExportStart = async (format: ExportFormat) => {
-    if (isExporting || frames.length === 0) return;
-    setIsExporting(true);
-    setExportProgress(0);
-
-    const width = canvasSize.width;
-    const height = canvasSize.height;
-
-    try {
-        // Pre-render all frames to Image elements
-        const compositeImages = await Promise.all(frames.map(async (f, idx) => {
-            const url = await compositeLayers(f, layers, width, height, '#ffffff', backgroundImage);
-            setExportProgress(Math.round(((idx + 1) / frames.length) * 30)); 
-            return new Promise<HTMLImageElement>((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => resolve(img);
-                img.onerror = reject;
-                img.src = url;
-            });
-        }));
-
-        if (format === 'png-seq') {
-            const zip = new JSZip();
-            const folder = zip.folder(`${projectName}_frames`);
-            compositeImages.forEach((img, idx) => {
-                const data = img.src.split(',')[1];
-                folder?.file(`frame_${(idx + 1).toString().padStart(4, '0')}.png`, data, { base64: true });
-            });
-            const content = await zip.generateAsync({ type: "blob" });
-            const url = URL.createObjectURL(content);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${projectName}_sequence.zip`;
-            a.click();
-            setIsExporting(false);
-            setIsExportModalOpen(false);
-            return;
-        }
-
-        if (format === 'gif') {
-            gifshot.createGIF({
-                images: compositeImages.map(img => img.src),
-                interval: 1 / fps,
-                gifWidth: width,
-                gifHeight: height,
-                progressCallback: (p: number) => setExportProgress(30 + Math.round(p * 70))
-            }, (obj: any) => {
-                if (!obj.error) {
-                    const a = document.createElement('a');
-                    a.href = obj.image;
-                    a.download = `${projectName}.gif`;
-                    a.click();
-                } else {
-                    alert("GIF Export failed: " + obj.error);
-                }
-                setIsExporting(false);
-                setIsExportModalOpen(false);
-            });
-            return;
-        }
-
-        // Video Formats (MP4, WebM, AVI)
-        let exportCanvas: HTMLCanvasElement | null = null;
-        try {
-            exportCanvas = document.createElement('canvas');
-            exportCanvas.width = width;
-            exportCanvas.height = height;
-            const ctx = exportCanvas.getContext('2d', { willReadFrequently: true }); 
-            if (!ctx) throw new Error('Ctx error');
-
-            const mimeTypes: Record<string, string[]> = {
-                mp4: ['video/mp4; codecs="avc1.424028, mp4a.40.2"', 'video/mp4'],
-                webm: ['video/webm;codecs=vp9,opus', 'video/webm'],
-                avi: ['video/webm']
-            };
-
-            const selectedMimeType = mimeTypes[format]?.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
-            
-            // Use a manual capture stream (0 FPS)
-            const stream = exportCanvas.captureStream(0); 
-            const mediaRecorder = new MediaRecorder(stream, { 
-                mimeType: selectedMimeType, 
-                videoBitsPerSecond: 8000000 
-            });
-
-            const chunks: BlobPart[] = [];
-            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-
-            mediaRecorder.onstop = () => {
-                if (chunks.length === 0) {
-                    alert("Export failed: No data recorded.");
-                    setIsExporting(false);
-                    return;
-                }
-
-                const blob = new Blob(chunks, { type: selectedMimeType });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                
-                const actualExtension = selectedMimeType.includes('mp4') ? 'mp4' : 'webm';
-                a.download = `${projectName}.${actualExtension}`;
-                
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                
-                setTimeout(() => URL.revokeObjectURL(url), 1000);
-                setIsExporting(false);
-                setIsExportModalOpen(false);
-            };
-
-            mediaRecorder.start();
-
-            // Frame-by-frame rendering loop
-            for (let i = 0; i < compositeImages.length; i++) {
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, width, height);
-                ctx.drawImage(compositeImages[i], 0, 0);
-                
-                // Fix: Check and call requestFrame by casting to any to satisfy TypeScript
-                const track = stream.getVideoTracks()[0] as any;
-                if (track && track.requestFrame) {
-                    track.requestFrame();
-                }
-
-                await new Promise(resolve => setTimeout(resolve, 1000 / fps));
-                setExportProgress(30 + Math.round(((i + 1) / compositeImages.length) * 70));
-            }
-
-            await new Promise(resolve => setTimeout(resolve, 500));
-            mediaRecorder.stop();
-
-        } catch (error: any) {
-            console.error("Export failed", error);
-            alert("Export failed: " + error.message);
-            setIsExporting(false);
-        }
-
-    } catch (error: any) {
-        console.error("Export pre-processing failed", error);
-        setIsExporting(false);
-    }
-  };
 
   if (view === 'menu') {
       return (
@@ -801,14 +751,7 @@ export default function App() {
                  <div>
                     <h1 className="text-3xl font-bold mb-2">My Animations</h1>
                     <p className="text-gray-400">Create, edit and share your stories.</p>
-                    <a 
-                        href="https://github.com/PLOWPDUD/ClipAnim-Creator" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="inline-block mt-2 text-xs font-bold text-[#FF3B30] hover:text-red-400 transition-colors bg-white/5 px-3 py-1 rounded-full border border-[#FF3B30]/20"
-                    >
-                        Visit The Open Source Here
-                    </a>
+                    <a href="https://github.com/PLOWPDUD/ClipAnim-Creator" target="_blank" rel="noopener noreferrer" className="inline-block mt-2 text-xs font-bold text-[#FF3B30] hover:text-red-400 transition-colors bg-white/5 px-3 py-1 rounded-full border border-[#FF3B30]/20">Visit The Open Source Here</a>
                  </div>
                  <input ref={importFileRef} type="file" accept=".json" onChange={handleImportProjectFile} className="hidden" />
              </div>
@@ -832,23 +775,18 @@ export default function App() {
                      </div>
                  ))}
              </div>
-             {isLoading && (
-                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center backdrop-blur-sm">
-                     <Icons.Loader2 className="w-12 h-12 text-[#FF3B30] animate-spin" />
-                 </div>
-             )}
+             {isLoading && <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center backdrop-blur-sm"><Icons.Loader2 className="w-12 h-12 text-[#FF3B30] animate-spin" /></div>}
         </div>
       );
   }
 
   return (
-    <div key={projectId} className="flex flex-col h-screen supports-[height:100dvh]:h-[100dvh] bg-[#121212] text-white overflow-hidden relative">
+    <div key={projectId} className="flex flex-col h-screen bg-[#121212] text-white overflow-hidden relative">
       {showExitConfirm && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-[#1e1e1e] rounded-3xl p-8 max-sm w-full border border-gray-700 shadow-2xl animate-in zoom-in-95 fade-in duration-200 text-center">
+            <div className="bg-[#1e1e1e] rounded-3xl p-8 max-sm w-full border border-gray-700 shadow-2xl text-center">
                 <div className="w-16 h-16 bg-[#FF3B30]/20 rounded-full flex items-center justify-center text-[#FF3B30] mx-auto mb-6"> <Icons.Save size={32} /> </div>
                 <h2 className="text-2xl font-bold mb-2">Unsaved Changes</h2>
-                <p className="text-gray-400 mb-8">Do you want to save your progress before leaving?</p>
                 <div className="grid grid-cols-1 gap-3">
                     <button onClick={() => confirmExit(true)} className="w-full py-4 bg-[#FF3B30] text-white font-bold rounded-2xl hover:bg-red-600 transition-colors">Save & Exit</button>
                     <button onClick={() => confirmExit(false)} className="w-full py-4 bg-gray-700 text-white font-bold rounded-2xl hover:bg-gray-600 transition-colors">Discard Changes</button>
@@ -857,130 +795,39 @@ export default function App() {
             </div>
         </div>
       )}
-      {isExportModalOpen && (
-          <ExportModal 
-            isOpen={isExportModalOpen} 
-            onClose={() => !isExporting && setIsExportModalOpen(false)} 
-            onExport={handleExportStart}
-            isExporting={isExporting}
-            progress={exportProgress}
-          />
-      )}
+      {isExportModalOpen && <ExportModal isOpen={isExportModalOpen} onClose={() => !isExporting && setIsExportModalOpen(false)} onExport={handleExportStart} isExporting={isExporting} progress={exportProgress} />}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
-      {isLayerPanelOpen && (
-          <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onClose={() => setIsLayerPanelOpen(false)} />
-      )}
+      {isLayerPanelOpen && <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onDuplicateLayer={duplicateLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onClose={() => setIsLayerPanelOpen(false)} />}
       {!isFocusMode && (
         <header className="h-14 bg-[#1e1e1e] flex items-center px-4 justify-between border-b border-gray-700 shrink-0 z-30">
             <div className="flex items-center space-x-2">
-                <button onClick={handleGoHome} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white relative" title="Back to Menu">
-                    <Icons.Home size={24} />
-                    {hasUnsavedChanges && <span className="absolute top-2 right-2 w-2 h-2 bg-[#FF3B30] rounded-full ring-2 ring-[#1e1e1e]" />}
-                </button>
-                <div className="h-6 w-px bg-gray-700 mx-1"></div>
-                <h1 className="font-bold text-lg tracking-wide hidden sm:block truncate max-w-[150px]">{projectName}</h1>
+                <button onClick={handleGoHome} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white relative"><Icons.Home size={24} />{hasUnsavedChanges && <span className="absolute top-2 right-2 w-2 h-2 bg-[#FF3B30] rounded-full ring-2 ring-[#1e1e1e]" />}</button>
+                <h1 className="font-bold text-lg hidden sm:block truncate max-w-[150px]">{projectName}</h1>
             </div>
             <div className="flex items-center space-x-2">
-                <button onClick={undo} disabled={historyIndex <= 0} className={`p-2 rounded-full ${historyIndex > 0 ? 'hover:bg-gray-700 text-white' : 'text-gray-600'}`}> <Icons.Undo size={20} /> </button>
-                <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-2 rounded-full ${historyIndex < history.length - 1 ? 'hover:bg-gray-700 text-white' : 'text-gray-600'}`}> <Icons.Redo size={20} /> </button>
-                <div className="w-px h-6 bg-gray-700 mx-2" />
-                <button onClick={handleCopy} disabled={!selection} className={`p-2 rounded-full ${selection ? 'text-white hover:bg-gray-700' : 'text-gray-600'}`} title="Copy (Ctrl+C)"><Icons.Copy size={20} /></button>
-                <button onClick={handlePaste} disabled={!clipboard} className={`p-2 rounded-full ${clipboard ? 'text-white hover:bg-gray-700' : 'text-gray-600'}`} title="Paste (Ctrl+V)"><Icons.Clipboard size={20} /></button>
-                {selection && <button onClick={handleDeleteSelection} className="p-2 rounded-full text-white hover:bg-red-900/50 hover:text-red-400" title="Delete Selection (Del)"><Icons.Trash2 size={20} /></button>}
+                <button onClick={undo} disabled={historyIndex <= 0} className={`p-2 rounded-full ${historyIndex > 0 ? 'text-white' : 'text-gray-600'}`}> <Icons.Undo size={20} /> </button>
+                <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-2 rounded-full ${historyIndex < history.length - 1 ? 'text-white' : 'text-gray-600'}`}> <Icons.Redo size={20} /> </button>
+                <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white"><Icons.Copy size={20} /></button>
+                <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white"><Icons.Clipboard size={20} /></button>
             </div>
             <div className="flex items-center space-x-2">
-                <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className={`p-2 rounded-full transition-colors ${isLayerPanelOpen ? 'bg-gray-700 text-white' : 'hover:bg-gray-700 text-gray-400'}`} title="Layers"><Icons.Layers size={20} /></button>
-                <button onClick={saveProject} className={`p-2 hover:bg-gray-700 rounded-full transition-colors ${hasUnsavedChanges ? 'text-[#FF3B30]' : 'text-gray-400'}`} title="Save Project (Ctrl+S)"><Icons.Save size={20} /></button>
-                <button onClick={() => setIsExportModalOpen(true)} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-[#FF3B30]" title="Export Movie"><Icons.Download size={20} /></button>
-                <button onClick={() => setIsHelpOpen(true)} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white" title="Shortcuts & Help"><Icons.Help size={20} /></button>
-                <button onClick={() => setIsSettingsOpen(true)} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white"><Icons.Settings size={20} /></button>
+                <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className="p-2 text-gray-400 hover:text-white"><Icons.Layers size={20} /></button>
+                <button onClick={saveProject} className="p-2 text-gray-400 hover:text-white"><Icons.Save size={20} /></button>
+                <button onClick={() => setIsExportModalOpen(true)} className="p-2 text-gray-400 hover:text-white"><Icons.Download size={20} /></button>
+                <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white"><Icons.Settings size={20} /></button>
             </div>
         </header>
       )}
       <main className="flex-1 relative flex flex-row overflow-hidden min-h-0">
-        <div className="h-full shrink-0">
-          <Toolbar 
-              currentTool={tool}
-              onSelectTool={setTool}
-              currentBrushType={brushType}
-              onSelectBrushType={setBrushType}
-              currentColor={color}
-              onChangeColor={setColor}
-              strokeWidth={currentStrokeWidth}
-              onChangeStrokeWidth={handleStrokeWidthChange}
-              onionSkin={onionSkin}
-              onToggleOnionSkin={() => { setOnionSkin(!onionSkin); setHasUnsavedChanges(true); }}
-              showGrid={showGrid}
-              onToggleGrid={() => { setShowGrid(!showGrid); setHasUnsavedChanges(true); }}
-              isFocusMode={isFocusMode}
-              onToggleFocusMode={() => setIsFocusMode(!isFocusMode)}
-              onImportImage={handleImportImage}
-              hasSelection={!!selection}
-              onFlipHorizontal={handleFlipHorizontal}
-              onFlipVertical={handleFlipVertical}
-              onRotate={handleRotate}
-              shapeType={shapeType}
-              onSelectShapeType={setShapeType}
-          />
-        </div>
+        <Toolbar currentTool={tool} onSelectTool={setTool} currentBrushType={brushType} onSelectBrushType={setBrushType} currentColor={color} onChangeColor={setColor} strokeWidth={currentStrokeWidth} onChangeStrokeWidth={handleStrokeWidthChange} onionSkin={onionSkin} onToggleOnionSkin={() => setOnionSkin(!onionSkin)} showGrid={showGrid} onToggleGrid={() => setShowGrid(!showGrid)} isFocusMode={isFocusMode} onToggleFocusMode={() => setIsFocusMode(!isFocusMode)} onImportImage={handleImportImage} hasSelection={!!selection} onFlipHorizontal={() => setSelection(selection ? {...selection, scaleX: selection.scaleX * -1} : null)} onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)} onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)} shapeType={shapeType} onSelectShapeType={setShapeType} onOpenHelp={() => setIsHelpOpen(true)} />
         <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
-            <div className="absolute inset-0">
-                <CanvasArea 
-                    currentFrame={frames[currentFrameIndex]}
-                    layers={layers}
-                    activeLayerId={activeLayerId}
-                    onUpdateLayer={handleUpdateLayer}
-                    tool={tool}
-                    brushType={brushType}
-                    shapeType={shapeType}
-                    color={color}
-                    strokeWidth={currentStrokeWidth}
-                    prevFrame={currentFrameIndex > 0 ? frames[currentFrameIndex - 1] : null}
-                    nextFrame={currentFrameIndex < frames.length - 1 ? frames[currentFrameIndex + 1] : null}
-                    onionSkin={onionSkin}
-                    showGrid={showGrid}
-                    isPlaying={isPlaying}
-                    selection={selection}
-                    onSelectionCreate={handleSelectionCreate}
-                    onSelectionUpdate={handleSelectionUpdate}
-                    onSelectionCommit={handleSelectionCommit}
-                    canvasWidth={canvasSize.width}
-                    canvasHeight={canvasSize.height}
-                    backgroundImage={backgroundImage}
-                />
-            </div>
-            {/* Timeline is now always visible but constrained in Focus Mode */}
+            <CanvasArea currentFrame={frames[currentFrameIndex]} layers={layers} activeLayerId={activeLayerId} onUpdateLayer={handleUpdateLayer} tool={tool} brushType={brushType} shapeType={shapeType} color={color} strokeWidth={currentStrokeWidth} prevFrame={currentFrameIndex > 0 ? frames[currentFrameIndex - 1] : null} nextFrame={currentFrameIndex < frames.length - 1 ? frames[currentFrameIndex + 1] : null} onionSkin={onionSkin} showGrid={showGrid} isPlaying={isPlaying} selection={selection} onSelectionCreate={setSelection} onSelectionUpdate={setSelection} onSelectionCommit={handleSelectionCommit} canvasWidth={canvasSize.width} canvasHeight={canvasSize.height} backgroundImage={backgroundImage} />
             <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <Timeline 
-                  frames={frames} 
-                  currentFrameIndex={currentFrameIndex} 
-                  onSelectFrame={handleSelectFrame} 
-                  onAddFrame={addFrame} 
-                  onDeleteFrame={deleteFrame} 
-                  onCopyFrame={copyFrame} 
-                  isPlaying={isPlaying} 
-                  onTogglePlay={() => setIsPlaying(!isPlaying)} 
-                  audioTracks={audioTracks} 
-                  onAddAudioTrack={handleAddAudioTrack} 
-                  onRemoveAudioTrack={handleRemoveAudioTrack}
-                  isFocusMode={isFocusMode}
-                />
+                <Timeline frames={frames} currentFrameIndex={currentFrameIndex} onSelectFrame={handleSelectFrame} onAddFrame={addFrame} onDeleteFrame={deleteFrame} onCopyFrame={copyFrame} isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)} audioTracks={audioTracks} onAddAudioTrack={handleAddAudioTrack} onRemoveAudioTrack={handleRemoveAudioTrack} isFocusMode={isFocusMode} />
             </div>
         </div>
       </main>
-      <SettingsModal 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)} 
-        fps={fps} 
-        setFps={(v) => { setFps(v); setHasUnsavedChanges(true); }} 
-        projectName={projectName} 
-        setProjectName={(v) => { setProjectName(v); setHasUnsavedChanges(true); }} 
-        canvasSize={canvasSize} 
-        setCanvasSize={(v) => { setCanvasSize(v); setHasUnsavedChanges(true); }} 
-        backgroundImage={backgroundImage} 
-        setBackgroundImage={(v) => { setBackgroundImage(v); setHasUnsavedChanges(true); }}
-        onBackupProject={handleBackupProject} 
-      />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} fps={fps} setFps={setFps} projectName={projectName} setProjectName={setProjectName} canvasSize={canvasSize} setCanvasSize={setCanvasSize} backgroundImage={backgroundImage} setBackgroundImage={setBackgroundImage} onBackupProject={handleBackupProject} />
     </div>
   );
 }

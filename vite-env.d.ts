@@ -1,4 +1,3 @@
-
 declare module '*.svg' {
   const content: string;
   export default content;
@@ -30,8 +29,6 @@ declare module '*.webp' {
 }
 
 // WebCodecs API Type Definitions for Audio
-// These are added to fix "Cannot find name 'AudioEncoder'" and related errors
-
 interface EncodedAudioChunk {
   readonly type: "key" | "delta";
   readonly timestamp: number;

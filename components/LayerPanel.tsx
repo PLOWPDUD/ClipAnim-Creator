@@ -1,13 +1,13 @@
-
 import React from 'react';
 import { Layer } from '../types';
-import { Icons } from './Icons';
+import { Icons } from '../Icons';
 
 interface LayerPanelProps {
   layers: Layer[];
   activeLayerId: string;
   onSelectLayer: (id: string) => void;
   onAddLayer: () => void;
+  onDuplicateLayer: (id: string) => void;
   onRemoveLayer: (id: string) => void;
   onToggleVisibility: (id: string) => void;
   onToggleLock: (id: string) => void;
@@ -20,6 +20,7 @@ export const LayerPanel: React.FC<LayerPanelProps> = ({
   activeLayerId,
   onSelectLayer,
   onAddLayer,
+  onDuplicateLayer,
   onRemoveLayer,
   onToggleVisibility,
   onToggleLock,
@@ -40,6 +41,9 @@ export const LayerPanel: React.FC<LayerPanelProps> = ({
         <div className="flex items-center gap-2">
             <button onClick={onAddLayer} className="p-1 hover:bg-gray-600 rounded text-gray-300 hover:text-white" title="Add Layer">
                 <Icons.Plus size={16} />
+            </button>
+            <button onClick={() => onDuplicateLayer(activeLayerId)} className="p-1 hover:bg-gray-600 rounded text-gray-300 hover:text-white" title="Duplicate Layer">
+                <Icons.Copy size={16} />
             </button>
             <button onClick={onClose} className="p-1 hover:bg-gray-600 rounded text-gray-300 hover:text-white" title="Close">
                 <Icons.X size={16} />
