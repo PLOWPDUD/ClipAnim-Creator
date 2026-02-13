@@ -634,7 +634,6 @@ export default function App() {
       setHasUnsavedChanges(true);
     }
   };
-  const handleDeleteSelection = () => { if (selection) { setSelection(null); setHasUnsavedChanges(true); } };
 
   const animate = (timestamp: number) => {
     if (!isPlaying) return;

@@ -56,8 +56,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const [activePopover, setActivePopover] = useState<ToolType | 'color' | null>(null);
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
   const [colorTab, setColorTab] = useState<'wheel' | 'sliders'>('wheel');
-  const [tempHex, setTempHex] = useState(currentColor);
-  const [tempRgb, setTempRgb] = useState({ r: 0, g: 0, b: 0 });
   const [hsv, setHsv] = useState({ h: 0, s: 0, v: 0 });
 
   const wheelRef = useRef<HTMLDivElement>(null);
@@ -68,11 +66,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   }, [currentTool]);
 
   useEffect(() => {
-      setTempHex(currentColor);
-      const r = parseInt(currentColor.slice(1, 3), 16);
-      const g = parseInt(currentColor.slice(3, 5), 16);
-      const b = parseInt(currentColor.slice(5, 7), 16);
-      if (!isNaN(r)) setTempRgb({ r, g, b });
       const newHsv = hexToHsv(currentColor);
       setHsv(newHsv);
   }, [currentColor]);
