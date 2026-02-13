@@ -1,4 +1,3 @@
-
 {
   "name": "clipanim-creator",
   "private": true,
@@ -14,7 +13,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "jszip": "^3.10.1",
-    "gifshot": "^0.4.5"
+    "gifshot": "^0.4.5",
+    "mp4-muxer": "^5.1.3"
   },
   "devDependencies": {
     "@types/react": "^18.2.64",
