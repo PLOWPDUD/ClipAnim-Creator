@@ -345,7 +345,7 @@ export default function App() {
           });
       } else {
           setShowExitConfirm(false);
-          setView('menu');
+              setView('menu');
       }
   };
 
@@ -801,6 +801,14 @@ export default function App() {
                  <div>
                     <h1 className="text-3xl font-bold mb-2">My Animations</h1>
                     <p className="text-gray-400">Create, edit and share your stories.</p>
+                    <a 
+                        href="https://github.com/PLOWPDUD/ClipAnim-Creator" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-block mt-2 text-xs font-bold text-[#FF3B30] hover:text-red-400 transition-colors bg-white/5 px-3 py-1 rounded-full border border-[#FF3B30]/20"
+                    >
+                        Visit The Open Source Here
+                    </a>
                  </div>
                  <input ref={importFileRef} type="file" accept=".json" onChange={handleImportProjectFile} className="hidden" />
              </div>
