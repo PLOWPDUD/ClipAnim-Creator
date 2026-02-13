@@ -116,8 +116,6 @@ export default function App() {
       else setPenSize(width);
   };
 
-  // --- Persistence & Initialization ---
-
   // Load project list on mount from IndexedDB
   useEffect(() => {
       const fetchProjects = async () => {
@@ -204,7 +202,7 @@ export default function App() {
       setProjectId(pid);
       setProjectName("New Animation");
       setCanvasSize({ width: 800, height: 600 });
-      setBackgroundImage(null);
+      backgroundImage && setBackgroundImage(null);
       
       const defaultL = [createDefaultLayer()];
       setLayers(defaultL);
@@ -237,9 +235,7 @@ export default function App() {
               alert("Could not delete project.");
           }
       }
-  }
-
-  // --- IMPORT / EXPORT PROJECT FILE ---
+  };
 
   const handleBackupProject = () => {
       const projectData: ProjectData = {
@@ -588,7 +584,7 @@ export default function App() {
       setHistoryIndex(historyIndex + 1);
       const newFrames = history[historyIndex + 1];
       setFrames(newFrames);
-      if (currentFrameIndex >= newFrames.length) setCurrentFrameIndex(Math.max(0, newFrames.length - 1));
+      if (currentFrameIndex >= newFrames.length) setCurrentFrameIndex(newFrames.length - 1);
       setHasUnsavedChanges(true);
     }
   };
@@ -662,10 +658,10 @@ export default function App() {
     const height = canvasSize.height;
 
     try {
-        // 1. Pre-render all frames to Image elements for faster access
+        // Pre-render all frames to Image elements
         const compositeImages = await Promise.all(frames.map(async (f, idx) => {
             const url = await compositeLayers(f, layers, width, height, '#ffffff', backgroundImage);
-            setExportProgress(Math.round(((idx + 1) / frames.length) * 20)); 
+            setExportProgress(Math.round(((idx + 1) / frames.length) * 30)); 
             return new Promise<HTMLImageElement>((resolve, reject) => {
                 const img = new Image();
                 img.onload = () => resolve(img);
@@ -674,7 +670,6 @@ export default function App() {
             });
         }));
 
-        // === Simple Formats (No Audio Needed) ===
         if (format === 'png-seq') {
             const zip = new JSZip();
             const folder = zip.folder(`${projectName}_frames`);
@@ -694,13 +689,12 @@ export default function App() {
         }
 
         if (format === 'gif') {
-            const images = compositeImages.map(img => img.src);
             gifshot.createGIF({
-                images: images,
+                images: compositeImages.map(img => img.src),
                 interval: 1 / fps,
                 gifWidth: width,
                 gifHeight: height,
-                progressCallback: (p: number) => setExportProgress(20 + Math.round(p * 80))
+                progressCallback: (p: number) => setExportProgress(30 + Math.round(p * 70))
             }, (obj: any) => {
                 if (!obj.error) {
                     const a = document.createElement('a');
@@ -716,122 +710,87 @@ export default function App() {
             return;
         }
 
-        // === Video Formats with Audio Mixing ===
-        
-        // 1. Prepare Audio Mixing
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const dest = audioCtx.createMediaStreamDestination();
-        
-        // Decode and mix all audio tracks
-        const bufferPromises = audioTracks.map(async track => {
-            try {
-                const res = await fetch(track.url);
-                const ab = await res.arrayBuffer();
-                return await audioCtx.decodeAudioData(ab);
-            } catch (e) {
-                console.error("Failed to decode track", track.name);
-                return null;
-            }
-        });
-        
-        const decodedBuffers = (await Promise.all(bufferPromises)).filter(b => b !== null) as AudioBuffer[];
-        
-        // Connect buffers to the destination stream
-        decodedBuffers.forEach(buffer => {
-            const source = audioCtx.createBufferSource();
-            source.buffer = buffer;
-            source.connect(dest);
-            source.start(0); // Start at beginning of recording
-        });
+        // Video Formats (MP4, WebM, AVI)
+        let exportCanvas: HTMLCanvasElement | null = null;
+        try {
+            exportCanvas = document.createElement('canvas');
+            exportCanvas.width = width;
+            exportCanvas.height = height;
+            const ctx = exportCanvas.getContext('2d', { willReadFrequently: true }); 
+            if (!ctx) throw new Error('Ctx error');
 
-        // 2. Prepare Video Stream
-        const exportCanvas = document.createElement('canvas');
-        exportCanvas.width = width;
-        exportCanvas.height = height;
-        const ctx = exportCanvas.getContext('2d', { willReadFrequently: true });
-        if (!ctx) throw new Error("Canvas context failed");
+            const mimeTypes: Record<string, string[]> = {
+                mp4: ['video/mp4; codecs="avc1.424028, mp4a.40.2"', 'video/mp4'],
+                webm: ['video/webm;codecs=vp9,opus', 'video/webm'],
+                avi: ['video/webm']
+            };
 
-        // Capture stream from canvas
-        // @ts-ignore
-        const canvasStream = exportCanvas.captureStream(fps); 
-        
-        // Combine Audio + Video into one stream
-        const combinedStream = new MediaStream([
-            ...canvasStream.getVideoTracks(),
-            ...dest.stream.getAudioTracks()
-        ]);
-
-        // 3. Setup MediaRecorder
-        let mimeType = 'video/webm;codecs=vp9';
-        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
-        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4';
-
-        const mediaRecorder = new MediaRecorder(combinedStream, {
-            mimeType,
-            videoBitsPerSecond: 8000000 
-        });
-
-        const chunks: BlobPart[] = [];
-        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-        
-        mediaRecorder.onstop = () => {
-             const blob = new Blob(chunks, { type: mimeType });
-             const url = URL.createObjectURL(blob);
-             const a = document.createElement('a');
-             a.href = url;
-             
-             let ext = 'mp4';
-             if (format === 'webm') ext = 'webm';
-             if (format === 'avi') ext = 'avi';
-
-             a.download = `${projectName}.${ext}`;
-             a.click();
-             URL.revokeObjectURL(url);
-             
-             // Cleanup
-             audioCtx.close();
-             setIsExporting(false);
-             setIsExportModalOpen(false);
-        };
-
-        // 4. Start Real-time Recording Loop
-        mediaRecorder.start();
-        
-        // Use a loop that draws frames synced to the AudioContext time
-        const duration = frames.length / fps;
-        const startTime = audioCtx.currentTime;
-        let animationFrameId: number;
-
-        const renderLoop = () => {
-            const now = audioCtx.currentTime - startTime;
+            const selectedMimeType = mimeTypes[format]?.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
             
-            if (now >= duration) {
-                mediaRecorder.stop();
-                cancelAnimationFrame(animationFrameId);
-                return;
+            // Use a manual capture stream (0 FPS)
+            const stream = exportCanvas.captureStream(0); 
+            const mediaRecorder = new MediaRecorder(stream, { 
+                mimeType: selectedMimeType, 
+                videoBitsPerSecond: 8000000 
+            });
+
+            const chunks: BlobPart[] = [];
+            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+            mediaRecorder.onstop = () => {
+                if (chunks.length === 0) {
+                    alert("Export failed: No data recorded.");
+                    setIsExporting(false);
+                    return;
+                }
+
+                const blob = new Blob(chunks, { type: selectedMimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                
+                const actualExtension = selectedMimeType.includes('mp4') ? 'mp4' : 'webm';
+                a.download = `${projectName}.${actualExtension}`;
+                
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                setIsExporting(false);
+                setIsExportModalOpen(false);
+            };
+
+            mediaRecorder.start();
+
+            // Frame-by-frame rendering loop
+            for (let i = 0; i < compositeImages.length; i++) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(compositeImages[i], 0, 0);
+                
+                // Fix: Check and call requestFrame by casting to any to satisfy TypeScript
+                const track = stream.getVideoTracks()[0] as any;
+                if (track && track.requestFrame) {
+                    track.requestFrame();
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 1000 / fps));
+                setExportProgress(30 + Math.round(((i + 1) / compositeImages.length) * 70));
             }
 
-            // Determine which frame to show based on audio time
-            const frameIndex = Math.floor(now * fps);
-            
-            // Safety check
-            if (frameIndex >= 0 && frameIndex < compositeImages.length) {
-                ctx.clearRect(0, 0, width, height);
-                ctx.drawImage(compositeImages[frameIndex], 0, 0);
-            }
-            
-            setExportProgress(20 + Math.round((now / duration) * 80));
-            animationFrameId = requestAnimationFrame(renderLoop);
-        };
+            await new Promise(resolve => setTimeout(resolve, 500));
+            mediaRecorder.stop();
 
-        // Kick off the render loop
-        renderLoop();
+        } catch (error: any) {
+            console.error("Export failed", error);
+            alert("Export failed: " + error.message);
+            setIsExporting(false);
+        }
 
     } catch (error: any) {
-        console.error("Export failed", error);
-        alert("Export failed: " + error.message);
+        console.error("Export pre-processing failed", error);
         setIsExporting(false);
-        setIsExportModalOpen(false);
     }
   };
 
@@ -843,7 +802,6 @@ export default function App() {
                     <h1 className="text-3xl font-bold mb-2">My Animations</h1>
                     <p className="text-gray-400">Create, edit and share your stories.</p>
                  </div>
-                 {/* Hidden Import Input */}
                  <input ref={importFileRef} type="file" accept=".json" onChange={handleImportProjectFile} className="hidden" />
              </div>
              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-10">
@@ -851,13 +809,10 @@ export default function App() {
                      <div className="w-16 h-16 rounded-full bg-[#FF3B30]/20 flex items-center justify-center text-[#FF3B30] mb-3 group-hover:scale-110 transition-transform"><Icons.Plus size={32} /></div>
                      <span className="font-bold text-gray-300 group-hover:text-white">New Animation</span>
                  </button>
-                 
-                 {/* Import Button */}
                  <button onClick={() => importFileRef.current?.click()} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-blue-500 hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
                      <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-500 mb-3 group-hover:scale-110 transition-transform"><Icons.Upload size={32} /></div>
                      <span className="font-bold text-gray-300 group-hover:text-white">Import Project</span>
                  </button>
-
                  {savedProjects.map(project => (
                      <div key={project.id} onClick={() => loadProject(project.id)} className="relative group aspect-[4/3] bg-[#1e1e1e] rounded-2xl overflow-hidden cursor-pointer hover:ring-2 ring-[#FF3B30] transition-all shadow-lg">
                          {project.thumbnailUrl ? ( <img src={project.thumbnailUrl} alt={project.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" /> ) : ( <div className="w-full h-full flex items-center justify-center text-gray-700"><Icons.Image size={48} /></div> )}
@@ -882,7 +837,7 @@ export default function App() {
     <div key={projectId} className="flex flex-col h-screen supports-[height:100dvh]:h-[100dvh] bg-[#121212] text-white overflow-hidden relative">
       {showExitConfirm && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-[#1e1e1e] rounded-3xl p-8 max-w-sm w-full border border-gray-700 shadow-2xl animate-in zoom-in-95 fade-in duration-200 text-center">
+            <div className="bg-[#1e1e1e] rounded-3xl p-8 max-sm w-full border border-gray-700 shadow-2xl animate-in zoom-in-95 fade-in duration-200 text-center">
                 <div className="w-16 h-16 bg-[#FF3B30]/20 rounded-full flex items-center justify-center text-[#FF3B30] mx-auto mb-6"> <Icons.Save size={32} /> </div>
                 <h2 className="text-2xl font-bold mb-2">Unsaved Changes</h2>
                 <p className="text-gray-400 mb-8">Do you want to save your progress before leaving?</p>
@@ -894,7 +849,6 @@ export default function App() {
             </div>
         </div>
       )}
-
       {isExportModalOpen && (
           <ExportModal 
             isOpen={isExportModalOpen} 
@@ -904,14 +858,10 @@ export default function App() {
             progress={exportProgress}
           />
       )}
-      
-      {/* Help Modal */}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
-
       {isLayerPanelOpen && (
           <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onClose={() => setIsLayerPanelOpen(false)} />
       )}
-
       {!isFocusMode && (
         <header className="h-14 bg-[#1e1e1e] flex items-center px-4 justify-between border-b border-gray-700 shrink-0 z-30">
             <div className="flex items-center space-x-2">
@@ -939,8 +889,6 @@ export default function App() {
             </div>
         </header>
       )}
-
-      {/* Main Workspace Layout Fix */}
       <main className="flex-1 relative flex flex-row overflow-hidden min-h-0">
         <div className="h-full shrink-0">
           <Toolbar 
@@ -968,7 +916,6 @@ export default function App() {
           />
         </div>
         <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
-            {/* Canvas Area takes full parent height now */}
             <div className="absolute inset-0">
                 <CanvasArea 
                     currentFrame={frames[currentFrameIndex]}
@@ -994,13 +941,25 @@ export default function App() {
                     backgroundImage={backgroundImage}
                 />
             </div>
-            {/* Timeline is now an absolute overlay at the bottom */}
+            {/* Timeline is now always visible but constrained in Focus Mode */}
             <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <Timeline frames={frames} currentFrameIndex={currentFrameIndex} onSelectFrame={handleSelectFrame} onAddFrame={addFrame} onDeleteFrame={deleteFrame} onCopyFrame={copyFrame} isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)} audioTracks={audioTracks} onAddAudioTrack={handleAddAudioTrack} onRemoveAudioTrack={handleRemoveAudioTrack} />
+                <Timeline 
+                  frames={frames} 
+                  currentFrameIndex={currentFrameIndex} 
+                  onSelectFrame={handleSelectFrame} 
+                  onAddFrame={addFrame} 
+                  onDeleteFrame={deleteFrame} 
+                  onCopyFrame={copyFrame} 
+                  isPlaying={isPlaying} 
+                  onTogglePlay={() => setIsPlaying(!isPlaying)} 
+                  audioTracks={audioTracks} 
+                  onAddAudioTrack={handleAddAudioTrack} 
+                  onRemoveAudioTrack={handleRemoveAudioTrack}
+                  isFocusMode={isFocusMode}
+                />
             </div>
         </div>
       </main>
-
       <SettingsModal 
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
