@@ -2,6 +2,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { ToolType, ShapeType, BrushType } from '../types';
 import { Icons } from './Icons';
+import { hexToHsv, hsvToHex } from '../utils/drawingUtils';
 
 interface ToolbarProps {
   currentTool: ToolType;
@@ -57,8 +58,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
 
   // Color Picker State
+  const [colorTab, setColorTab] = useState<'wheel' | 'sliders'>('wheel');
   const [tempHex, setTempHex] = useState(currentColor);
   const [tempRgb, setTempRgb] = useState({ r: 0, g: 0, b: 0 });
+  const [hsv, setHsv] = useState({ h: 0, s: 0, v: 0 });
 
   useEffect(() => {
     setActivePopover(null);
@@ -71,6 +74,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       const g = parseInt(currentColor.slice(3, 5), 16);
       const b = parseInt(currentColor.slice(5, 7), 16);
       if (!isNaN(r)) setTempRgb({ r, g, b });
+      
+      const newHsv = hexToHsv(currentColor);
+      setHsv(newHsv);
   }, [currentColor]);
 
   const handleToolClick = (e: React.MouseEvent<HTMLButtonElement>, toolId: ToolType) => {
@@ -122,6 +128,42 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       const hex = `#${toHex(newRgb.r)}${toHex(newRgb.g)}${toHex(newRgb.b)}`;
       setTempHex(hex);
       onChangeColor(hex);
+  };
+
+  // Color Wheel Interaction Logic
+  const wheelRef = useRef<HTMLDivElement>(null);
+  const svRef = useRef<HTMLDivElement>(null);
+
+  const handleWheelPointer = (e: React.PointerEvent) => {
+      if (!wheelRef.current) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const rect = wheelRef.current.getBoundingClientRect();
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      const x = e.clientX - rect.left - cx;
+      const y = e.clientY - rect.top - cy;
+      
+      let angle = Math.atan2(y, x) * (180 / Math.PI) + 90;
+      if (angle < 0) angle += 360;
+      
+      const newHsv = { ...hsv, h: angle };
+      setHsv(newHsv);
+      onChangeColor(hsvToHex(newHsv.h, newHsv.s, newHsv.v));
+  };
+
+  const handleSvPointer = (e: React.PointerEvent) => {
+      if (!svRef.current) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const rect = svRef.current.getBoundingClientRect();
+      let x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      let y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+      
+      const s = (x / rect.width) * 100;
+      const v = 100 - (y / rect.height) * 100;
+      
+      const newHsv = { ...hsv, s, v };
+      setHsv(newHsv);
+      onChangeColor(hsvToHex(newHsv.h, newHsv.s, newHsv.v));
   };
 
   const tools: { id: ToolType; icon: React.ElementType; label: string }[] = [
@@ -266,79 +308,157 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       {/* Color Picker Popover */}
       {activePopover === 'color' && (
         <div 
-            className="fixed bg-[#252525] p-4 rounded-xl shadow-2xl w-64 border border-gray-700 z-50 animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-4"
+            className="fixed bg-[#252525] p-3 rounded-xl shadow-2xl w-60 border border-gray-700 z-50 animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-3"
             style={{ 
                 top: popoverPos.top, 
                 left: popoverPos.left,
                 transform: 'translateY(-50%)' 
             }}
         >
-            <div className="flex justify-between items-center text-gray-300 font-bold text-xs uppercase tracking-wider">
-                Color Selector
-                <Icons.Palette size={14} />
+            <div className="flex items-center gap-2 bg-gray-800 p-1 rounded-lg">
+                <button 
+                    onClick={() => setColorTab('wheel')}
+                    className={`flex-1 text-xs font-bold py-1.5 rounded-md transition-all ${colorTab === 'wheel' ? 'bg-[#FF3B30] text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                >
+                    Wheel
+                </button>
+                <button 
+                    onClick={() => setColorTab('sliders')}
+                    className={`flex-1 text-xs font-bold py-1.5 rounded-md transition-all ${colorTab === 'sliders' ? 'bg-[#FF3B30] text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                >
+                    Sliders
+                </button>
             </div>
 
-            {/* Visual Picker */}
-            <div className="w-full h-32 rounded-lg overflow-hidden border border-gray-600 relative">
-                <input 
-                    type="color" 
-                    value={currentColor} 
-                    onChange={(e) => onChangeColor(e.target.value)}
-                    className="absolute -top-[50%] -left-[50%] w-[200%] h-[200%] p-0 m-0 border-none cursor-crosshair"
-                />
-            </div>
+            {/* TAB: WHEEL */}
+            {colorTab === 'wheel' && (
+                <div className="flex flex-col items-center py-2">
+                    <div className="relative w-48 h-48">
+                        {/* HUE RING */}
+                        <div 
+                            ref={wheelRef}
+                            onPointerDown={handleWheelPointer}
+                            onPointerMove={(e) => e.buttons === 1 && handleWheelPointer(e)}
+                            className="absolute inset-0 rounded-full cursor-crosshair shadow-inner border border-gray-700"
+                            style={{
+                                background: `conic-gradient(
+                                    red 0deg, 
+                                    yellow 60deg, 
+                                    lime 120deg, 
+                                    cyan 180deg, 
+                                    blue 240deg, 
+                                    magenta 300deg, 
+                                    red 360deg
+                                )`
+                            }}
+                        >
+                             {/* Hue Indicator */}
+                             <div 
+                                className="absolute w-3 h-3 rounded-full border-2 border-white shadow bg-transparent pointer-events-none"
+                                style={{
+                                    left: '50%',
+                                    top: '5%',
+                                    transformOrigin: '0 90px',
+                                    transform: `translate(-50%, -50%) rotate(${hsv.h}deg)`
+                                }}
+                             />
+                        </div>
 
-            {/* HEX Input */}
-            <div>
-                <label className="text-[10px] text-gray-500 font-bold block mb-1">HEX</label>
-                <div className="flex items-center bg-gray-800 rounded px-2 py-1 border border-gray-700">
-                    <span className="text-gray-500 text-xs mr-1">#</span>
-                    <input 
-                        type="text" 
-                        value={tempHex.replace('#', '')}
-                        onChange={(e) => handleHexChange('#' + e.target.value)}
-                        maxLength={6}
-                        className="bg-transparent text-white text-xs w-full outline-none font-mono uppercase"
-                    />
+                        {/* SV SQUARE (Inset) */}
+                        <div className="absolute inset-0 m-auto w-28 h-28 bg-[#252525] rounded-lg flex items-center justify-center overflow-hidden">
+                             <div 
+                                ref={svRef}
+                                onPointerDown={handleSvPointer}
+                                onPointerMove={(e) => e.buttons === 1 && handleSvPointer(e)}
+                                className="w-full h-full cursor-crosshair relative"
+                                style={{
+                                    backgroundColor: hsvToHex(hsv.h, 100, 100),
+                                    backgroundImage: `
+                                        linear-gradient(to top, black, transparent),
+                                        linear-gradient(to right, white, transparent)
+                                    `
+                                }}
+                             >
+                                 {/* SV Indicator */}
+                                 <div 
+                                    className="absolute w-3 h-3 rounded-full border-2 border-white shadow pointer-events-none transform -translate-x-1/2 -translate-y-1/2"
+                                    style={{
+                                        left: `${hsv.s}%`,
+                                        top: `${100 - hsv.v}%`
+                                    }}
+                                 />
+                             </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            )}
 
-            {/* RGB Inputs */}
-            <div>
-                 <label className="text-[10px] text-gray-500 font-bold block mb-1">RGB</label>
-                 <div className="grid grid-cols-3 gap-2">
-                     <div className="bg-gray-800 rounded px-1 py-1 border border-gray-700 flex items-center">
-                         <span className="text-red-500 text-[10px] font-bold mr-1">R</span>
-                         <input 
-                            type="number" 
-                            min="0" max="255"
-                            value={tempRgb.r}
-                            onChange={(e) => handleRgbChange('r', e.target.value)}
-                            className="bg-transparent text-white text-xs w-full outline-none font-mono"
-                         />
-                     </div>
-                     <div className="bg-gray-800 rounded px-1 py-1 border border-gray-700 flex items-center">
-                         <span className="text-green-500 text-[10px] font-bold mr-1">G</span>
-                         <input 
-                            type="number" 
-                            min="0" max="255"
-                            value={tempRgb.g}
-                            onChange={(e) => handleRgbChange('g', e.target.value)}
-                            className="bg-transparent text-white text-xs w-full outline-none font-mono"
-                         />
-                     </div>
-                     <div className="bg-gray-800 rounded px-1 py-1 border border-gray-700 flex items-center">
-                         <span className="text-blue-500 text-[10px] font-bold mr-1">B</span>
-                         <input 
-                            type="number" 
-                            min="0" max="255"
-                            value={tempRgb.b}
-                            onChange={(e) => handleRgbChange('b', e.target.value)}
-                            className="bg-transparent text-white text-xs w-full outline-none font-mono"
-                         />
-                     </div>
-                 </div>
-            </div>
+            {/* TAB: SLIDERS */}
+            {colorTab === 'sliders' && (
+                <div className="space-y-4 py-2">
+                    {/* Visual Picker */}
+                    <div className="w-full h-24 rounded-lg overflow-hidden border border-gray-600 relative">
+                        <input 
+                            type="color" 
+                            value={currentColor} 
+                            onChange={(e) => onChangeColor(e.target.value)}
+                            className="absolute -top-[50%] -left-[50%] w-[200%] h-[200%] p-0 m-0 border-none cursor-crosshair"
+                        />
+                    </div>
+
+                    {/* HEX Input */}
+                    <div>
+                        <label className="text-[10px] text-gray-500 font-bold block mb-1">HEX</label>
+                        <div className="flex items-center bg-gray-800 rounded px-2 py-1 border border-gray-700">
+                            <span className="text-gray-500 text-xs mr-1">#</span>
+                            <input 
+                                type="text" 
+                                value={tempHex.replace('#', '')}
+                                onChange={(e) => handleHexChange('#' + e.target.value)}
+                                maxLength={6}
+                                className="bg-transparent text-white text-xs w-full outline-none font-mono uppercase"
+                            />
+                        </div>
+                    </div>
+
+                    {/* RGB Inputs */}
+                    <div>
+                        <label className="text-[10px] text-gray-500 font-bold block mb-1">RGB</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            <div className="bg-gray-800 rounded px-1 py-1 border border-gray-700 flex items-center">
+                                <span className="text-red-500 text-[10px] font-bold mr-1">R</span>
+                                <input 
+                                    type="number" 
+                                    min="0" max="255"
+                                    value={tempRgb.r}
+                                    onChange={(e) => handleRgbChange('r', e.target.value)}
+                                    className="bg-transparent text-white text-xs w-full outline-none font-mono"
+                                />
+                            </div>
+                            <div className="bg-gray-800 rounded px-1 py-1 border border-gray-700 flex items-center">
+                                <span className="text-green-500 text-[10px] font-bold mr-1">G</span>
+                                <input 
+                                    type="number" 
+                                    min="0" max="255"
+                                    value={tempRgb.g}
+                                    onChange={(e) => handleRgbChange('g', e.target.value)}
+                                    className="bg-transparent text-white text-xs w-full outline-none font-mono"
+                                />
+                            </div>
+                            <div className="bg-gray-800 rounded px-1 py-1 border border-gray-700 flex items-center">
+                                <span className="text-blue-500 text-[10px] font-bold mr-1">B</span>
+                                <input 
+                                    type="number" 
+                                    min="0" max="255"
+                                    value={tempRgb.b}
+                                    onChange={(e) => handleRgbChange('b', e.target.value)}
+                                    className="bg-transparent text-white text-xs w-full outline-none font-mono"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
       )}
 
@@ -355,7 +475,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <div className="text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
             Brush Style
           </div>
-          <div className="grid grid-cols-4 gap-2 mb-4">
+          <div className="grid grid-cols-5 gap-2 mb-4">
               <button onClick={() => onSelectBrushType('pen')} className={`p-2 rounded flex items-center justify-center ${currentBrushType === 'pen' ? 'bg-[#FF3B30] text-white' : 'bg-gray-700 text-gray-400'}`} title="Standard Pen">
                   <Icons.Pencil size={18} />
               </button>
@@ -367,6 +487,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               </button>
               <button onClick={() => onSelectBrushType('spray')} className={`p-2 rounded flex items-center justify-center ${currentBrushType === 'spray' ? 'bg-[#FF3B30] text-white' : 'bg-gray-700 text-gray-400'}`} title="Spray">
                   <Icons.Spray size={18} />
+              </button>
+              <button onClick={() => onSelectBrushType('pixel')} className={`p-2 rounded flex items-center justify-center ${currentBrushType === 'pixel' ? 'bg-[#FF3B30] text-white' : 'bg-gray-700 text-gray-400'}`} title="Pixel Brush">
+                  <Icons.Pixel size={18} />
               </button>
           </div>
 

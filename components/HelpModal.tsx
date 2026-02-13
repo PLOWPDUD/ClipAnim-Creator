@@ -62,6 +62,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                     <KeyRow label="Paste Selection" value="Ctrl + V" />
                     <KeyRow label="Delete Selection" value="Del / Backspace" />
                     <KeyRow label="Save Project" value="Ctrl + S" />
+                    <KeyRow label="Export Movie" value="Ctrl + Shift + E" />
                 </div>
             </section>
 

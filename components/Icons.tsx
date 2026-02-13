@@ -48,7 +48,8 @@ import {
   Palette,
   Highlighter,
   PenTool,
-  SprayCan
+  SprayCan,
+  Grid2X2
 } from 'lucide-react';
 
 export const Icons = {
@@ -67,7 +68,7 @@ export const Icons = {
   ChevronLeft,
   Download,
   Eye,
-  EyeOff,
+  EyeOff, 
   Lock, 
   Unlock, 
   Music, 
@@ -100,5 +101,6 @@ export const Icons = {
   Palette,
   Highlighter,
   Marker: PenTool,
-  Spray: SprayCan
+  Spray: SprayCan,
+  Pixel: Grid2X2
 };

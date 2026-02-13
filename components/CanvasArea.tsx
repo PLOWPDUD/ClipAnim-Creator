@@ -79,6 +79,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
   // Tracking movement to distinguish tap from drag
   const hasMoved = useRef(false);
   const drawStart = useRef<{x: number, y: number} | null>(null);
+  const lastPoint = useRef<{x: number, y: number} | null>(null);
   const canvasSnapshot = useRef<ImageData | null>(null);
 
   const dragStart = useRef<{x: number, y: number} | null>(null);
@@ -114,11 +115,18 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
     
+    // Default smoothing settings
+    ctx.imageSmoothingEnabled = brushType !== 'pixel';
+    
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     const layerData = currentFrame.layers?.[activeLayerId];
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // RESET CONTEXT STATE to prevent ghost transparency from previous tools
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
     
     if (layerData) {
         const img = new Image();
@@ -127,12 +135,17 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
             ctx.drawImage(img, 0, 0);
         };
     }
-  }, [currentFrame?.id, activeLayerId, currentFrame?.layers, canvasWidth, canvasHeight]);
+  }, [currentFrame?.id, activeLayerId, currentFrame?.layers, canvasWidth, canvasHeight, brushType]);
 
   const updateTransformStyle = () => {
     if (transformRef.current) {
       const { scale, x, y } = transform.current;
       transformRef.current.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+      
+      // Update rendering mode for pixel art when zoomed in
+      if (transformRef.current.style.imageRendering !== undefined) {
+         transformRef.current.style.imageRendering = scale > 2 ? 'pixelated' : 'auto';
+      }
     }
   };
 
@@ -190,6 +203,30 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
       setTextInput(null);
   };
 
+  // Helper: Draw a line of rectangles (Bresenham-like) for Pixel Brush
+  const drawPixelLine = (ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number) => {
+      const size = Math.floor(strokeWidth);
+      const dx = Math.abs(x1 - x0);
+      const dy = Math.abs(y1 - y0);
+      const sx = (x0 < x1) ? 1 : -1;
+      const sy = (y0 < y1) ? 1 : -1;
+      let err = dx - dy;
+
+      ctx.fillStyle = color;
+
+      let x = x0;
+      let y = y0;
+
+      while(true) {
+          ctx.fillRect(Math.floor(x - size/2), Math.floor(y - size/2), size, size);
+
+          if ((Math.abs(x - x1) < 1) && (Math.abs(y - y1) < 1)) break;
+          const e2 = 2 * err;
+          if (e2 > -dy) { err -= dy; x += sx; }
+          if (e2 < dx) { err += dx; y += sy; }
+      }
+  };
+
   // Setup brush styles
   const setupBrush = (ctx: CanvasRenderingContext2D) => {
       ctx.strokeStyle = color;
@@ -215,11 +252,11 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
               ctx.lineWidth = strokeWidth * 2;
               ctx.lineCap = 'square'; // Square cap for highlighter feel
               ctx.globalAlpha = 0.3;
-              // Ideally multiply, but source-over with low alpha works for simple layer compositing
-              // ctx.globalCompositeOperation = 'multiply'; 
           } else if (brushType === 'spray') {
               ctx.globalAlpha = 1;
-              // Spray doesn't use lineTo/stroke
+          } else if (brushType === 'pixel') {
+              ctx.globalAlpha = 1;
+              ctx.imageSmoothingEnabled = false;
           }
       }
   };
@@ -283,6 +320,8 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
     isDrawing.current = true;
     drawStart.current = { x, y };
+    lastPoint.current = { x, y };
+    
     const ctx = activeCanvasRef.current?.getContext('2d');
     if (!ctx) return;
 
@@ -294,7 +333,9 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
         canvasSnapshot.current = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     } else {
         setupBrush(ctx);
-        if (brushType !== 'spray') {
+        if (brushType === 'pixel' && tool === 'pen') {
+            // No immediate draw. Wait for Move or Up.
+        } else if (brushType !== 'spray') {
             ctx.beginPath();
             ctx.moveTo(x, y);
         }
@@ -464,6 +505,12 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 ctx.lineTo(x, y);
             }
             ctx.stroke();
+        } else if (tool === 'pen' && brushType === 'pixel') {
+            // Pixel Brush Drawing
+             if (lastPoint.current) {
+                 drawPixelLine(ctx, lastPoint.current.x, lastPoint.current.y, x, y);
+                 lastPoint.current = { x, y };
+             }
         } else if (tool === 'pen' && brushType === 'spray') {
              // Spray Effect
              const density = Math.max(1, strokeWidth * 2);
@@ -532,8 +579,8 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     if (isDrawing.current) {
         const ctx = activeCanvasRef.current?.getContext('2d');
         if (ctx) {
-            if ((tool === 'pen' && brushType !== 'spray') || tool === 'eraser') {
-                // Handle single tap for dots
+            if ((tool === 'pen' && brushType !== 'spray' && brushType !== 'pixel') || tool === 'eraser') {
+                // Handle single tap for dots for normal brushes
                 if (!hasMoved.current && drawStart.current) {
                     ctx.lineTo(drawStart.current.x, drawStart.current.y);
                     ctx.stroke();
@@ -541,8 +588,16 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 ctx.closePath();
                 ctx.globalCompositeOperation = 'source-over';
                 saveCanvas();
-            } else if (tool === 'pen' && brushType === 'spray') {
-                 // Spray finishes
+            } else if (brushType === 'pixel') {
+                // Handle single tap for pixel dot (deferred to avoid pinch dots)
+                if (!hasMoved.current && drawStart.current) {
+                    setupBrush(ctx);
+                    const size = Math.floor(strokeWidth);
+                    ctx.fillStyle = color;
+                    ctx.fillRect(Math.floor(drawStart.current.x - size/2), Math.floor(drawStart.current.y - size/2), size, size);
+                }
+                saveCanvas();
+            } else if (brushType === 'spray') {
                  saveCanvas();
             } else if (tool === 'shape') {
                 ctx.closePath();
@@ -551,6 +606,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
         }
         isDrawing.current = false;
         drawStart.current = null;
+        lastPoint.current = null;
         canvasSnapshot.current = null;
     }
   };
@@ -596,7 +652,8 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
             style={{ 
                 transform: `translate(0px, 0px) scale(1)`,
                 width: canvasWidth, 
-                height: canvasHeight 
+                height: canvasHeight,
+                imageRendering: 'auto'
             }}
         >
             {backgroundImage && (

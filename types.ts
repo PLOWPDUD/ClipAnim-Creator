@@ -1,7 +1,7 @@
 
 export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'shape' | 'text';
 
-export type BrushType = 'pen' | 'marker' | 'highlighter' | 'spray';
+export type BrushType = 'pen' | 'marker' | 'highlighter' | 'spray' | 'pixel';
 
 export type ShapeType = 'rectangle' | 'circle' | 'line';
 
