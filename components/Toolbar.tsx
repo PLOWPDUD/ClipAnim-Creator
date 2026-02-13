@@ -1,11 +1,13 @@
 
 import React, { useRef, useState, useEffect } from 'react';
-import { ToolType, ShapeType } from '../types';
+import { ToolType, ShapeType, BrushType } from '../types';
 import { Icons } from './Icons';
 
 interface ToolbarProps {
   currentTool: ToolType;
   onSelectTool: (tool: ToolType) => void;
+  currentBrushType: BrushType;
+  onSelectBrushType: (type: BrushType) => void;
   currentColor: string;
   onChangeColor: (color: string) => void;
   strokeWidth: number;
@@ -30,6 +32,8 @@ interface ToolbarProps {
 export const Toolbar: React.FC<ToolbarProps> = ({
   currentTool,
   onSelectTool,
+  currentBrushType,
+  onSelectBrushType,
   currentColor,
   onChangeColor,
   strokeWidth,
@@ -49,22 +53,32 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onSelectShapeType
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [activePopover, setActivePopover] = useState<ToolType | null>(null);
+  const [activePopover, setActivePopover] = useState<ToolType | 'color' | null>(null);
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
 
-  // Close popover when tool changes (e.g. via keyboard shortcut)
+  // Color Picker State
+  const [tempHex, setTempHex] = useState(currentColor);
+  const [tempRgb, setTempRgb] = useState({ r: 0, g: 0, b: 0 });
+
   useEffect(() => {
     setActivePopover(null);
   }, [currentTool]);
 
+  useEffect(() => {
+      // Sync local state when external color changes
+      setTempHex(currentColor);
+      const r = parseInt(currentColor.slice(1, 3), 16);
+      const g = parseInt(currentColor.slice(3, 5), 16);
+      const b = parseInt(currentColor.slice(5, 7), 16);
+      if (!isNaN(r)) setTempRgb({ r, g, b });
+  }, [currentColor]);
+
   const handleToolClick = (e: React.MouseEvent<HTMLButtonElement>, toolId: ToolType) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    // Calculate position: right of the button
     const top = rect.top + rect.height / 2;
-    const left = rect.right + 12; // 12px gap
+    const left = rect.right + 12;
 
     if (currentTool === toolId) {
-      // Toggle popover for tools that have options
       if (['pen', 'eraser', 'shape', 'text'].includes(toolId)) {
         if (activePopover === toolId) {
             setActivePopover(null);
@@ -79,9 +93,40 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     }
   };
 
+  const handleColorClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const top = rect.top + rect.height / 2;
+      const left = rect.right + 12;
+      
+      if (activePopover === 'color') {
+          setActivePopover(null);
+      } else {
+          setPopoverPos({ top, left });
+          setActivePopover('color');
+      }
+  };
+
+  const handleHexChange = (val: string) => {
+      setTempHex(val);
+      if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+          onChangeColor(val);
+      }
+  };
+
+  const handleRgbChange = (key: 'r' | 'g' | 'b', val: string) => {
+      const num = Math.min(255, Math.max(0, Number(val)));
+      const newRgb = { ...tempRgb, [key]: num };
+      setTempRgb(newRgb);
+      
+      const toHex = (n: number) => n.toString(16).padStart(2, '0');
+      const hex = `#${toHex(newRgb.r)}${toHex(newRgb.g)}${toHex(newRgb.b)}`;
+      setTempHex(hex);
+      onChangeColor(hex);
+  };
+
   const tools: { id: ToolType; icon: React.ElementType; label: string }[] = [
     { id: 'select', icon: Icons.MousePointer2, label: 'Select (S)' },
-    { id: 'pen', icon: Icons.Pencil, label: 'Pen (B)' },
+    { id: 'pen', icon: Icons.Pencil, label: 'Brush (B)' },
     { id: 'eraser', icon: Icons.Eraser, label: 'Eraser (E)' },
     { id: 'fill', icon: Icons.PaintBucket, label: 'Fill (F)' },
     { id: 'shape', icon: 
@@ -94,21 +139,20 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   const presets = ['#000000', '#FF3B30', '#007AFF', '#34C759', '#FF9500', '#FFFFFF'];
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      onImportImage(e.target.files[0]);
-    }
-    // Reset input
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
   const getPopoverTitle = (tool: ToolType) => {
       switch(tool) {
-          case 'pen': return 'Pen Size';
+          case 'pen': return 'Brush Settings';
           case 'eraser': return 'Eraser Size';
           case 'text': return 'Font Size';
           default: return 'Size';
       }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      onImportImage(e.target.files[0]);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
@@ -166,16 +210,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               <div className="w-8 h-px bg-gray-700 my-2 self-center" />
           </div>
         ) : (
-          /* Color Picker */
+          /* Color Picker Trigger */
           <div className="flex flex-col gap-2 shrink-0 items-center">
-            <div className="relative group">
-              <input 
-                  type="color" 
-                  value={currentColor}
-                  onChange={(e) => onChangeColor(e.target.value)}
-                  className="w-10 h-10 rounded-full cursor-pointer border-2 border-white/20 p-0 overflow-hidden"
-              />
-            </div>
+            <button 
+                onClick={handleColorClick}
+                className="w-10 h-10 rounded-full cursor-pointer border-2 border-white/20 p-0 overflow-hidden hover:scale-110 transition-transform relative"
+                style={{ backgroundColor: currentColor }}
+                title="Color Picker"
+            >
+                {activePopover === 'color' && <div className="absolute inset-0 border-2 border-white rounded-full animate-pulse" />}
+            </button>
             
             <div className="flex flex-col gap-2">
               {presets.map(color => (
@@ -217,8 +261,133 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </button>
       </div>
 
-      {/* FIXED POPOVERS */}
-      {(activePopover === 'pen' || activePopover === 'eraser' || activePopover === 'text') && (
+      {/* --- POPOVERS --- */}
+
+      {/* Color Picker Popover */}
+      {activePopover === 'color' && (
+        <div 
+            className="fixed bg-[#252525] p-4 rounded-xl shadow-2xl w-64 border border-gray-700 z-50 animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-4"
+            style={{ 
+                top: popoverPos.top, 
+                left: popoverPos.left,
+                transform: 'translateY(-50%)' 
+            }}
+        >
+            <div className="flex justify-between items-center text-gray-300 font-bold text-xs uppercase tracking-wider">
+                Color Selector
+                <Icons.Palette size={14} />
+            </div>
+
+            {/* Visual Picker */}
+            <div className="w-full h-32 rounded-lg overflow-hidden border border-gray-600 relative">
+                <input 
+                    type="color" 
+                    value={currentColor} 
+                    onChange={(e) => onChangeColor(e.target.value)}
+                    className="absolute -top-[50%] -left-[50%] w-[200%] h-[200%] p-0 m-0 border-none cursor-crosshair"
+                />
+            </div>
+
+            {/* HEX Input */}
+            <div>
+                <label className="text-[10px] text-gray-500 font-bold block mb-1">HEX</label>
+                <div className="flex items-center bg-gray-800 rounded px-2 py-1 border border-gray-700">
+                    <span className="text-gray-500 text-xs mr-1">#</span>
+                    <input 
+                        type="text" 
+                        value={tempHex.replace('#', '')}
+                        onChange={(e) => handleHexChange('#' + e.target.value)}
+                        maxLength={6}
+                        className="bg-transparent text-white text-xs w-full outline-none font-mono uppercase"
+                    />
+                </div>
+            </div>
+
+            {/* RGB Inputs */}
+            <div>
+                 <label className="text-[10px] text-gray-500 font-bold block mb-1">RGB</label>
+                 <div className="grid grid-cols-3 gap-2">
+                     <div className="bg-gray-800 rounded px-1 py-1 border border-gray-700 flex items-center">
+                         <span className="text-red-500 text-[10px] font-bold mr-1">R</span>
+                         <input 
+                            type="number" 
+                            min="0" max="255"
+                            value={tempRgb.r}
+                            onChange={(e) => handleRgbChange('r', e.target.value)}
+                            className="bg-transparent text-white text-xs w-full outline-none font-mono"
+                         />
+                     </div>
+                     <div className="bg-gray-800 rounded px-1 py-1 border border-gray-700 flex items-center">
+                         <span className="text-green-500 text-[10px] font-bold mr-1">G</span>
+                         <input 
+                            type="number" 
+                            min="0" max="255"
+                            value={tempRgb.g}
+                            onChange={(e) => handleRgbChange('g', e.target.value)}
+                            className="bg-transparent text-white text-xs w-full outline-none font-mono"
+                         />
+                     </div>
+                     <div className="bg-gray-800 rounded px-1 py-1 border border-gray-700 flex items-center">
+                         <span className="text-blue-500 text-[10px] font-bold mr-1">B</span>
+                         <input 
+                            type="number" 
+                            min="0" max="255"
+                            value={tempRgb.b}
+                            onChange={(e) => handleRgbChange('b', e.target.value)}
+                            className="bg-transparent text-white text-xs w-full outline-none font-mono"
+                         />
+                     </div>
+                 </div>
+            </div>
+        </div>
+      )}
+
+      {/* Brush Settings Popover */}
+      {activePopover === 'pen' && (
+        <div 
+          className="fixed bg-[#252525] p-3 rounded-lg shadow-xl w-52 border border-gray-700 z-50 animate-in fade-in zoom-in-95 duration-100"
+          style={{ 
+            top: popoverPos.top, 
+            left: popoverPos.left,
+            transform: 'translateY(-50%)' 
+          }}
+        >
+          <div className="text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
+            Brush Style
+          </div>
+          <div className="grid grid-cols-4 gap-2 mb-4">
+              <button onClick={() => onSelectBrushType('pen')} className={`p-2 rounded flex items-center justify-center ${currentBrushType === 'pen' ? 'bg-[#FF3B30] text-white' : 'bg-gray-700 text-gray-400'}`} title="Standard Pen">
+                  <Icons.Pencil size={18} />
+              </button>
+              <button onClick={() => onSelectBrushType('marker')} className={`p-2 rounded flex items-center justify-center ${currentBrushType === 'marker' ? 'bg-[#FF3B30] text-white' : 'bg-gray-700 text-gray-400'}`} title="Marker">
+                  <Icons.Marker size={18} />
+              </button>
+              <button onClick={() => onSelectBrushType('highlighter')} className={`p-2 rounded flex items-center justify-center ${currentBrushType === 'highlighter' ? 'bg-[#FF3B30] text-white' : 'bg-gray-700 text-gray-400'}`} title="Highlighter">
+                  <Icons.Highlighter size={18} />
+              </button>
+              <button onClick={() => onSelectBrushType('spray')} className={`p-2 rounded flex items-center justify-center ${currentBrushType === 'spray' ? 'bg-[#FF3B30] text-white' : 'bg-gray-700 text-gray-400'}`} title="Spray">
+                  <Icons.Spray size={18} />
+              </button>
+          </div>
+
+          <div className="w-full h-px bg-gray-700 mb-3" />
+
+          <div className="text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
+            Size: {strokeWidth}px
+          </div>
+          <input 
+              type="range" 
+              min="1" 
+              max="100" 
+              value={strokeWidth} 
+              onChange={(e) => onChangeStrokeWidth(Number(e.target.value))}
+              className="w-full accent-[#FF3B30] h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+          />
+        </div>
+      )}
+
+      {/* Eraser / Text Size Popover (Simpler) */}
+      {(activePopover === 'eraser' || activePopover === 'text') && (
         <div 
           className="fixed bg-[#252525] p-3 rounded-lg shadow-xl w-48 border border-gray-700 z-50 animate-in fade-in zoom-in-95 duration-100"
           style={{ 
@@ -241,6 +410,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
       )}
 
+      {/* Shape Popover */}
       {activePopover === 'shape' && (
         <div 
           className="fixed bg-[#252525] p-2 rounded-lg shadow-xl flex gap-2 border border-gray-700 z-50 animate-in fade-in zoom-in-95 duration-100"

@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect, useState } from 'react';
-import { ToolType, Frame, Layer, SelectionState, ShapeType } from '../types';
+import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType } from '../types';
 import { floodFill } from '../utils/drawingUtils';
 
 interface CanvasAreaProps {
@@ -9,6 +9,7 @@ interface CanvasAreaProps {
   activeLayerId: string;
   onUpdateLayer: (layerId: string, dataUrl: string) => void;
   tool: ToolType;
+  brushType: BrushType;
   shapeType: ShapeType;
   color: string;
   strokeWidth: number;
@@ -43,6 +44,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
   activeLayerId,
   onUpdateLayer,
   tool,
+  brushType,
   shapeType,
   color,
   strokeWidth,
@@ -188,6 +190,40 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
       setTextInput(null);
   };
 
+  // Setup brush styles
+  const setupBrush = (ctx: CanvasRenderingContext2D) => {
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.globalCompositeOperation = 'source-over';
+      
+      if (tool === 'eraser') {
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.lineWidth = strokeWidth;
+          ctx.lineCap = 'round';
+          ctx.globalAlpha = 1;
+      } else if (tool === 'pen') {
+          // Check Brush Type
+          if (brushType === 'pen') {
+              ctx.lineWidth = strokeWidth;
+              ctx.lineCap = 'round';
+              ctx.globalAlpha = 1;
+          } else if (brushType === 'marker') {
+              ctx.lineWidth = strokeWidth;
+              ctx.lineCap = 'round';
+              ctx.globalAlpha = 0.5; // Build-up effect
+          } else if (brushType === 'highlighter') {
+              ctx.lineWidth = strokeWidth * 2;
+              ctx.lineCap = 'square'; // Square cap for highlighter feel
+              ctx.globalAlpha = 0.3;
+              // Ideally multiply, but source-over with low alpha works for simple layer compositing
+              // ctx.globalCompositeOperation = 'multiply'; 
+          } else if (brushType === 'spray') {
+              ctx.globalAlpha = 1;
+              // Spray doesn't use lineTo/stroke
+          }
+      }
+  };
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isPlaying || !currentFrame) return;
     
@@ -257,12 +293,11 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     } else if (tool === 'shape') {
         canvasSnapshot.current = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     } else {
-        // Prepare context but DO NOT stroke/lineTo yet to avoid dots on multi-touch
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineWidth = strokeWidth;
-        ctx.strokeStyle = color;
-        ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+        setupBrush(ctx);
+        if (brushType !== 'spray') {
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
     }
   };
 
@@ -429,6 +464,17 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 ctx.lineTo(x, y);
             }
             ctx.stroke();
+        } else if (tool === 'pen' && brushType === 'spray') {
+             // Spray Effect
+             const density = Math.max(1, strokeWidth * 2);
+             for (let i = 0; i < density; i++) {
+                 const offsetX = (Math.random() - 0.5) * strokeWidth * 2;
+                 const offsetY = (Math.random() - 0.5) * strokeWidth * 2;
+                 // Circular spray pattern check
+                 if (offsetX * offsetX + offsetY * offsetY <= strokeWidth * strokeWidth) {
+                     ctx.fillRect(x + offsetX, y + offsetY, 1, 1);
+                 }
+             }
         } else if (tool === 'pen' || tool === 'eraser') {
             ctx.lineTo(x, y);
             ctx.stroke();
@@ -486,7 +532,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
     if (isDrawing.current) {
         const ctx = activeCanvasRef.current?.getContext('2d');
         if (ctx) {
-            if (tool === 'pen' || tool === 'eraser') {
+            if ((tool === 'pen' && brushType !== 'spray') || tool === 'eraser') {
                 // Handle single tap for dots
                 if (!hasMoved.current && drawStart.current) {
                     ctx.lineTo(drawStart.current.x, drawStart.current.y);
@@ -495,6 +541,9 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
                 ctx.closePath();
                 ctx.globalCompositeOperation = 'source-over';
                 saveCanvas();
+            } else if (tool === 'pen' && brushType === 'spray') {
+                 // Spray finishes
+                 saveCanvas();
             } else if (tool === 'shape') {
                 ctx.closePath();
                 saveCanvas();

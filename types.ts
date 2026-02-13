@@ -1,6 +1,8 @@
 
 export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'shape' | 'text';
 
+export type BrushType = 'pen' | 'marker' | 'highlighter' | 'spray';
+
 export type ShapeType = 'rectangle' | 'circle' | 'line';
 
 export interface Point {
@@ -51,4 +53,24 @@ export interface AppState {
   color: string;
   strokeWidth: number;
   onionSkin: boolean;
+}
+
+export interface ProjectMeta {
+    id: string;
+    name: string;
+    lastModified: number;
+    thumbnailUrl: string;
+}
+
+export interface ProjectData {
+    id: string;
+    name: string;
+    lastModified: number;
+    thumbnailUrl: string;
+    canvasSize: { width: number; height: number };
+    backgroundImage: string | null;
+    layers: Layer[];
+    frames: Frame[];
+    fps: number;
+    audioTracks: AudioTrack[];
 }

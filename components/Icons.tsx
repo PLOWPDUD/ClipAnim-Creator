@@ -43,7 +43,12 @@ import {
   Loader2,
   Upload,
   FolderDown,
-  FileJson
+  FileJson,
+  CircleHelp,
+  Palette,
+  Highlighter,
+  PenTool,
+  SprayCan
 } from 'lucide-react';
 
 export const Icons = {
@@ -63,10 +68,10 @@ export const Icons = {
   Download,
   Eye,
   EyeOff,
-  Lock,
-  Unlock,
-  Music,
-  X,
+  Lock, 
+  Unlock, 
+  Music, 
+  X, 
   Volume2, 
   Ghost, 
   Maximize2, 
@@ -90,5 +95,10 @@ export const Icons = {
   Loader2,
   Upload,
   FolderDown,
-  FileJson
+  FileJson,
+  Help: CircleHelp,
+  Palette,
+  Highlighter,
+  Marker: PenTool,
+  Spray: SprayCan
 };

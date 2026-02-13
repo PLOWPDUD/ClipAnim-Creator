@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType } from './types';
+import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType } from './types';
 import { CanvasArea } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
@@ -8,7 +8,9 @@ import { Icons } from './components/Icons';
 import { SettingsModal } from './components/SettingsModal';
 import { LayerPanel } from './components/LayerPanel';
 import { ExportModal, ExportFormat } from './components/ExportModal';
+import { HelpModal } from './components/HelpModal';
 import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
+import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB } from './utils/db';
 
 // @ts-ignore
 import JSZip from 'jszip';
@@ -37,13 +39,6 @@ const createBlankFrame = (layers: Layer[], width: number, height: number, id: st
   return { id, layers: layerData, thumbnailUrl: '' };
 };
 
-interface ProjectMeta {
-    id: string;
-    name: string;
-    lastModified: number;
-    thumbnailUrl: string;
-}
-
 const COLORS = ['#FF3B30', '#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF2D55'];
 
 export default function App() {
@@ -52,6 +47,7 @@ export default function App() {
   const [savedProjects, setSavedProjects] = useState<ProjectMeta[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Project Settings
   const [projectId, setProjectId] = useState<string>(crypto.randomUUID());
@@ -75,6 +71,7 @@ export default function App() {
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [tool, setTool] = useState<ToolType>('pen');
+  const [brushType, setBrushType] = useState<BrushType>('pen');
   const [shapeType, setShapeType] = useState<ShapeType>('rectangle');
   const [color, setColor] = useState('#000000');
   
@@ -87,6 +84,7 @@ export default function App() {
   const [showGrid, setShowGrid] = useState(false);
   const [fps, setFps] = useState(12);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
   
   // Selection State
@@ -120,18 +118,30 @@ export default function App() {
 
   // --- Persistence & Initialization ---
 
-  // Load project list on mount
+  // Load project list on mount from IndexedDB
   useEffect(() => {
-      const metas = localStorage.getItem('clipanim_meta');
-      if (metas) {
-          setSavedProjects(JSON.parse(metas));
-      }
+      const fetchProjects = async () => {
+          try {
+              const projects = await getProjectList();
+              setSavedProjects(projects);
+          } catch (e) {
+              console.error("Failed to load project list", e);
+          }
+      };
+      fetchProjects();
   }, []);
 
   const saveProject = async () => {
-      const projectData = {
+      let thumb = '';
+      if (frames.length > 0) {
+          thumb = await compositeLayers(frames[0], layers, canvasSize.width, canvasSize.height, '#ffffff', backgroundImage);
+      }
+
+      const projectData: ProjectData = {
           id: projectId,
           name: projectName,
+          lastModified: Date.now(),
+          thumbnailUrl: thumb,
           canvasSize,
           backgroundImage,
           layers,
@@ -141,60 +151,52 @@ export default function App() {
       };
 
       try {
-        let thumb = '';
-        if (frames.length > 0) {
-            thumb = await compositeLayers(frames[0], layers, canvasSize.width, canvasSize.height, '#ffffff', backgroundImage);
-        }
-
-        localStorage.setItem(`clipanim_project_${projectId}`, JSON.stringify(projectData));
-
-        const newMeta: ProjectMeta = {
-            id: projectId,
-            name: projectName,
-            lastModified: Date.now(),
-            thumbnailUrl: thumb
-        };
-
-        const existingIndex = savedProjects.findIndex(p => p.id === projectId);
-        let newProjectList = [...savedProjects];
-        if (existingIndex >= 0) {
-            newProjectList[existingIndex] = newMeta;
-        } else {
-            newProjectList = [newMeta, ...newProjectList];
-        }
+        await saveProjectToDB(projectData);
         
-        setSavedProjects(newProjectList);
-        localStorage.setItem('clipanim_meta', JSON.stringify(newProjectList));
+        // Refresh List
+        const updatedList = await getProjectList();
+        setSavedProjects(updatedList);
         setHasUnsavedChanges(false);
       } catch (e) {
           console.error(e);
-          alert("Failed to save. Storage might be full.");
+          alert("Failed to save. Disk might be full.");
       }
   };
 
-  const loadProject = (id: string) => {
-      const dataStr = localStorage.getItem(`clipanim_project_${id}`);
-      if (!dataStr) return;
-
-      const data = JSON.parse(dataStr);
-      
-      setProjectId(data.id);
-      setProjectName(data.name);
-      setCanvasSize(data.canvasSize);
-      setBackgroundImage(data.backgroundImage || null);
-      setLayers(data.layers);
-      setFrames(data.frames);
-      setFps(data.fps);
-      setAudioTracks(data.audioTracks || []);
-      
-      // Reset Editor State
-      setCurrentFrameIndex(0);
-      setHistory([data.frames]);
-      setHistoryIndex(0);
-      setSelection(null);
-      setTool('pen');
-      setHasUnsavedChanges(false);
-      setView('editor');
+  const loadProject = async (id: string) => {
+      setIsLoading(true);
+      try {
+        const data = await loadProjectFromDB(id);
+        if (!data) {
+            alert("Project not found.");
+            setIsLoading(false);
+            return;
+        }
+        
+        setProjectId(data.id);
+        setProjectName(data.name);
+        setCanvasSize(data.canvasSize);
+        setBackgroundImage(data.backgroundImage || null);
+        setLayers(data.layers);
+        setFrames(data.frames);
+        setFps(data.fps);
+        setAudioTracks(data.audioTracks || []);
+        
+        // Reset Editor State
+        setCurrentFrameIndex(0);
+        setHistory([data.frames]);
+        setHistoryIndex(0);
+        setSelection(null);
+        setTool('pen');
+        setBrushType('pen');
+        setHasUnsavedChanges(false);
+        setView('editor');
+      } catch (e) {
+          console.error("Failed to load", e);
+          alert("Error loading project.");
+      } finally {
+          setIsLoading(false);
+      }
   };
 
   const createNewProject = () => {
@@ -223,40 +225,46 @@ export default function App() {
       setView('editor');
   };
 
-  const deleteProject = (e: React.MouseEvent, id: string) => {
+  const deleteProject = async (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
       if (confirm("Are you sure you want to delete this project?")) {
-          const newProjs = savedProjects.filter(p => p.id !== id);
-          setSavedProjects(newProjs);
-          localStorage.setItem('clipanim_meta', JSON.stringify(newProjs));
-          localStorage.removeItem(`clipanim_project_${id}`);
+          try {
+              await deleteProjectFromDB(id);
+              const updatedList = await getProjectList();
+              setSavedProjects(updatedList);
+          } catch (e) {
+              console.error("Failed to delete", e);
+              alert("Could not delete project.");
+          }
       }
   }
 
   // --- IMPORT / EXPORT PROJECT FILE ---
 
   const handleBackupProject = () => {
-    const projectData = {
-        id: projectId,
-        name: projectName,
-        canvasSize,
-        backgroundImage,
-        layers,
-        frames,
-        fps,
-        audioTracks
-    };
-    
-    const blob = new Blob([JSON.stringify(projectData)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${projectName.replace(/\s+/g, '_')}_backup.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    setIsSettingsOpen(false);
+      const projectData: ProjectData = {
+          id: projectId,
+          name: projectName,
+          lastModified: Date.now(),
+          thumbnailUrl: frames[0]?.thumbnailUrl || '',
+          canvasSize,
+          backgroundImage,
+          layers,
+          frames,
+          fps,
+          audioTracks
+      };
+      
+      const blob = new Blob([JSON.stringify(projectData)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${projectName.replace(/\s+/g, '_')}_backup.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setIsSettingsOpen(false);
   };
 
   const handleImportProjectFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -266,7 +274,7 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = async (event) => {
         try {
-            const data = JSON.parse(event.target?.result as string);
+            const data = JSON.parse(event.target?.result as string) as ProjectData;
             
             // Basic validation
             if (!data.frames || !data.layers || !data.canvasSize) {
@@ -276,48 +284,45 @@ export default function App() {
 
             // Assign a new ID to avoid conflict with existing local projects if it's a duplicate import
             const newId = crypto.randomUUID();
-            setProjectId(newId);
-            setProjectName(data.name || "Imported Project");
-            setCanvasSize(data.canvasSize);
-            setBackgroundImage(data.backgroundImage || null);
-            setLayers(data.layers);
-            setFrames(data.frames);
-            setFps(data.fps || 12);
-            setAudioTracks(data.audioTracks || []);
-
-            // Re-init editor state
-            setCurrentFrameIndex(0);
-            setHistory([data.frames]);
-            setHistoryIndex(0);
-            setSelection(null);
-            setTool('pen');
-            setHasUnsavedChanges(true); // Mark as unsaved so user knows to save it to local list
-
-            // Generate thumbnail for the list
-            let thumb = '';
-            if (data.frames.length > 0) {
+            
+            // Generate thumb if missing
+            let thumb = data.thumbnailUrl;
+            if (!thumb && data.frames.length > 0) {
                  thumb = await compositeLayers(data.frames[0], data.layers, data.canvasSize.width, data.canvasSize.height, '#ffffff', data.backgroundImage);
             }
 
-            // Auto-add to saved projects list temporarily (persist will happen on manual save or exit)
-            // But let's actually save it immediately so it appears in the list
-            const newMeta: ProjectMeta = {
+            const fullData: ProjectData = { 
+                ...data, 
                 id: newId,
-                name: data.name || "Imported Project",
                 lastModified: Date.now(),
-                thumbnailUrl: thumb
+                thumbnailUrl: thumb || ''
             };
 
-            // Save full data
-            const fullData = { ...data, id: newId };
-            localStorage.setItem(`clipanim_project_${newId}`, JSON.stringify(fullData));
+            // Save directly to DB
+            await saveProjectToDB(fullData);
             
-            // Update meta list
-            const newProjectList = [newMeta, ...savedProjects];
-            setSavedProjects(newProjectList);
-            localStorage.setItem('clipanim_meta', JSON.stringify(newProjectList));
+            // Refresh list
+            const updatedList = await getProjectList();
+            setSavedProjects(updatedList);
 
+            // Load into editor
+            setProjectId(newId);
+            setProjectName(fullData.name);
+            setCanvasSize(fullData.canvasSize);
+            setBackgroundImage(fullData.backgroundImage);
+            setLayers(fullData.layers);
+            setFrames(fullData.frames);
+            setFps(fullData.fps || 12);
+            setAudioTracks(fullData.audioTracks || []);
+
+            setCurrentFrameIndex(0);
+            setHistory([fullData.frames]);
+            setHistoryIndex(0);
+            setSelection(null);
+            setTool('pen');
+            setBrushType('pen');
             setHasUnsavedChanges(false);
+            
             setView('editor');
         } catch (err) {
             console.error(err);
@@ -376,7 +381,7 @@ export default function App() {
     if (view !== 'editor') return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isSettingsOpen || isExporting || showExitConfirm || isExportModalOpen) return;
+      if (isSettingsOpen || isExporting || showExitConfirm || isExportModalOpen || isHelpOpen) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') { if (selection) { e.preventDefault(); handleCopy(); } }
@@ -397,36 +402,61 @@ export default function App() {
       
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveProject(); }
+      
+      // Help Shortcut
+      if (e.key === '?') setIsHelpOpen(true);
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentFrameIndex, frames.length, isPlaying, isSettingsOpen, isExporting, historyIndex, history, selection, clipboard, view, layers, canvasSize, audioTracks, showExitConfirm, isExportModalOpen]);
+  }, [currentFrameIndex, frames.length, isPlaying, isSettingsOpen, isExporting, historyIndex, history, selection, clipboard, view, layers, canvasSize, audioTracks, showExitConfirm, isExportModalOpen, isHelpOpen]);
 
   const animate = (timestamp: number) => {
     if (!isPlaying) return;
     let targetFrame = 0;
+    
+    // Precise Audio Sync: Use the first audio track as the master clock if available
     const mainTrack = audioTracks[0];
     const mainAudio = mainTrack ? audioElementsRef.current.get(mainTrack.id) : null;
+    
     if (mainAudio && !mainAudio.paused && mainAudio.duration > 0) {
+        // Sync visual frame to audio time
         targetFrame = Math.floor(mainAudio.currentTime * fps);
     } else {
+        // Fallback to performance.now() clock
         if (startTimeRef.current === 0) startTimeRef.current = timestamp;
         const elapsed = (timestamp - startTimeRef.current) / 1000;
         targetFrame = Math.floor(elapsed * fps);
     }
-    if (targetFrame >= frames.length) { setIsPlaying(false); setCurrentFrameIndex(frames.length - 1); return; }
-    if (targetFrame !== currentFrameIndex) setCurrentFrameIndex(targetFrame);
+
+    if (targetFrame >= frames.length) { 
+        setIsPlaying(false); 
+        setCurrentFrameIndex(frames.length - 1); 
+        return; 
+    }
+    
+    if (targetFrame !== currentFrameIndex) {
+        setCurrentFrameIndex(targetFrame);
+    }
+    
     requestRef.current = requestAnimationFrame(animate);
   };
 
   useEffect(() => {
     if (isPlaying) {
       const startTime = currentFrameIndex / fps;
+      
+      // Sync all audio tracks
       audioTracks.forEach(track => {
           const audio = audioElementsRef.current.get(track.id);
-          if (audio) { audio.currentTime = startTime; audio.play().catch(console.error); }
+          if (audio) { 
+              // Set time slightly ahead if possible to allow for play() latency, though usually negligible in browser
+              audio.currentTime = startTime; 
+              audio.play().catch(console.error); 
+          }
       });
+      
+      // Reset generic timer fallback
       startTimeRef.current = performance.now() - (startTime * 1000);
       requestRef.current = requestAnimationFrame(animate);
     } else {
@@ -631,10 +661,10 @@ export default function App() {
     const height = canvasSize.height;
 
     try {
-        // 1. Render all frames to images first
+        // 1. Pre-render all frames to Image elements for faster access
         const compositeImages = await Promise.all(frames.map(async (f, idx) => {
             const url = await compositeLayers(f, layers, width, height, '#ffffff', backgroundImage);
-            setExportProgress(Math.round(((idx + 1) / frames.length) * 30)); 
+            setExportProgress(Math.round(((idx + 1) / frames.length) * 20)); 
             return new Promise<HTMLImageElement>((resolve, reject) => {
                 const img = new Image();
                 img.onload = () => resolve(img);
@@ -643,89 +673,100 @@ export default function App() {
             });
         }));
 
-        // Handle ZIP and GIF
+        // === Simple Formats (No Audio Needed) ===
         if (format === 'png-seq') {
-            try {
-                const zip = new JSZip();
-                const folder = zip.folder(`${projectName}_frames`);
-                compositeImages.forEach((img, idx) => {
-                    const data = img.src.split(',')[1];
-                    folder?.file(`frame_${(idx + 1).toString().padStart(4, '0')}.png`, data, { base64: true });
-                    setExportProgress(30 + Math.round(((idx + 1) / frames.length) * 60)); 
-                });
-                const content = await zip.generateAsync({ type: "blob" });
-                const url = URL.createObjectURL(content);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${projectName}_sequence.zip`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(url), 1000); 
-                setExportProgress(100);
-            } catch (e) {
-                alert("ZIP Export failed");
-            }
+            const zip = new JSZip();
+            const folder = zip.folder(`${projectName}_frames`);
+            compositeImages.forEach((img, idx) => {
+                const data = img.src.split(',')[1];
+                folder?.file(`frame_${(idx + 1).toString().padStart(4, '0')}.png`, data, { base64: true });
+            });
+            const content = await zip.generateAsync({ type: "blob" });
+            const url = URL.createObjectURL(content);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${projectName}_sequence.zip`;
+            a.click();
             setIsExporting(false);
             setIsExportModalOpen(false);
             return;
         }
 
         if (format === 'gif') {
-            try {
-                const images = compositeImages.map(img => img.src);
-                gifshot.createGIF({
-                    images: images,
-                    interval: 1 / fps,
-                    gifWidth: width,
-                    gifHeight: height,
-                    progressCallback: (captureProgress: number) => {
-                        setExportProgress(30 + Math.round(captureProgress * 70));
-                    }
-                }, (obj: any) => {
-                    if (!obj.error) {
-                        const a = document.createElement('a');
-                        a.href = obj.image;
-                        a.download = `${projectName}.gif`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                    } else {
-                        alert("GIF Export failed: " + obj.error);
-                    }
-                    setIsExporting(false);
-                    setIsExportModalOpen(false);
-                });
-            } catch (e) {
-                alert("GIF Export failed");
+            const images = compositeImages.map(img => img.src);
+            gifshot.createGIF({
+                images: images,
+                interval: 1 / fps,
+                gifWidth: width,
+                gifHeight: height,
+                progressCallback: (p: number) => setExportProgress(20 + Math.round(p * 80))
+            }, (obj: any) => {
+                if (!obj.error) {
+                    const a = document.createElement('a');
+                    a.href = obj.image;
+                    a.download = `${projectName}.gif`;
+                    a.click();
+                } else {
+                    alert("GIF Export failed: " + obj.error);
+                }
                 setIsExporting(false);
                 setIsExportModalOpen(false);
-            }
+            });
             return;
         }
 
-        // 2. STABLE VIDEO EXPORT
+        // === Video Formats with Audio Mixing ===
+        
+        // 1. Prepare Audio Mixing
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const dest = audioCtx.createMediaStreamDestination();
+        
+        // Decode and mix all audio tracks
+        const bufferPromises = audioTracks.map(async track => {
+            try {
+                const res = await fetch(track.url);
+                const ab = await res.arrayBuffer();
+                return await audioCtx.decodeAudioData(ab);
+            } catch (e) {
+                console.error("Failed to decode track", track.name);
+                return null;
+            }
+        });
+        
+        const decodedBuffers = (await Promise.all(bufferPromises)).filter(b => b !== null) as AudioBuffer[];
+        
+        // Connect buffers to the destination stream
+        decodedBuffers.forEach(buffer => {
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(dest);
+            source.start(0); // Start at beginning of recording
+        });
+
+        // 2. Prepare Video Stream
         const exportCanvas = document.createElement('canvas');
         exportCanvas.width = width;
         exportCanvas.height = height;
         const ctx = exportCanvas.getContext('2d', { willReadFrequently: true });
-        if (!ctx) throw new Error('Canvas context failed');
+        if (!ctx) throw new Error("Canvas context failed");
 
-        // Force a supported type. Most browsers only support MP4 if passed 'video/webm' 
-        // as the recorder and then renamed, UNLESS you use a library like ffmpeg.wasm.
+        // Capture stream from canvas
         // @ts-ignore
-        const stream = exportCanvas.captureStream(0); // Manual frame capture
+        const canvasStream = exportCanvas.captureStream(fps); 
         
+        // Combine Audio + Video into one stream
+        const combinedStream = new MediaStream([
+            ...canvasStream.getVideoTracks(),
+            ...dest.stream.getAudioTracks()
+        ]);
+
+        // 3. Setup MediaRecorder
         let mimeType = 'video/webm;codecs=vp9';
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-             mimeType = 'video/webm'; // Fallback
-        }
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-             mimeType = 'video/mp4'; // Safari fallback?
-        }
-        
-        const mediaRecorder = new MediaRecorder(stream, { 
-            mimeType: mimeType,
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4';
+
+        const mediaRecorder = new MediaRecorder(combinedStream, {
+            mimeType,
             videoBitsPerSecond: 8000000 
         });
 
@@ -733,43 +774,57 @@ export default function App() {
         mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
         
         mediaRecorder.onstop = () => {
-             const blob = new Blob(chunks, { type: mimeType }); // Wrap as detected mime
+             const blob = new Blob(chunks, { type: mimeType });
              const url = URL.createObjectURL(blob);
              const a = document.createElement('a');
              a.href = url;
              
-             // Detect correct extension to prevent browser download failure "Failed - Download error"
-             let finalExtension = 'mp4'; // Default to mp4 as requested
-             if (format === 'webm') finalExtension = 'webm';
-             if (format === 'avi') finalExtension = 'avi';
+             let ext = 'mp4';
+             if (format === 'webm') ext = 'webm';
+             if (format === 'avi') ext = 'avi';
 
-             a.download = `${projectName}.${finalExtension}`;
-             document.body.appendChild(a);
+             a.download = `${projectName}.${ext}`;
              a.click();
-             document.body.removeChild(a); // Cleanup DOM
              URL.revokeObjectURL(url);
+             
+             // Cleanup
+             audioCtx.close();
              setIsExporting(false);
              setIsExportModalOpen(false);
         };
 
+        // 4. Start Real-time Recording Loop
         mediaRecorder.start();
+        
+        // Use a loop that draws frames synced to the AudioContext time
+        const duration = frames.length / fps;
+        const startTime = audioCtx.currentTime;
+        let animationFrameId: number;
 
-        // 3. Manual Frame-by-Frame Push
-        for (let i = 0; i < compositeImages.length; i++) {
-            ctx.clearRect(0, 0, width, height);
-            ctx.drawImage(compositeImages[i], 0, 0);
+        const renderLoop = () => {
+            const now = audioCtx.currentTime - startTime;
             
-            // @ts-ignore - Manually request a frame capture
-            const track = stream.getVideoTracks()[0];
-            if ((track as any).requestFrame) {
-                (track as any).requestFrame();
+            if (now >= duration) {
+                mediaRecorder.stop();
+                cancelAnimationFrame(animationFrameId);
+                return;
+            }
+
+            // Determine which frame to show based on audio time
+            const frameIndex = Math.floor(now * fps);
+            
+            // Safety check
+            if (frameIndex >= 0 && frameIndex < compositeImages.length) {
+                ctx.clearRect(0, 0, width, height);
+                ctx.drawImage(compositeImages[frameIndex], 0, 0);
             }
             
-            await new Promise(resolve => setTimeout(resolve, 1000 / fps));
-            setExportProgress(30 + Math.round(((i + 1) / compositeImages.length) * 70));
-        }
+            setExportProgress(20 + Math.round((now / duration) * 80));
+            animationFrameId = requestAnimationFrame(renderLoop);
+        };
 
-        setTimeout(() => mediaRecorder.stop(), 500);
+        // Kick off the render loop
+        renderLoop();
 
     } catch (error: any) {
         console.error("Export failed", error);
@@ -813,6 +868,11 @@ export default function App() {
                      </div>
                  ))}
              </div>
+             {isLoading && (
+                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center backdrop-blur-sm">
+                     <Icons.Loader2 className="w-12 h-12 text-[#FF3B30] animate-spin" />
+                 </div>
+             )}
         </div>
       );
   }
@@ -843,6 +903,9 @@ export default function App() {
             progress={exportProgress}
           />
       )}
+      
+      {/* Help Modal */}
+      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
 
       {isLayerPanelOpen && (
           <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onClose={() => setIsLayerPanelOpen(false)} />
@@ -870,6 +933,7 @@ export default function App() {
                 <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className={`p-2 rounded-full transition-colors ${isLayerPanelOpen ? 'bg-gray-700 text-white' : 'hover:bg-gray-700 text-gray-400'}`} title="Layers"><Icons.Layers size={20} /></button>
                 <button onClick={saveProject} className={`p-2 hover:bg-gray-700 rounded-full transition-colors ${hasUnsavedChanges ? 'text-[#FF3B30]' : 'text-gray-400'}`} title="Save Project (Ctrl+S)"><Icons.Save size={20} /></button>
                 <button onClick={() => setIsExportModalOpen(true)} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-[#FF3B30]" title="Export Movie"><Icons.Download size={20} /></button>
+                <button onClick={() => setIsHelpOpen(true)} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white" title="Shortcuts & Help"><Icons.Help size={20} /></button>
                 <button onClick={() => setIsSettingsOpen(true)} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white"><Icons.Settings size={20} /></button>
             </div>
         </header>
@@ -881,6 +945,8 @@ export default function App() {
           <Toolbar 
               currentTool={tool}
               onSelectTool={setTool}
+              currentBrushType={brushType}
+              onSelectBrushType={setBrushType}
               currentColor={color}
               onChangeColor={setColor}
               strokeWidth={currentStrokeWidth}
@@ -909,6 +975,7 @@ export default function App() {
                     activeLayerId={activeLayerId}
                     onUpdateLayer={handleUpdateLayer}
                     tool={tool}
+                    brushType={brushType}
                     shapeType={shapeType}
                     color={color}
                     strokeWidth={currentStrokeWidth}
