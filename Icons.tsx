@@ -50,7 +50,9 @@ import {
   PenTool,
   SprayCan,
   Grid2X2,
-  Monitor
+  Monitor,
+  LayoutGrid,
+  Check
 } from 'lucide-react';
 
 export const Icons = {
@@ -82,7 +84,7 @@ export const Icons = {
   Image,
   FlipHorizontal, 
   FlipVertical, 
-  RotateCw,
+  RotateCw, 
   RotateCcw,
   Grid: Grid3X3,
   Square, 
@@ -105,5 +107,7 @@ export const Icons = {
   Marker: PenTool,
   Spray: SprayCan,
   Pixel: Grid2X2,
-  Reset: Monitor
+  Reset: Monitor,
+  FrameGrid: LayoutGrid,
+  Check
 };

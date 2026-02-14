@@ -15,6 +15,7 @@ interface TimelineProps {
   onAddAudioTrack: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onRemoveAudioTrack: (id: string) => void;
   isFocusMode?: boolean;
+  onOpenFrameManager: () => void;
 }
 
 export const Timeline: React.FC<TimelineProps> = ({
@@ -29,7 +30,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   audioTracks,
   onAddAudioTrack,
   onRemoveAudioTrack,
-  isFocusMode = false
+  isFocusMode = false,
+  onOpenFrameManager
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
@@ -50,7 +52,14 @@ export const Timeline: React.FC<TimelineProps> = ({
       {!isFocusMode && (
         <div className="h-10 flex items-center px-4 justify-between animate-in fade-in slide-in-from-bottom-2">
           <div className="flex items-center space-x-2">
-              <span className="text-[10px] text-white font-mono uppercase tracking-wider drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
+              <button 
+                  onClick={onOpenFrameManager}
+                  className="p-1.5 rounded-full text-gray-300 hover:text-white hover:bg-white/10 transition-colors drop-shadow-md"
+                  title="Frame Viewer"
+              >
+                  <Icons.FrameGrid size={18} />
+              </button>
+              <span className="text-[10px] text-white font-mono uppercase tracking-wider drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] border-l border-white/20 pl-2">
                   Frame {currentFrameIndex + 1} / {frames.length}
               </span>
               <button 

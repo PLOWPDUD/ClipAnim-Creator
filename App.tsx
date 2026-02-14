@@ -8,6 +8,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { LayerPanel } from './components/LayerPanel';
 import { ExportModal, ExportFormat } from './components/ExportModal';
 import { HelpModal } from './components/HelpModal';
+import { FrameManagerModal } from './components/FrameManagerModal';
 import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
 import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB } from './utils/db';
 
@@ -76,6 +77,7 @@ export default function App() {
   const [fps, setFps] = useState(12);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isFrameManagerOpen, setIsFrameManagerOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
   
   const [selection, setSelection] = useState<SelectionState | null>(null);
@@ -744,6 +746,38 @@ export default function App() {
     setHasUnsavedChanges(true);
   };
 
+  // Bulk operations
+  const handleBulkDeleteFrames = (indices: number[]) => {
+      // If deleting all, keep one blank frame
+      let newFrames = frames.filter((_, i) => !indices.includes(i));
+      if (newFrames.length === 0) {
+          newFrames = [createBlankFrame(layers, canvasSize.width, canvasSize.height)];
+      }
+      updateFramesWithHistory(newFrames);
+      // Ensure index is valid
+      if (currentFrameIndex >= newFrames.length) {
+          setCurrentFrameIndex(Math.max(0, newFrames.length - 1));
+      }
+      setHasUnsavedChanges(true);
+  };
+
+  const handleBulkDuplicateFrames = (indices: number[]) => {
+      if (indices.length === 0) return;
+      const sortedIndices = [...indices].sort((a, b) => a - b);
+      // We will append duplicates after the last selected frame
+      const insertIndex = sortedIndices[sortedIndices.length - 1] + 1;
+      
+      const newFrames = [...frames];
+      const copies = sortedIndices.map(i => {
+          const f = frames[i];
+          return { ...f, id: crypto.randomUUID(), layers: { ...f.layers } };
+      });
+      
+      newFrames.splice(insertIndex, 0, ...copies);
+      updateFramesWithHistory(newFrames);
+      setHasUnsavedChanges(true);
+  };
+
   if (view === 'menu') {
       return (
         <div className="flex flex-col h-screen bg-[#121212] text-white p-6 overflow-hidden">
@@ -797,6 +831,15 @@ export default function App() {
       )}
       {isExportModalOpen && <ExportModal isOpen={isExportModalOpen} onClose={() => !isExporting && setIsExportModalOpen(false)} onExport={handleExportStart} isExporting={isExporting} progress={exportProgress} />}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      
+      <FrameManagerModal 
+        isOpen={isFrameManagerOpen}
+        onClose={() => setIsFrameManagerOpen(false)}
+        frames={frames}
+        onDeleteFrames={handleBulkDeleteFrames}
+        onDuplicateFrames={handleBulkDuplicateFrames}
+      />
+
       {isLayerPanelOpen && <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onDuplicateLayer={duplicateLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onClose={() => setIsLayerPanelOpen(false)} />}
       {!isFocusMode && (
         <header className="h-14 bg-[#1e1e1e] flex items-center px-4 justify-between border-b border-gray-700 shrink-0 z-30">
@@ -824,7 +867,7 @@ export default function App() {
         <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
             <CanvasArea ref={canvasRef} currentFrame={frames[currentFrameIndex]} layers={layers} activeLayerId={activeLayerId} onUpdateLayer={handleUpdateLayer} tool={tool} brushType={brushType} shapeType={shapeType} color={color} strokeWidth={currentStrokeWidth} prevFrame={currentFrameIndex > 0 ? frames[currentFrameIndex - 1] : null} nextFrame={currentFrameIndex < frames.length - 1 ? frames[currentFrameIndex + 1] : null} onionSkin={onionSkin} showGrid={showGrid} isPlaying={isPlaying} selection={selection} onSelectionCreate={setSelection} onSelectionUpdate={setSelection} onSelectionCommit={handleSelectionCommit} canvasWidth={canvasSize.width} canvasHeight={canvasSize.height} backgroundImage={backgroundImage} />
             <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <Timeline frames={frames} currentFrameIndex={currentFrameIndex} onSelectFrame={handleSelectFrame} onAddFrame={addFrame} onDeleteFrame={deleteFrame} onCopyFrame={copyFrame} isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)} audioTracks={audioTracks} onAddAudioTrack={handleAddAudioTrack} onRemoveAudioTrack={handleRemoveAudioTrack} isFocusMode={isFocusMode} />
+                <Timeline frames={frames} currentFrameIndex={currentFrameIndex} onSelectFrame={handleSelectFrame} onAddFrame={addFrame} onDeleteFrame={deleteFrame} onCopyFrame={copyFrame} isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)} audioTracks={audioTracks} onAddAudioTrack={handleAddAudioTrack} onRemoveAudioTrack={handleRemoveAudioTrack} isFocusMode={isFocusMode} onOpenFrameManager={() => setIsFrameManagerOpen(true)} />
             </div>
         </div>
       </main>
