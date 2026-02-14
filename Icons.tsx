@@ -52,7 +52,8 @@ import {
   Grid2X2,
   Monitor,
   LayoutGrid,
-  Check
+  Check,
+  Mic
 } from 'lucide-react';
 
 export const Icons = {
@@ -70,7 +71,7 @@ export const Icons = {
   Layers,
   ChevronLeft,
   Download,
-  Eye,
+  Eye, 
   EyeOff, 
   Lock, 
   Unlock, 
@@ -109,5 +110,6 @@ export const Icons = {
   Pixel: Grid2X2,
   Reset: Monitor,
   FrameGrid: LayoutGrid,
-  Check
+  Check,
+  Mic
 };

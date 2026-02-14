@@ -9,6 +9,7 @@ import { LayerPanel } from './components/LayerPanel';
 import { ExportModal, ExportFormat } from './components/ExportModal';
 import { HelpModal } from './components/HelpModal';
 import { FrameManagerModal } from './components/FrameManagerModal';
+import { AudioRecorderModal } from './components/AudioRecorderModal';
 import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
 import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB } from './utils/db';
 
@@ -78,6 +79,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isFrameManagerOpen, setIsFrameManagerOpen] = useState(false);
+  const [isAudioRecorderOpen, setIsAudioRecorderOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
   
   const [selection, setSelection] = useState<SelectionState | null>(null);
@@ -243,6 +245,23 @@ export default function App() {
       audioElementsRef.current.set(id, audio);
       setAudioTracks([...audioTracks, newTrack]);
       setHasUnsavedChanges(true);
+  };
+
+  const handleAddRecordedAudio = (blob: Blob) => {
+      const url = URL.createObjectURL(blob);
+      const id = crypto.randomUUID();
+      const newTrack: AudioTrack = {
+          id,
+          url,
+          name: `Recording ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+          color: COLORS[audioTracks.length % COLORS.length],
+          volume: 1
+      };
+      const audio = new Audio(url);
+      audioElementsRef.current.set(id, audio);
+      setAudioTracks([...audioTracks, newTrack]);
+      setHasUnsavedChanges(true);
+      setIsAudioRecorderOpen(false);
   };
 
   const handleRemoveAudioTrack = (id: string) => {
@@ -840,6 +859,12 @@ export default function App() {
         onDuplicateFrames={handleBulkDuplicateFrames}
       />
 
+      <AudioRecorderModal 
+        isOpen={isAudioRecorderOpen}
+        onClose={() => setIsAudioRecorderOpen(false)}
+        onSave={handleAddRecordedAudio}
+      />
+
       {isLayerPanelOpen && <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onDuplicateLayer={duplicateLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onClose={() => setIsLayerPanelOpen(false)} />}
       {!isFocusMode && (
         <header className="h-14 bg-[#1e1e1e] flex items-center px-4 justify-between border-b border-gray-700 shrink-0 z-30">
@@ -867,7 +892,7 @@ export default function App() {
         <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
             <CanvasArea ref={canvasRef} currentFrame={frames[currentFrameIndex]} layers={layers} activeLayerId={activeLayerId} onUpdateLayer={handleUpdateLayer} tool={tool} brushType={brushType} shapeType={shapeType} color={color} strokeWidth={currentStrokeWidth} prevFrame={currentFrameIndex > 0 ? frames[currentFrameIndex - 1] : null} nextFrame={currentFrameIndex < frames.length - 1 ? frames[currentFrameIndex + 1] : null} onionSkin={onionSkin} showGrid={showGrid} isPlaying={isPlaying} selection={selection} onSelectionCreate={setSelection} onSelectionUpdate={setSelection} onSelectionCommit={handleSelectionCommit} canvasWidth={canvasSize.width} canvasHeight={canvasSize.height} backgroundImage={backgroundImage} />
             <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <Timeline frames={frames} currentFrameIndex={currentFrameIndex} onSelectFrame={handleSelectFrame} onAddFrame={addFrame} onDeleteFrame={deleteFrame} onCopyFrame={copyFrame} isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)} audioTracks={audioTracks} onAddAudioTrack={handleAddAudioTrack} onRemoveAudioTrack={handleRemoveAudioTrack} isFocusMode={isFocusMode} onOpenFrameManager={() => setIsFrameManagerOpen(true)} />
+                <Timeline frames={frames} currentFrameIndex={currentFrameIndex} onSelectFrame={handleSelectFrame} onAddFrame={addFrame} onDeleteFrame={deleteFrame} onCopyFrame={copyFrame} isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)} audioTracks={audioTracks} onAddAudioTrack={handleAddAudioTrack} onRemoveAudioTrack={handleRemoveAudioTrack} isFocusMode={isFocusMode} onOpenFrameManager={() => setIsFrameManagerOpen(true)} onOpenRecorder={() => setIsAudioRecorderOpen(true)} />
             </div>
         </div>
       </main>

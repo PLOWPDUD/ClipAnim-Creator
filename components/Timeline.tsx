@@ -16,6 +16,7 @@ interface TimelineProps {
   onRemoveAudioTrack: (id: string) => void;
   isFocusMode?: boolean;
   onOpenFrameManager: () => void;
+  onOpenRecorder: () => void;
 }
 
 export const Timeline: React.FC<TimelineProps> = ({
@@ -31,7 +32,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   onAddAudioTrack,
   onRemoveAudioTrack,
   isFocusMode = false,
-  onOpenFrameManager
+  onOpenFrameManager,
+  onOpenRecorder
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
@@ -100,13 +102,22 @@ export const Timeline: React.FC<TimelineProps> = ({
         <div className="mb-2 flex flex-col gap-1 px-2 animate-in fade-in slide-in-from-bottom-2">
             <div className="flex justify-between items-center bg-black/60 backdrop-blur-md p-1 rounded text-xs">
                 <span className="text-gray-200 font-bold uppercase tracking-wider px-2">Audio Layers</span>
-                <button 
-                    onClick={() => audioInputRef.current?.click()}
-                    className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 px-2"
-                >
-                    <Icons.Plus size={12} />
-                    <span>Add Track</span>
-                </button>
+                <div className="flex gap-2">
+                    <button 
+                        onClick={onOpenRecorder}
+                        className="flex items-center space-x-1 text-red-400 hover:text-red-300 px-2 border-r border-white/10 pr-3"
+                    >
+                        <Icons.Mic size={12} />
+                        <span>Record</span>
+                    </button>
+                    <button 
+                        onClick={() => audioInputRef.current?.click()}
+                        className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 px-2"
+                    >
+                        <Icons.Plus size={12} />
+                        <span>Import</span>
+                    </button>
+                </div>
                 <input ref={audioInputRef} type="file" accept="audio/*" className="hidden" onChange={onAddAudioTrack} />
             </div>
 
