@@ -32,6 +32,9 @@ interface CanvasAreaProps {
   canvasWidth: number;
   canvasHeight: number;
   backgroundImage: string | null;
+
+  // Text Tool
+  textToolFont: string;
 }
 
 const getMixBlendMode = (mode: GlobalCompositeOperation): any => {
@@ -62,7 +65,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   onSelectionCommit,
   canvasWidth,
   canvasHeight,
-  backgroundImage
+  backgroundImage,
+  textToolFont
 }, ref) => {
   const activeCanvasRef = useRef<HTMLCanvasElement>(null);
   const transformRef = useRef<HTMLDivElement>(null);
@@ -217,7 +221,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
           const ctx = canvas.getContext('2d');
           if (ctx) {
              const fontSize = Math.max(12, strokeWidth);
-             ctx.font = `bold ${fontSize}px sans-serif`;
+             // Use selected font family
+             ctx.font = `bold ${fontSize}px ${textToolFont}`;
              const metrics = ctx.measureText(textInput.value);
              const width = Math.ceil(metrics.width);
              const height = Math.ceil(fontSize * 1.2);
@@ -225,7 +230,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
              canvas.width = width;
              canvas.height = height;
              
-             ctx.font = `bold ${fontSize}px sans-serif`;
+             // Re-set font after resize
+             ctx.font = `bold ${fontSize}px ${textToolFont}`;
              ctx.fillStyle = color;
              ctx.textBaseline = 'top';
              ctx.fillText(textInput.value, 0, 0);
@@ -784,7 +790,15 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     onChange={(e) => setTextInput({ ...textInput, value: e.target.value })}
                     onKeyDown={(e) => { if(e.key === 'Enter') commitText(); }}
                     className="absolute z-50 bg-transparent border-none outline-none p-0 m-0"
-                    style={{ left: textInput.x, top: textInput.y, color: color, fontSize: `${Math.max(12, strokeWidth)}px`, fontFamily: 'sans-serif', fontWeight: 'bold', minWidth: '20px' }}
+                    style={{ 
+                        left: textInput.x, 
+                        top: textInput.y, 
+                        color: color, 
+                        fontSize: `${Math.max(12, strokeWidth)}px`, 
+                        fontFamily: textToolFont,
+                        fontWeight: 'bold', 
+                        minWidth: '20px' 
+                    }}
                     placeholder="Type..."
                     autoFocus
                 />

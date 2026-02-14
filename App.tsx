@@ -10,6 +10,7 @@ import { ExportModal, ExportFormat } from './components/ExportModal';
 import { HelpModal } from './components/HelpModal';
 import { FrameManagerModal } from './components/FrameManagerModal';
 import { AudioRecorderModal } from './components/AudioRecorderModal';
+import { GlobalSettingsModal } from './components/GlobalSettingsModal';
 import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
 import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB } from './utils/db';
 
@@ -49,6 +50,11 @@ export default function App() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Global Settings
+  const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
+  const [accentColor, setAccentColor] = useState('#FF3B30');
+  const [uiFont, setUiFont] = useState('ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif');
+
   const [projectId, setProjectId] = useState<string>(crypto.randomUUID());
   const [projectName, setProjectName] = useState('My Animation');
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
@@ -72,6 +78,7 @@ export default function App() {
   const [penSize, setPenSize] = useState(5);
   const [eraserSize, setEraserSize] = useState(30);
   const [shapeSize, setShapeSize] = useState(5);
+  const [textToolFont, setTextToolFont] = useState('sans-serif');
 
   const [onionSkin, setOnionSkin] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
@@ -104,6 +111,11 @@ export default function App() {
       else if (tool === 'shape') setShapeSize(width);
       else setPenSize(width);
   };
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--accent-color', accentColor);
+    document.documentElement.style.setProperty('--ui-font', uiFont);
+  }, [accentColor, uiFont]);
 
   useEffect(() => {
       const fetchProjects = async () => {
@@ -800,17 +812,34 @@ export default function App() {
   if (view === 'menu') {
       return (
         <div className="flex flex-col h-screen bg-[#121212] text-white p-6 overflow-hidden">
+             <GlobalSettingsModal 
+                isOpen={isGlobalSettingsOpen} 
+                onClose={() => setIsGlobalSettingsOpen(false)} 
+                accentColor={accentColor}
+                setAccentColor={setAccentColor}
+                uiFont={uiFont}
+                setUiFont={setUiFont}
+             />
              <div className="mb-8 flex justify-between items-end">
                  <div>
                     <h1 className="text-3xl font-bold mb-2">My Animations</h1>
                     <p className="text-gray-400">Create, edit and share your stories.</p>
-                    <a href="https://github.com/PLOWPDUD/ClipAnim-Creator" target="_blank" rel="noopener noreferrer" className="inline-block mt-2 text-xs font-bold text-[#FF3B30] hover:text-red-400 transition-colors bg-white/5 px-3 py-1 rounded-full border border-[#FF3B30]/20">Visit The Open Source Here</a>
+                    <div className="flex gap-4 items-center mt-4">
+                        <button 
+                            onClick={() => setIsGlobalSettingsOpen(true)}
+                            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full transition-colors font-bold text-sm"
+                        >
+                            <Icons.Settings size={16} />
+                            Settings
+                        </button>
+                        <a href="https://github.com/PLOWPDUD/ClipAnim-Creator" target="_blank" rel="noopener noreferrer" className="inline-block text-xs font-bold text-[var(--accent-color)] hover:opacity-80 transition-opacity bg-white/5 px-3 py-1.5 rounded-full border border-[var(--accent-color)]/20">Visit The Open Source Here</a>
+                    </div>
                  </div>
                  <input ref={importFileRef} type="file" accept=".json" onChange={handleImportProjectFile} className="hidden" />
              </div>
              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-10">
-                 <button onClick={createNewProject} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-[#FF3B30] hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
-                     <div className="w-16 h-16 rounded-full bg-[#FF3B30]/20 flex items-center justify-center text-[#FF3B30] mb-3 group-hover:scale-110 transition-transform"><Icons.Plus size={32} /></div>
+                 <button onClick={createNewProject} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-[var(--accent-color)] hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
+                     <div className="w-16 h-16 rounded-full bg-[var(--accent-color)]/20 flex items-center justify-center text-[var(--accent-color)] mb-3 group-hover:scale-110 transition-transform"><Icons.Plus size={32} /></div>
                      <span className="font-bold text-gray-300 group-hover:text-white">New Animation</span>
                  </button>
                  <button onClick={() => importFileRef.current?.click()} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-blue-500 hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
@@ -818,7 +847,7 @@ export default function App() {
                      <span className="font-bold text-gray-300 group-hover:text-white">Import Project</span>
                  </button>
                  {savedProjects.map(project => (
-                     <div key={project.id} onClick={() => loadProject(project.id)} className="relative group aspect-[4/3] bg-[#1e1e1e] rounded-2xl overflow-hidden cursor-pointer hover:ring-2 ring-[#FF3B30] transition-all shadow-lg">
+                     <div key={project.id} onClick={() => loadProject(project.id)} className="relative group aspect-[4/3] bg-[#1e1e1e] rounded-2xl overflow-hidden cursor-pointer hover:ring-2 ring-[var(--accent-color)] transition-all shadow-lg">
                          {project.thumbnailUrl ? ( <img src={project.thumbnailUrl} alt={project.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" /> ) : ( <div className="w-full h-full flex items-center justify-center text-gray-700"><Icons.Image size={48} /></div> )}
                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-4 pt-12">
                              <h3 className="font-bold truncate">{project.name}</h3>
@@ -828,7 +857,7 @@ export default function App() {
                      </div>
                  ))}
              </div>
-             {isLoading && <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center backdrop-blur-sm"><Icons.Loader2 className="w-12 h-12 text-[#FF3B30] animate-spin" /></div>}
+             {isLoading && <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center backdrop-blur-sm"><Icons.Loader2 className="w-12 h-12 text-[var(--accent-color)] animate-spin" /></div>}
         </div>
       );
   }
@@ -838,10 +867,10 @@ export default function App() {
       {showExitConfirm && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-[#1e1e1e] rounded-3xl p-8 max-sm w-full border border-gray-700 shadow-2xl text-center">
-                <div className="w-16 h-16 bg-[#FF3B30]/20 rounded-full flex items-center justify-center text-[#FF3B30] mx-auto mb-6"> <Icons.Save size={32} /> </div>
+                <div className="w-16 h-16 bg-[var(--accent-color)]/20 rounded-full flex items-center justify-center text-[var(--accent-color)] mx-auto mb-6"> <Icons.Save size={32} /> </div>
                 <h2 className="text-2xl font-bold mb-2">Unsaved Changes</h2>
                 <div className="grid grid-cols-1 gap-3">
-                    <button onClick={() => confirmExit(true)} className="w-full py-4 bg-[#FF3B30] text-white font-bold rounded-2xl hover:bg-red-600 transition-colors">Save & Exit</button>
+                    <button onClick={() => confirmExit(true)} className="w-full py-4 bg-[var(--accent-color)] text-white font-bold rounded-2xl hover:opacity-90 transition-colors">Save & Exit</button>
                     <button onClick={() => confirmExit(false)} className="w-full py-4 bg-gray-700 text-white font-bold rounded-2xl hover:bg-gray-600 transition-colors">Discard Changes</button>
                     <button onClick={() => setShowExitConfirm(false)} className="w-full py-4 bg-transparent text-gray-400 font-bold rounded-2xl hover:text-white transition-colors">Cancel</button>
                 </div>
@@ -869,7 +898,7 @@ export default function App() {
       {!isFocusMode && (
         <header className="h-14 bg-[#1e1e1e] flex items-center px-4 justify-between border-b border-gray-700 shrink-0 z-30">
             <div className="flex items-center space-x-2">
-                <button onClick={handleGoHome} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white relative"><Icons.Home size={24} />{hasUnsavedChanges && <span className="absolute top-2 right-2 w-2 h-2 bg-[#FF3B30] rounded-full ring-2 ring-[#1e1e1e]" />}</button>
+                <button onClick={handleGoHome} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white relative"><Icons.Home size={24} />{hasUnsavedChanges && <span className="absolute top-2 right-2 w-2 h-2 bg-[var(--accent-color)] rounded-full ring-2 ring-[#1e1e1e]" />}</button>
                 <h1 className="font-bold text-lg hidden sm:block truncate max-w-[150px]">{projectName}</h1>
             </div>
             <div className="flex items-center space-x-2">
@@ -888,9 +917,34 @@ export default function App() {
         </header>
       )}
       <main className="flex-1 relative flex flex-row overflow-hidden min-h-0">
-        <Toolbar currentTool={tool} onSelectTool={setTool} currentBrushType={brushType} onSelectBrushType={setBrushType} currentColor={color} onChangeColor={setColor} strokeWidth={currentStrokeWidth} onChangeStrokeWidth={handleStrokeWidthChange} onionSkin={onionSkin} onToggleOnionSkin={() => setOnionSkin(!onionSkin)} showGrid={showGrid} onToggleGrid={() => setShowGrid(!showGrid)} isFocusMode={isFocusMode} onToggleFocusMode={() => setIsFocusMode(!isFocusMode)} onImportImage={handleImportImage} hasSelection={!!selection} onFlipHorizontal={() => setSelection(selection ? {...selection, scaleX: selection.scaleX * -1} : null)} onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)} onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)} shapeType={shapeType} onSelectShapeType={setShapeType} onOpenHelp={() => setIsHelpOpen(true)} />
+        <Toolbar 
+            currentTool={tool} 
+            onSelectTool={setTool} 
+            currentBrushType={brushType} 
+            onSelectBrushType={setBrushType} 
+            currentColor={color} 
+            onChangeColor={setColor} 
+            strokeWidth={currentStrokeWidth} 
+            onChangeStrokeWidth={handleStrokeWidthChange} 
+            onionSkin={onionSkin} 
+            onToggleOnionSkin={() => setOnionSkin(!onionSkin)} 
+            showGrid={showGrid} 
+            onToggleGrid={() => setShowGrid(!showGrid)} 
+            isFocusMode={isFocusMode} 
+            onToggleFocusMode={() => setIsFocusMode(!isFocusMode)} 
+            onImportImage={handleImportImage} 
+            hasSelection={!!selection} 
+            onFlipHorizontal={() => setSelection(selection ? {...selection, scaleX: selection.scaleX * -1} : null)} 
+            onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)} 
+            onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)} 
+            shapeType={shapeType} 
+            onSelectShapeType={setShapeType} 
+            onOpenHelp={() => setIsHelpOpen(true)} 
+            textToolFont={textToolFont}
+            onSelectTextToolFont={setTextToolFont}
+        />
         <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
-            <CanvasArea ref={canvasRef} currentFrame={frames[currentFrameIndex]} layers={layers} activeLayerId={activeLayerId} onUpdateLayer={handleUpdateLayer} tool={tool} brushType={brushType} shapeType={shapeType} color={color} strokeWidth={currentStrokeWidth} prevFrame={currentFrameIndex > 0 ? frames[currentFrameIndex - 1] : null} nextFrame={currentFrameIndex < frames.length - 1 ? frames[currentFrameIndex + 1] : null} onionSkin={onionSkin} showGrid={showGrid} isPlaying={isPlaying} selection={selection} onSelectionCreate={setSelection} onSelectionUpdate={setSelection} onSelectionCommit={handleSelectionCommit} canvasWidth={canvasSize.width} canvasHeight={canvasSize.height} backgroundImage={backgroundImage} />
+            <CanvasArea ref={canvasRef} currentFrame={frames[currentFrameIndex]} layers={layers} activeLayerId={activeLayerId} onUpdateLayer={handleUpdateLayer} tool={tool} brushType={brushType} shapeType={shapeType} color={color} strokeWidth={currentStrokeWidth} prevFrame={currentFrameIndex > 0 ? frames[currentFrameIndex - 1] : null} nextFrame={currentFrameIndex < frames.length - 1 ? frames[currentFrameIndex + 1] : null} onionSkin={onionSkin} showGrid={showGrid} isPlaying={isPlaying} selection={selection} onSelectionCreate={setSelection} onSelectionUpdate={setSelection} onSelectionCommit={handleSelectionCommit} canvasWidth={canvasSize.width} canvasHeight={canvasSize.height} backgroundImage={backgroundImage} textToolFont={textToolFont} />
             <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
                 <Timeline frames={frames} currentFrameIndex={currentFrameIndex} onSelectFrame={handleSelectFrame} onAddFrame={addFrame} onDeleteFrame={deleteFrame} onCopyFrame={copyFrame} isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)} audioTracks={audioTracks} onAddAudioTrack={handleAddAudioTrack} onRemoveAudioTrack={handleRemoveAudioTrack} isFocusMode={isFocusMode} onOpenFrameManager={() => setIsFrameManagerOpen(true)} onOpenRecorder={() => setIsAudioRecorderOpen(true)} />
             </div>
