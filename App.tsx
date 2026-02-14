@@ -838,8 +838,8 @@ export default function App() {
                  <input ref={importFileRef} type="file" accept=".json" onChange={handleImportProjectFile} className="hidden" />
              </div>
              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-10">
-                 <button onClick={createNewProject} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-[var(--accent-color)] hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
-                     <div className="w-16 h-16 rounded-full bg-[var(--accent-color)]/20 flex items-center justify-center text-[var(--accent-color)] mb-3 group-hover:scale-110 transition-transform"><Icons.Plus size={32} /></div>
+                 <button onClick={createNewProject} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-[#FF3B30] hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
+                     <div className="w-16 h-16 rounded-full bg-[#FF3B30]/20 flex items-center justify-center text-[#FF3B30] mb-3 group-hover:scale-110 transition-transform"><Icons.Plus size={32} /></div>
                      <span className="font-bold text-gray-300 group-hover:text-white">New Animation</span>
                  </button>
                  <button onClick={() => importFileRef.current?.click()} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-blue-500 hover:bg-white/5 flex flex-col items-center justify-center group transition-all">

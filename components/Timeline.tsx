@@ -81,7 +81,7 @@ export const Timeline: React.FC<TimelineProps> = ({
               className={`
                   flex items-center justify-center w-12 h-12 -mt-10 rounded-full shadow-[0_4px_10px_rgba(0,0,0,0.5)]
                   transition-all duration-200 transform hover:scale-105 active:scale-95 border-2 border-[#121212] z-30
-                  ${isPlaying ? 'bg-white text-red-600' : 'bg-[var(--accent-color)] text-white'}
+                  ${isPlaying ? 'bg-white text-red-600' : 'bg-[#FF3B30] text-white'}
               `}
           >
               {isPlaying ? <Icons.Pause size={24} fill="currentColor" /> : <Icons.Play size={24} fill="currentColor" className="ml-1"/>}
@@ -178,13 +178,13 @@ export const Timeline: React.FC<TimelineProps> = ({
             
              <div 
                 onClick={onAddFrame}
-                className="flex-shrink-0 w-16 h-20 mx-0.5 flex items-center justify-center bg-[var(--accent-color)] border border-[var(--accent-color)] rounded-[4px] cursor-pointer hover:opacity-90 text-white shadow-lg transition-all scale-95 pointer-events-auto opacity-100 z-20"
+                className="flex-shrink-0 w-16 h-20 mx-0.5 flex items-center justify-center bg-[#FF3B30] border border-[#FF3B30] rounded-[4px] cursor-pointer hover:opacity-90 text-white shadow-lg transition-all scale-95 pointer-events-auto opacity-100 z-20"
             >
                 <Icons.Plus size={32} strokeWidth={3} />
             </div>
         </div>
         
-        <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-[var(--accent-color)] z-20 pointer-events-none transform -translate-x-1/2 shadow-[0_0_8px_rgba(255,59,48,0.8)]" />
+        <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-[#FF3B30] z-20 pointer-events-none transform -translate-x-1/2 shadow-[0_0_8px_rgba(255,59,48,0.8)]" />
       </div>
     </div>
   );
