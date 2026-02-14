@@ -1,6 +1,10 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType } from '../types';
 import { floodFill } from '../utils/drawingUtils';
+
+export interface CanvasAreaHandle {
+  resetView: () => void;
+}
 
 interface CanvasAreaProps {
   currentFrame: Frame;
@@ -37,7 +41,7 @@ const getMixBlendMode = (mode: GlobalCompositeOperation): any => {
     return 'normal';
 };
 
-export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
+export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   currentFrame,
   layers,
   activeLayerId,
@@ -59,7 +63,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
   canvasWidth,
   canvasHeight,
   backgroundImage
-}) => {
+}, ref) => {
   const activeCanvasRef = useRef<HTMLCanvasElement>(null);
   const transformRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -68,11 +72,14 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
   const marqueeRef = useRef<HTMLDivElement>(null);
   const latestSelectionState = useRef<SelectionState | null>(null);
 
-  const transform = useRef({ scale: 1, x: 0, y: 0 });
+  const transform = useRef({ scale: 1, x: 0, y: 0, rotation: 0 });
   const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const isGesture = useRef(false);
   const isDrawing = useRef(false);
+  
   const initialPinchDistance = useRef<number | null>(null);
+  const initialAngle = useRef<number | null>(null);
+  const startRotation = useRef<number>(0);
   const lastPanPoint = useRef<{ x: number; y: number } | null>(null);
 
   // Tracking movement to distinguish tap from drag
@@ -88,6 +95,13 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
   const [textInput, setTextInput] = useState<{x: number, y: number, value: string} | null>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => ({
+      resetView: () => {
+          transform.current = { scale: 1, x: 0, y: 0, rotation: 0 };
+          updateTransformStyle();
+      }
+  }));
 
   useEffect(() => {
       if (selection && selectionOverlayRef.current) {
@@ -138,8 +152,8 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
 
   const updateTransformStyle = () => {
     if (transformRef.current) {
-      const { scale, x, y } = transform.current;
-      transformRef.current.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+      const { scale, x, y, rotation } = transform.current;
+      transformRef.current.style.transform = `translate(${x}px, ${y}px) rotate(${rotation}deg) scale(${scale})`;
       
       // Update rendering mode for pixel art when zoomed in
       if (transformRef.current.style.imageRendering !== undefined) {
@@ -149,19 +163,48 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
   };
 
   const getCanvasCoordinates = (clientX: number, clientY: number) => {
-    if (!activeCanvasRef.current) return { x: 0, y: 0 };
-    const rect = activeCanvasRef.current.getBoundingClientRect();
-    const scaleX = activeCanvasRef.current.width / rect.width;
-    const scaleY = activeCanvasRef.current.height / rect.height;
+    // Advanced coordinate mapping that handles Rotation, Scale, and Translation
+    if (!activeCanvasRef.current || !transformRef.current) return { x: 0, y: 0 };
 
-    return {
-      x: (clientX - rect.left) * scaleX,
-      y: (clientY - rect.top) * scaleY
-    };
+    const { x: tX, y: tY, scale, rotation } = transform.current;
+    
+    // Get center of viewport/container (assuming full screen or filling parent)
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    if (!containerRect) return { x: 0, y: 0 };
+    
+    const containerCx = containerRect.left + containerRect.width / 2;
+    const containerCy = containerRect.top + containerRect.height / 2;
+
+    // Adjust for pan translation
+    const centerX = containerCx + tX;
+    const centerY = containerCy + tY;
+
+    // Delta from center
+    const dx = clientX - centerX;
+    const dy = clientY - centerY;
+
+    // Rotate backwards to align with axis
+    const rad = (-rotation * Math.PI) / 180;
+    const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+    // Scale down
+    const localX = rotatedX / scale;
+    const localY = rotatedY / scale;
+
+    // Offset to canvas origin (top-left)
+    const finalX = localX + canvasWidth / 2;
+    const finalY = localY + canvasHeight / 2;
+
+    return { x: finalX, y: finalY };
   };
 
   const getDistance = (p1: {x:number, y:number}, p2: {x:number, y:number}) => {
     return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+  };
+
+  const getAngle = (p1: {x:number, y:number}, p2: {x:number, y:number}) => {
+      return Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
   };
 
   const getCenter = (p1: {x:number, y:number}, p2: {x:number, y:number}) => {
@@ -279,6 +322,8 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
         const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
         if (points.length >= 2) {
             initialPinchDistance.current = getDistance(points[0], points[1]);
+            initialAngle.current = getAngle(points[0], points[1]);
+            startRotation.current = transform.current.rotation;
             lastPanPoint.current = getCenter(points[0], points[1]);
         }
         return;
@@ -382,19 +427,27 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
             const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
             const newDistance = getDistance(points[0], points[1]);
             const newCenter = getCenter(points[0], points[1]);
+            const newAngle = getAngle(points[0], points[1]);
 
-            if (initialPinchDistance.current && lastPanPoint.current) {
+            if (initialPinchDistance.current && lastPanPoint.current && initialAngle.current !== null) {
                 const zoomFactor = newDistance / initialPinchDistance.current;
                 const newScale = Math.min(Math.max(transform.current.scale * zoomFactor, 0.1), 10);
+                
                 const dx = newCenter.x - lastPanPoint.current.x;
                 const dy = newCenter.y - lastPanPoint.current.y;
 
+                // Rotation calculation
+                const angleDelta = newAngle - initialAngle.current;
+                
                 transform.current.scale = newScale;
                 transform.current.x += dx;
                 transform.current.y += dy;
+                transform.current.rotation = startRotation.current + angleDelta;
+                
                 updateTransformStyle();
                 
                 initialPinchDistance.current = newDistance;
+                // We keep initialAngle constant to avoid drift/jitter, but update center
                 lastPanPoint.current = newCenter;
             }
             return;
@@ -631,7 +684,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
             ref={transformRef}
             className="relative shadow-2xl bg-white origin-center"
             style={{ 
-                transform: `translate(0px, 0px) scale(1)`,
+                transform: `translate(0px, 0px) rotate(0deg) scale(1)`,
                 width: canvasWidth, 
                 height: canvasHeight,
                 imageRendering: 'auto'
@@ -740,6 +793,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = React.memo(({
         
         <div className="absolute top-4 right-4 bg-black/50 text-white text-xs px-2 py-1 rounded pointer-events-none flex gap-2">
             <span>{Math.round(transform.current.scale * 100)}%</span>
+            <span>{Math.round(transform.current.rotation)}°</span>
             {tool === 'select' && <span>Select Mode</span>}
             {tool === 'text' && <span>Text Mode</span>}
         </div>

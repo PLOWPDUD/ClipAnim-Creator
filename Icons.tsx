@@ -28,6 +28,7 @@ import {
   FlipHorizontal, 
   FlipVertical, 
   RotateCw, 
+  RotateCcw,
   Grid3X3, 
   Square, 
   Circle, 
@@ -48,7 +49,8 @@ import {
   Highlighter,
   PenTool,
   SprayCan,
-  Grid2X2
+  Grid2X2,
+  Monitor
 } from 'lucide-react';
 
 export const Icons = {
@@ -80,7 +82,8 @@ export const Icons = {
   Image,
   FlipHorizontal, 
   FlipVertical, 
-  RotateCw, 
+  RotateCw,
+  RotateCcw,
   Grid: Grid3X3,
   Square, 
   Circle, 
@@ -101,5 +104,6 @@ export const Icons = {
   Highlighter,
   Marker: PenTool,
   Spray: SprayCan,
-  Pixel: Grid2X2
+  Pixel: Grid2X2,
+  Reset: Monitor
 };

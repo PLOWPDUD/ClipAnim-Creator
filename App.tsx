@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType } from './types';
-import { CanvasArea } from './components/CanvasArea';
+import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
 import { Icons } from './Icons';
@@ -91,6 +91,7 @@ export default function App() {
   const importFileRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef<number | undefined>(undefined);
   const startTimeRef = useRef<number>(0);
+  const canvasRef = useRef<CanvasAreaHandle>(null);
 
   const currentStrokeWidth = tool === 'eraser' ? eraserSize : tool === 'shape' ? shapeSize : penSize;
 
@@ -806,6 +807,7 @@ export default function App() {
             <div className="flex items-center space-x-2">
                 <button onClick={undo} disabled={historyIndex <= 0} className={`p-2 rounded-full ${historyIndex > 0 ? 'text-white' : 'text-gray-600'}`}> <Icons.Undo size={20} /> </button>
                 <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-2 rounded-full ${historyIndex < history.length - 1 ? 'text-white' : 'text-gray-600'}`}> <Icons.Redo size={20} /> </button>
+                <button onClick={() => canvasRef.current?.resetView()} className="p-2 text-gray-400 hover:text-white rounded-full" title="Reset View"><Icons.RotateCcw size={20} /></button>
                 <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white"><Icons.Copy size={20} /></button>
                 <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white"><Icons.Clipboard size={20} /></button>
             </div>
@@ -820,7 +822,7 @@ export default function App() {
       <main className="flex-1 relative flex flex-row overflow-hidden min-h-0">
         <Toolbar currentTool={tool} onSelectTool={setTool} currentBrushType={brushType} onSelectBrushType={setBrushType} currentColor={color} onChangeColor={setColor} strokeWidth={currentStrokeWidth} onChangeStrokeWidth={handleStrokeWidthChange} onionSkin={onionSkin} onToggleOnionSkin={() => setOnionSkin(!onionSkin)} showGrid={showGrid} onToggleGrid={() => setShowGrid(!showGrid)} isFocusMode={isFocusMode} onToggleFocusMode={() => setIsFocusMode(!isFocusMode)} onImportImage={handleImportImage} hasSelection={!!selection} onFlipHorizontal={() => setSelection(selection ? {...selection, scaleX: selection.scaleX * -1} : null)} onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)} onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)} shapeType={shapeType} onSelectShapeType={setShapeType} onOpenHelp={() => setIsHelpOpen(true)} />
         <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
-            <CanvasArea currentFrame={frames[currentFrameIndex]} layers={layers} activeLayerId={activeLayerId} onUpdateLayer={handleUpdateLayer} tool={tool} brushType={brushType} shapeType={shapeType} color={color} strokeWidth={currentStrokeWidth} prevFrame={currentFrameIndex > 0 ? frames[currentFrameIndex - 1] : null} nextFrame={currentFrameIndex < frames.length - 1 ? frames[currentFrameIndex + 1] : null} onionSkin={onionSkin} showGrid={showGrid} isPlaying={isPlaying} selection={selection} onSelectionCreate={setSelection} onSelectionUpdate={setSelection} onSelectionCommit={handleSelectionCommit} canvasWidth={canvasSize.width} canvasHeight={canvasSize.height} backgroundImage={backgroundImage} />
+            <CanvasArea ref={canvasRef} currentFrame={frames[currentFrameIndex]} layers={layers} activeLayerId={activeLayerId} onUpdateLayer={handleUpdateLayer} tool={tool} brushType={brushType} shapeType={shapeType} color={color} strokeWidth={currentStrokeWidth} prevFrame={currentFrameIndex > 0 ? frames[currentFrameIndex - 1] : null} nextFrame={currentFrameIndex < frames.length - 1 ? frames[currentFrameIndex + 1] : null} onionSkin={onionSkin} showGrid={showGrid} isPlaying={isPlaying} selection={selection} onSelectionCreate={setSelection} onSelectionUpdate={setSelection} onSelectionCommit={handleSelectionCommit} canvasWidth={canvasSize.width} canvasHeight={canvasSize.height} backgroundImage={backgroundImage} />
             <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
                 <Timeline frames={frames} currentFrameIndex={currentFrameIndex} onSelectFrame={handleSelectFrame} onAddFrame={addFrame} onDeleteFrame={deleteFrame} onCopyFrame={copyFrame} isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)} audioTracks={audioTracks} onAddAudioTrack={handleAddAudioTrack} onRemoveAudioTrack={handleRemoveAudioTrack} isFocusMode={isFocusMode} />
             </div>
