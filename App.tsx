@@ -17,8 +17,6 @@ import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB
 // @ts-ignore
 import JSZip from 'jszip';
 // @ts-ignore
-import gifshot from 'gifshot';
-// @ts-ignore
 import * as Mp4Muxer from 'mp4-muxer';
 
 const createDefaultLayer = (id = '1', name = 'Layer 1'): Layer => ({
@@ -105,6 +103,17 @@ export default function App() {
   const canvasRef = useRef<CanvasAreaHandle>(null);
 
   const currentStrokeWidth = tool === 'eraser' ? eraserSize : tool === 'shape' ? shapeSize : penSize;
+
+  // 1. Load GIF Library
+  useEffect(() => {
+    if (!document.getElementById('gifuct-script')) {
+        const script = document.createElement('script');
+        script.id = 'gifuct-script';
+        script.src = "https://unpkg.com/gifuct-js@2.1.2/dist/gifuct-js.min.js";
+        script.async = true;
+        document.head.appendChild(script);
+    }
+  }, []);
 
   const handleStrokeWidthChange = (width: number) => {
       if (tool === 'eraser') setEraserSize(width);
@@ -217,26 +226,112 @@ export default function App() {
     setHasUnsavedChanges(true);
   };
 
-  const handleImportImage = (file: File) => {
+  // 2. Updated Handle Import Image with Correct GIF Parsing
+  const handleImportImage = async (file: File) => {
     const reader = new FileReader();
+
+    // --- GIF IMPORT LOGIC ---
+    if (file.type === 'image/gif') {
+        reader.onload = async (e) => {
+            const buffer = e.target?.result as ArrayBuffer;
+            try {
+                // @ts-ignore - gifuct-js exposes 'gifuct' on window in typical UMD builds
+                const gifuct = window.gifuct;
+                
+                if (!gifuct) {
+                    alert("GIF Parser is still loading. Please wait a moment and try again.");
+                    return;
+                }
+
+                // Parse
+                const gif = gifuct.parseGIF(buffer);
+                const framesData = gifuct.decompressFrames(gif, true);
+                
+                const newFrames: Frame[] = framesData.map((gifFrame: any) => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = canvasSize.width;
+                    canvas.height = canvasSize.height;
+                    const ctx = canvas.getContext('2d')!;
+                    
+                    // Create a temporary canvas to draw the GIF frame "patch"
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = gifFrame.dims.width;
+                    tempCanvas.height = gifFrame.dims.height;
+                    const tempCtx = tempCanvas.getContext('2d')!;
+                    const imgData = tempCtx.createImageData(gifFrame.dims.width, gifFrame.dims.height);
+                    
+                    // Set the pixel data
+                    imgData.data.set(gifFrame.patch);
+                    tempCtx.putImageData(imgData, 0, 0);
+                    
+                    // Draw onto the main project-sized canvas
+                    ctx.drawImage(tempCanvas, gifFrame.dims.left, gifFrame.dims.top);
+                    const dataUrl = canvas.toDataURL();
+                    
+                    const layerData: Record<string, string> = {};
+                    layers.forEach(l => {
+                        // Put the GIF frame on the active layer, blank others
+                        if (l.id === activeLayerId) {
+                            layerData[l.id] = dataUrl;
+                        } else {
+                            const blank = document.createElement('canvas');
+                            blank.width = canvasSize.width;
+                            blank.height = canvasSize.height;
+                            layerData[l.id] = blank.toDataURL();
+                        }
+                    });
+
+                    return {
+                        id: crypto.randomUUID(),
+                        layers: layerData,
+                        thumbnailUrl: dataUrl
+                    };
+                });
+
+                // Insert all GIF frames into the timeline
+                const updatedFrames = [...frames];
+                updatedFrames.splice(currentFrameIndex + 1, 0, ...newFrames);
+                
+                // Update states
+                setFrames(updatedFrames);
+                setCurrentFrameIndex(currentFrameIndex + 1);
+                setHasUnsavedChanges(true);
+                
+                console.log(`Successfully imported ${newFrames.length} GIF frames`);
+            } catch (err) {
+                console.error("GIF Error:", err);
+                alert("This GIF is not supported or the parser failed.");
+            }
+        };
+        reader.readAsArrayBuffer(file);
+        return;
+    }
+
+    // --- STANDARD IMAGE LOGIC (PNG/JPG) ---
     reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
-      const img = new Image();
-      img.onload = () => {
-        setSelection({
-          x: (canvasSize.width - img.width) / 2,
-          y: (canvasSize.height - img.height) / 2,
-          width: img.width,
-          height: img.height,
-          dataUrl,
-          rotation: 0,
-          scaleX: 1,
-          scaleY: 1
-        });
-        setTool('select');
-        setHasUnsavedChanges(true);
-      };
-      img.src = dataUrl;
+        const result = e.target?.result as string;
+        const img = new Image();
+        img.onload = () => {
+            const maxWidth = canvasSize.width * 0.8;
+            const ratio = img.width / img.height;
+            const width = Math.min(img.width, maxWidth);
+            const height = width / ratio;
+            const x = (canvasSize.width - width) / 2;
+            const y = (canvasSize.height - height) / 2;
+            setSelection({
+              x,
+              y,
+              width,
+              height,
+              dataUrl: result,
+              rotation: 0,
+              scaleX: 1,
+              scaleY: 1
+            });
+            setTool('select');
+            setHasUnsavedChanges(true);
+        };
+        img.src = result;
     };
     reader.readAsDataURL(file);
   };
@@ -397,26 +492,9 @@ export default function App() {
             setIsExportModalOpen(false);
         }
     } else if (format === 'gif') {
-      // @ts-ignore
-      gifshot.createGIF({
-        images: compositeFrames,
-        interval: 1 / fps,
-        gifWidth: canvasSize.width,
-        gifHeight: canvasSize.height,
-        progressCallback: (w: number) => setExportProgress(30 + (w * 70))
-      }, (obj: any) => {
-        if (!obj.error) {
-          const a = document.createElement('a');
-          a.href = obj.image;
-          a.download = `${projectName}.gif`;
-          a.click();
-        } else {
-            alert("GIF creation failed: " + obj.error);
-        }
-        setIsExporting(false);
-        setExportProgress(100);
-        setIsExportModalOpen(false);
-      });
+      alert("GIF export is temporarily unavailable due to library issues. Please use MP4.");
+      setIsExporting(false);
+      setIsExportModalOpen(false);
     } else if (format === 'png-seq') {
       const zip = new JSZip();
       compositeFrames.forEach((data, i) => {
@@ -903,7 +981,7 @@ export default function App() {
             </div>
             <div className="flex items-center space-x-2">
                 <button onClick={undo} disabled={historyIndex <= 0} className={`p-2 rounded-full ${historyIndex > 0 ? 'text-white' : 'text-gray-600'}`}> <Icons.Undo size={20} /> </button>
-                <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-2 rounded-full ${historyIndex < history.length - 1 ? 'text-white' : 'text-gray-600'}`}> <Icons.Redo size={20} /> </button>
+                <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-2 rounded-full ${historyIndex < history.length - 1 ? 'text-gray-600' : 'text-white'}`}> <Icons.Redo size={20} /> </button>
                 <button onClick={() => canvasRef.current?.resetView()} className="p-2 text-gray-400 hover:text-white rounded-full" title="Reset View"><Icons.RotateCcw size={20} /></button>
                 <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white"><Icons.Copy size={20} /></button>
                 <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white"><Icons.Clipboard size={20} /></button>

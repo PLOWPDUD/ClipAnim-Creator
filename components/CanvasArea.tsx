@@ -94,7 +94,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
 
   const dragStart = useRef<{x: number, y: number} | null>(null);
   const initialSelection = useRef<SelectionState | null>(null);
-  const selectionMode = useRef<'create' | 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | null>(null);
+  const selectionMode = useRef<'create' | 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | 'rotate' | null>(null);
   const [isCreatingSelection, setIsCreatingSelection] = useState(false);
 
   const [textInput, setTextInput] = useState<{x: number, y: number, value: string} | null>(null);
@@ -414,6 +414,17 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
       latestSelectionState.current = selection ? { ...selection } : null;
   };
 
+  const handleRotatePointerDown = (e: React.PointerEvent) => {
+      e.stopPropagation();
+      if (e.button === 2) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      selectionMode.current = 'rotate';
+      initialSelection.current = selection ? { ...selection } : null;
+      latestSelectionState.current = selection ? { ...selection } : null;
+  };
+
   const handlePointerMove = (e: React.PointerEvent) => {
     if (isPlaying) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -468,8 +479,9 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         if (dist > 2) hasMoved.current = true;
     }
 
-    if (tool === 'select' && selectionMode.current && dragStart.current) {
-        if (selectionMode.current === 'create') {
+    if (tool === 'select' && selectionMode.current && selection) {
+        const init = initialSelection.current;
+        if (selectionMode.current === 'create' && dragStart.current) {
             if (marqueeRef.current) {
                 const startX = dragStart.current.x;
                 const startY = dragStart.current.y;
@@ -483,10 +495,21 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 s.width = `${width}px`;
                 s.height = `${height}px`;
             }
-        } else if (initialSelection.current) {
+        } else if (selectionMode.current === 'rotate' && init) {
+            const centerX = init.x + init.width / 2;
+            const centerY = init.y + init.height / 2;
+            // Calculate angle from center to pointer
+            const angle = Math.atan2(y - centerY, x - centerX) * (180 / Math.PI);
+            // Since the handle is at the top, add 90 degrees to align
+            const newRotation = (angle + 90) % 360;
+            
+            if (selectionOverlayRef.current) {
+                selectionOverlayRef.current.style.transform = `rotate(${newRotation}deg) scale(${init.scaleX}, ${init.scaleY})`;
+            }
+            latestSelectionState.current = { ...init, rotation: newRotation };
+        } else if (dragStart.current && init) {
             const dx = x - dragStart.current.x;
             const dy = y - dragStart.current.y;
-            const init = initialSelection.current;
             let newW = init.width, newH = init.height, newX = init.x, newY = init.y;
 
             if (selectionMode.current === 'move') {
@@ -770,11 +793,26 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     }}
                 >
                     <img src={selection.dataUrl} className="w-full h-full select-none pointer-events-none" alt="selection" />
+                    
+                    {/* Interactive Selection UI */}
                     <div className="absolute inset-0 border-2 border-[#007AFF] pointer-events-none"></div>
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tl')} className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-[#007AFF] rounded-full cursor-nwse-resize z-40 pointer-events-auto" />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tr')} className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-[#007AFF] rounded-full cursor-nesw-resize z-40 pointer-events-auto" />
-                     <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-bl')} className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-[#007AFF] rounded-full cursor-nesw-resize z-40 pointer-events-auto" />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-br')} className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-[#007AFF] rounded-full cursor-nwse-resize z-40 pointer-events-auto" />
+                    
+                    {/* Bigger Corner Handles */}
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tl')} className="absolute -top-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg cursor-nwse-resize z-40 pointer-events-auto" />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tr')} className="absolute -top-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg cursor-nesw-resize z-40 pointer-events-auto" />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-bl')} className="absolute -bottom-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg cursor-nesw-resize z-40 pointer-events-auto" />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-br')} className="absolute -bottom-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg cursor-nwse-resize z-40 pointer-events-auto" />
+
+                    {/* Interactive Rotation Handle */}
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none" style={{ transform: 'translateY(-100%)' }}>
+                        <div className="w-0.5 h-10 bg-[#007AFF]"></div>
+                        <div 
+                            onPointerDown={handleRotatePointerDown}
+                            className="w-8 h-8 rounded-full bg-white border-2 border-[#007AFF] flex items-center justify-center text-[#007AFF] shadow-xl cursor-grab active:cursor-grabbing pointer-events-auto"
+                        >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                        </div>
+                    </div>
                 </div>
             )}
             
