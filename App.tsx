@@ -8,6 +8,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { LayerPanel } from './components/LayerPanel';
 import { ExportModal, ExportFormat } from './components/ExportModal';
 import { HelpModal } from './components/HelpModal';
+import gifshot from 'gifshot';
 import { FrameManagerModal } from './components/FrameManagerModal';
 import { AudioRecorderModal } from './components/AudioRecorderModal';
 import { GlobalSettingsModal } from './components/GlobalSettingsModal';
@@ -500,9 +501,40 @@ export default function App() {
             setIsExportModalOpen(false);
         }
     } else if (format === 'gif') {
-      alert("GIF export is temporarily unavailable due to library issues. Please use MP4.");
-      setIsExporting(false);
-      setIsExportModalOpen(false);
+      try {
+        const gifBlob = await new Promise<Blob>((resolve, reject) => {
+          gifshot.createGIF({
+            images: compositeFrames,
+            gifWidth: canvasSize.width,
+            gifHeight: canvasSize.height,
+            frameDuration: 1 / fps, // gifshot uses seconds per frame
+            numWorkers: 2, // Use more workers for faster processing
+            quality: 10 // Lower quality for smaller file size, adjust as needed
+          }, (obj: any) => {
+            if (obj.error) {
+              reject(obj.error);
+            } else {
+              fetch(obj.image).then(res => res.blob()).then(resolve).catch(reject);
+            }
+          });
+        });
+
+        const url = URL.createObjectURL(gifBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${projectName}.gif`;
+        a.click();
+
+        setIsExporting(false);
+        setExportProgress(100);
+        setIsExportModalOpen(false);
+
+      } catch (e: any) {
+        console.error("GIF Export failed", e);
+        alert("GIF Export failed: " + e.message);
+        setIsExporting(false);
+        setIsExportModalOpen(false);
+      }
     } else if (format === 'png-seq') {
       const zip = new JSZip();
       compositeFrames.forEach((data, i) => {
