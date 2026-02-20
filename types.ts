@@ -44,6 +44,15 @@ export interface SelectionState {
   scaleY: number; // 1 or -1
 }
 
+export interface OnionSkinSettings {
+  beforeColor: string;
+  afterColor: string;
+  beforeOpacity: number;
+  afterOpacity: number;
+  numBefore: number;
+  numAfter: number;
+}
+
 export interface AppState {
   frames: Frame[];
   currentFrameIndex: number;
@@ -53,6 +62,7 @@ export interface AppState {
   color: string;
   strokeWidth: number;
   onionSkin: boolean;
+  onionSkinSettings: OnionSkinSettings;
 }
 
 export interface ProjectMeta {
@@ -73,4 +83,5 @@ export interface ProjectData {
     frames: Frame[];
     fps: number;
     audioTracks: AudioTrack[];
+    onionSkinSettings?: OnionSkinSettings;
 }

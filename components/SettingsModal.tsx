@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { Icons } from '../Icons';
+import { OnionSkinSettings } from '../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -13,6 +14,8 @@ interface SettingsModalProps {
   backgroundImage: string | null;
   setBackgroundImage: (url: string | null) => void;
   onBackupProject: () => void;
+  onionSkinSettings: OnionSkinSettings;
+  setOnionSkinSettings: (settings: OnionSkinSettings) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -26,7 +29,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setCanvasSize,
   backgroundImage,
   setBackgroundImage,
-  onBackupProject
+  onBackupProject,
+  onionSkinSettings,
+  setOnionSkinSettings
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -158,6 +163,101 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                 )}
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+            </div>
+
+            <div className="w-full h-px bg-gray-700" />
+
+            {/* Onion Skin Settings */}
+            <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-4">Onion Skin Settings</label>
+                
+                <div className="space-y-4">
+                    {/* Previous Frame */}
+                    <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs font-medium text-gray-300">Previous Frame</span>
+                            <input 
+                                type="color" 
+                                value={onionSkinSettings.beforeColor}
+                                onChange={(e) => setOnionSkinSettings({ ...onionSkinSettings, beforeColor: e.target.value })}
+                                className="w-8 h-8 rounded cursor-pointer bg-transparent border-none"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-[10px] text-gray-500">
+                                <span>Opacity</span>
+                                <span>{Math.round(onionSkinSettings.beforeOpacity * 100)}%</span>
+                            </div>
+                            <input 
+                                type="range" 
+                                min="0" max="1" step="0.05"
+                                value={onionSkinSettings.beforeOpacity}
+                                onChange={(e) => setOnionSkinSettings({ ...onionSkinSettings, beforeOpacity: Number(e.target.value) })}
+                                className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-gray-400"
+                            />
+                        </div>
+                        <div className="mt-3">
+                            <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                                <span>Frames Before</span>
+                                <span>{onionSkinSettings.numBefore}</span>
+                            </div>
+                            <div className="flex gap-1">
+                                {[1, 2, 3, 4, 5].map(n => (
+                                    <button 
+                                        key={n}
+                                        onClick={() => setOnionSkinSettings({ ...onionSkinSettings, numBefore: n })}
+                                        className={`flex-1 py-1 rounded text-[10px] font-bold transition-colors ${onionSkinSettings.numBefore === n ? 'bg-gray-400 text-black' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
+                                    >
+                                        {n}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Next Frame */}
+                    <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs font-medium text-gray-300">Next Frame</span>
+                            <input 
+                                type="color" 
+                                value={onionSkinSettings.afterColor}
+                                onChange={(e) => setOnionSkinSettings({ ...onionSkinSettings, afterColor: e.target.value })}
+                                className="w-8 h-8 rounded cursor-pointer bg-transparent border-none"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-[10px] text-gray-500">
+                                <span>Opacity</span>
+                                <span>{Math.round(onionSkinSettings.afterOpacity * 100)}%</span>
+                            </div>
+                            <input 
+                                type="range" 
+                                min="0" max="1" step="0.05"
+                                value={onionSkinSettings.afterOpacity}
+                                onChange={(e) => setOnionSkinSettings({ ...onionSkinSettings, afterOpacity: Number(e.target.value) })}
+                                className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-gray-400"
+                            />
+                        </div>
+                        <div className="mt-3">
+                            <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                                <span>Frames After</span>
+                                <span>{onionSkinSettings.numAfter}</span>
+                            </div>
+                            <div className="flex gap-1">
+                                {[1, 2, 3, 4, 5].map(n => (
+                                    <button 
+                                        key={n}
+                                        onClick={() => setOnionSkinSettings({ ...onionSkinSettings, numAfter: n })}
+                                        className={`flex-1 py-1 rounded text-[10px] font-bold transition-colors ${onionSkinSettings.numAfter === n ? 'bg-gray-400 text-black' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
+                                    >
+                                        {n}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div className="w-full h-px bg-gray-700" />

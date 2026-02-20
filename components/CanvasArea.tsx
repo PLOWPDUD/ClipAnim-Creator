@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
-import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType } from '../types';
+import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings } from '../types';
 import { floodFill } from '../utils/drawingUtils';
 
 export interface CanvasAreaHandle {
@@ -16,9 +16,10 @@ interface CanvasAreaProps {
   shapeType: ShapeType;
   color: string;
   strokeWidth: number;
-  prevFrame?: Frame | null;
-  nextFrame?: Frame | null;
+  beforeFrames?: Frame[];
+  afterFrames?: Frame[];
   onionSkin: boolean;
+  onionSkinSettings: OnionSkinSettings;
   showGrid: boolean;
   isPlaying: boolean;
   
@@ -54,9 +55,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   shapeType,
   color,
   strokeWidth,
-  prevFrame,
-  nextFrame,
+  beforeFrames = [],
+  afterFrames = [],
   onionSkin,
+  onionSkinSettings,
   showGrid,
   isPlaying,
   selection,
@@ -733,17 +735,45 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 />
             )}
 
-            {onionSkin && prevFrame?.thumbnailUrl && !isPlaying && (
-                <div className="absolute inset-0 pointer-events-none z-0 opacity-30">
-                    <img src={prevFrame.thumbnailUrl} alt="" className="w-full h-full object-contain" />
+            {onionSkin && !isPlaying && beforeFrames.map((f, i) => f.thumbnailUrl && (
+                <div 
+                    key={`before-${f.id}-${i}`}
+                    className="absolute inset-0 pointer-events-none z-0" 
+                    style={{ 
+                        opacity: onionSkinSettings.beforeOpacity / (i + 1),
+                        filter: `url(#onion-before)`
+                    }}
+                >
+                    <img src={f.thumbnailUrl} alt="" className="w-full h-full object-contain" />
                 </div>
-            )}
+            ))}
             
-            {onionSkin && nextFrame?.thumbnailUrl && !isPlaying && (
-                <div className="absolute inset-0 pointer-events-none z-0 opacity-30">
-                     <img src={nextFrame.thumbnailUrl} alt="" className="w-full h-full object-contain" />
+            {onionSkin && !isPlaying && afterFrames.map((f, i) => f.thumbnailUrl && (
+                <div 
+                    key={`after-${f.id}-${i}`}
+                    className="absolute inset-0 pointer-events-none z-0" 
+                    style={{ 
+                        opacity: onionSkinSettings.afterOpacity / (i + 1),
+                        filter: `url(#onion-after)`
+                    }}
+                >
+                     <img src={f.thumbnailUrl} alt="" className="w-full h-full object-contain" />
                 </div>
-            )}
+            ))}
+
+            {/* SVG Filters for Onion Skinning */}
+            <svg width="0" height="0" className="absolute">
+                <defs>
+                    <filter id="onion-before">
+                        <feFlood floodColor={onionSkinSettings.beforeColor} result="flood" />
+                        <feComposite in="flood" in2="SourceAlpha" operator="in" />
+                    </filter>
+                    <filter id="onion-after">
+                        <feFlood floodColor={onionSkinSettings.afterColor} result="flood" />
+                        <feComposite in="flood" in2="SourceAlpha" operator="in" />
+                    </filter>
+                </defs>
+            </svg>
 
             {layers.map(layer => {
                 if (!layer.isVisible || layer.id === activeLayerId) return null;

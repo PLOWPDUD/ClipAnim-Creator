@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType } from './types';
+import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType, OnionSkinSettings } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
@@ -79,6 +79,14 @@ export default function App() {
   const [textToolFont, setTextToolFont] = useState('sans-serif');
 
   const [onionSkin, setOnionSkin] = useState(false);
+  const [onionSkinSettings, setOnionSkinSettings] = useState<OnionSkinSettings>({
+    beforeColor: '#FF3B30',
+    afterColor: '#34C759',
+    beforeOpacity: 0.3,
+    afterOpacity: 0.3,
+    numBefore: 1,
+    numAfter: 1
+  });
   const [showGrid, setShowGrid] = useState(false);
   const [fps, setFps] = useState(12);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -599,7 +607,8 @@ export default function App() {
           layers,
           frames,
           fps,
-          audioTracks
+          audioTracks,
+          onionSkinSettings
       };
       try {
         await saveProjectToDB(projectData);
@@ -629,6 +638,7 @@ export default function App() {
         setFrames(data.frames);
         setFps(data.fps);
         setAudioTracks(data.audioTracks || []);
+        if (data.onionSkinSettings) setOnionSkinSettings(data.onionSkinSettings);
         setCurrentFrameIndex(0);
         setHistory([data.frames]);
         setHistoryIndex(0);
@@ -659,6 +669,14 @@ export default function App() {
       setHistoryIndex(0);
       setFps(12);
       setAudioTracks([]);
+      setOnionSkinSettings({
+        beforeColor: '#FF3B30',
+        afterColor: '#34C759',
+        beforeOpacity: 0.3,
+        afterOpacity: 0.3,
+        numBefore: 1,
+        numAfter: 1
+      });
       setCurrentFrameIndex(0);
       setSelection(null);
       setHasUnsavedChanges(false);
@@ -689,7 +707,8 @@ export default function App() {
           layers,
           frames,
           fps,
-          audioTracks
+          audioTracks,
+          onionSkinSettings
       };
       const blob = new Blob([JSON.stringify(projectData)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -1022,13 +1041,38 @@ export default function App() {
             onSelectTextToolFont={setTextToolFont}
         />
         <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
-            <CanvasArea ref={canvasRef} currentFrame={frames[currentFrameIndex]} layers={layers} activeLayerId={activeLayerId} onUpdateLayer={handleUpdateLayer} tool={tool} brushType={brushType} shapeType={shapeType} color={color} strokeWidth={currentStrokeWidth} prevFrame={currentFrameIndex > 0 ? frames[currentFrameIndex - 1] : null} nextFrame={currentFrameIndex < frames.length - 1 ? frames[currentFrameIndex + 1] : null} onionSkin={onionSkin} showGrid={showGrid} isPlaying={isPlaying} selection={selection} onSelectionCreate={setSelection} onSelectionUpdate={setSelection} onSelectionCommit={handleSelectionCommit} canvasWidth={canvasSize.width} canvasHeight={canvasSize.height} backgroundImage={backgroundImage} textToolFont={textToolFont} />
+            <CanvasArea 
+                ref={canvasRef} 
+                currentFrame={frames[currentFrameIndex]} 
+                layers={layers} 
+                activeLayerId={activeLayerId} 
+                onUpdateLayer={handleUpdateLayer} 
+                tool={tool} 
+                brushType={brushType} 
+                shapeType={shapeType} 
+                color={color} 
+                strokeWidth={currentStrokeWidth} 
+                beforeFrames={frames.slice(Math.max(0, currentFrameIndex - onionSkinSettings.numBefore), currentFrameIndex).reverse()} 
+                afterFrames={frames.slice(currentFrameIndex + 1, currentFrameIndex + 1 + onionSkinSettings.numAfter)} 
+                onionSkin={onionSkin} 
+                onionSkinSettings={onionSkinSettings} 
+                showGrid={showGrid} 
+                isPlaying={isPlaying} 
+                selection={selection} 
+                onSelectionCreate={setSelection} 
+                onSelectionUpdate={setSelection} 
+                onSelectionCommit={handleSelectionCommit} 
+                canvasWidth={canvasSize.width} 
+                canvasHeight={canvasSize.height} 
+                backgroundImage={backgroundImage} 
+                textToolFont={textToolFont} 
+            />
             <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
                 <Timeline frames={frames} currentFrameIndex={currentFrameIndex} onSelectFrame={handleSelectFrame} onAddFrame={addFrame} onDeleteFrame={deleteFrame} onCopyFrame={copyFrame} isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)} audioTracks={audioTracks} onAddAudioTrack={handleAddAudioTrack} onRemoveAudioTrack={handleRemoveAudioTrack} isFocusMode={isFocusMode} onOpenFrameManager={() => setIsFrameManagerOpen(true)} onOpenRecorder={() => setIsAudioRecorderOpen(true)} />
             </div>
         </div>
       </main>
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} fps={fps} setFps={setFps} projectName={projectName} setProjectName={setProjectName} canvasSize={canvasSize} setCanvasSize={setCanvasSize} backgroundImage={backgroundImage} setBackgroundImage={setBackgroundImage} onBackupProject={handleBackupProject} />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} fps={fps} setFps={setFps} projectName={projectName} setProjectName={setProjectName} canvasSize={canvasSize} setCanvasSize={setCanvasSize} backgroundImage={backgroundImage} setBackgroundImage={setBackgroundImage} onBackupProject={handleBackupProject} onionSkinSettings={onionSkinSettings} setOnionSkinSettings={setOnionSkinSettings} />
     </div>
   );
 }
