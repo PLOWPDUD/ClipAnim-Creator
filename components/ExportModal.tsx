@@ -2,11 +2,12 @@ import React from 'react';
 import { Icons } from '../Icons';
 
 export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'avi';
+export type ExportQuality = 'low' | 'medium' | 'high';
 
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (format: ExportFormat) => void;
+  onExport: (format: ExportFormat, quality: ExportQuality) => void;
   isExporting: boolean;
   progress: number;
 }
@@ -18,6 +19,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   isExporting, 
   progress 
 }) => {
+  const [quality, setQuality] = React.useState<ExportQuality>('medium');
+
   if (!isOpen) return null;
 
   const formats: { id: ExportFormat; label: string; icon: React.ElementType; color: string; desc: string }[] = [
@@ -28,9 +31,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     { id: 'avi', label: 'AVI Video', icon: Icons.FileVideo, color: 'text-indigo-400', desc: 'Legacy format (Windows-friendly).' },
   ];
 
+  const qualityOptions: { id: ExportQuality; label: string; desc: string }[] = [
+    { id: 'low', label: 'Low', desc: 'Smallest file size, lower quality' },
+    { id: 'medium', label: 'Medium', desc: 'Balanced quality and size' },
+    { id: 'high', label: 'High', desc: 'Best quality, larger file size' },
+  ];
+
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-[#1e1e1e] w-[450px] max-w-full rounded-3xl shadow-2xl border border-gray-700 p-8 flex flex-col overflow-hidden relative">
+      <div className="bg-[#1e1e1e] w-[480px] max-w-full rounded-3xl shadow-2xl border border-gray-700 p-8 flex flex-col overflow-hidden relative">
         
         {isExporting && (
           <div className="absolute inset-0 z-50 bg-[#1e1e1e]/90 flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-200">
@@ -50,34 +59,55 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-2xl font-bold text-white">Make a Movie</h2>
-            <p className="text-gray-400 text-sm">Choose your preferred export format.</p>
+            <p className="text-gray-400 text-sm">Configure and export your animation.</p>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-800 transition-colors">
             <Icons.X size={24} />
           </button>
         </div>
 
-        <div className="space-y-3 mb-8">
+        <div className="mb-6">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">Graphics Quality</label>
+            <div className="grid grid-cols-3 gap-2">
+                {qualityOptions.map((opt) => (
+                    <button
+                        key={opt.id}
+                        onClick={() => setQuality(opt.id)}
+                        className={`p-3 rounded-xl border text-center transition-all ${
+                            quality === opt.id 
+                            ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white shadow-lg' 
+                            : 'bg-gray-800/50 border-gray-700 text-gray-400 hover:border-gray-600'
+                        }`}
+                    >
+                        <div className="font-bold text-sm">{opt.label}</div>
+                        <div className="text-[9px] opacity-70 leading-tight mt-1">{opt.desc}</div>
+                    </button>
+                ))}
+            </div>
+        </div>
+
+        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">Select Format</label>
+        <div className="space-y-2 mb-8 max-h-[300px] overflow-y-auto pr-2 no-scrollbar">
             {formats.map((format) => (
                 <button 
                     key={format.id}
-                    onClick={() => onExport(format.id)}
-                    className="w-full group bg-gray-800/50 hover:bg-gray-800 border border-gray-700/50 hover:border-[#FF3B30] p-4 rounded-2xl flex items-center gap-4 transition-all hover:scale-[1.02] active:scale-[0.98] text-left"
+                    onClick={() => onExport(format.id, quality)}
+                    className="w-full group bg-gray-800/50 hover:bg-gray-800 border border-gray-700/50 hover:border-[#FF3B30] p-3 rounded-2xl flex items-center gap-4 transition-all hover:scale-[1.01] active:scale-[0.99] text-left"
                 >
-                    <div className={`p-3 rounded-xl bg-gray-900 group-hover:scale-110 transition-transform ${format.color}`}>
-                        <format.icon size={28} />
+                    <div className={`p-2.5 rounded-xl bg-gray-900 group-hover:scale-110 transition-transform ${format.color}`}>
+                        <format.icon size={24} />
                     </div>
                     <div className="flex-1">
-                        <div className="font-bold text-white group-hover:text-[#FF3B30] transition-colors">{format.label}</div>
-                        <div className="text-xs text-gray-500 line-clamp-1">{format.desc}</div>
+                        <div className="font-bold text-white text-sm group-hover:text-[#FF3B30] transition-colors">{format.label}</div>
+                        <div className="text-[10px] text-gray-500 line-clamp-1">{format.desc}</div>
                     </div>
-                    <Icons.ChevronLeft size={20} className="text-gray-600 rotate-180 group-hover:text-white transition-colors" />
+                    <Icons.ChevronLeft size={18} className="text-gray-600 rotate-180 group-hover:text-white transition-colors" />
                 </button>
             ))}
         </div>
 
         <p className="text-[10px] text-gray-600 text-center">
-            ClipAnim uses client-side encoding. Large projects might take a moment.
+            ClipAnim uses client-side encoding. High quality exports may take longer.
         </p>
       </div>
     </div>

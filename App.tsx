@@ -6,9 +6,10 @@ import { Toolbar } from './components/Toolbar';
 import { Icons } from './Icons';
 import { SettingsModal } from './components/SettingsModal';
 import { LayerPanel } from './components/LayerPanel';
-import { ExportModal, ExportFormat } from './components/ExportModal';
+import { ExportModal, ExportFormat, ExportQuality } from './components/ExportModal';
 import { HelpModal } from './components/HelpModal';
 import gifshot from 'gifshot';
+import { parseGIF, decompressFrames } from 'gifuct-js';
 import { FrameManagerModal } from './components/FrameManagerModal';
 import { AudioRecorderModal } from './components/AudioRecorderModal';
 import { GlobalSettingsModal } from './components/GlobalSettingsModal';
@@ -112,17 +113,6 @@ export default function App() {
   const canvasRef = useRef<CanvasAreaHandle>(null);
 
   const currentStrokeWidth = tool === 'eraser' ? eraserSize : tool === 'shape' ? shapeSize : penSize;
-
-  // 1. Load GIF Library
-  useEffect(() => {
-    if (!document.getElementById('gifuct-script')) {
-        const script = document.createElement('script');
-        script.id = 'gifuct-script';
-        script.src = "https://unpkg.com/gifuct-js@2.1.2/dist/gifuct-js.min.js";
-        script.async = true;
-        document.head.appendChild(script);
-    }
-  }, []);
 
   const handleStrokeWidthChange = (width: number) => {
       if (tool === 'eraser') setEraserSize(width);
@@ -244,19 +234,11 @@ export default function App() {
         reader.onload = async (e) => {
             const buffer = e.target?.result as ArrayBuffer;
             try {
-                // @ts-ignore - gifuct-js exposes 'gifuct' on window in typical UMD builds
-                const gifuct = window.gifuct;
-                
-                if (!gifuct) {
-                    alert("GIF Parser is still loading. Please wait a moment and try again.");
-                    return;
-                }
-
                 // Parse
-                const gif = gifuct.parseGIF(buffer);
-                const framesData = gifuct.decompressFrames(gif, true);
+                const gif = parseGIF(buffer);
+                const framesData = decompressFrames(gif, true);
                 
-                const newFrames: Frame[] = framesData.map((gifFrame: any) => {
+                const newFrames: Frame[] = await Promise.all(framesData.map(async (gifFrame: any) => {
                     const canvas = document.createElement('canvas');
                     canvas.width = canvasSize.width;
                     canvas.height = canvasSize.height;
@@ -290,12 +272,15 @@ export default function App() {
                         }
                     });
 
-                    return {
+                    const frameObj: Frame = {
                         id: crypto.randomUUID(),
                         layers: layerData,
-                        thumbnailUrl: dataUrl
+                        thumbnailUrl: '' // Will be set below
                     };
-                });
+                    
+                    frameObj.thumbnailUrl = await compositeLayers(frameObj, layers, canvasSize.width, canvasSize.height, 'transparent', backgroundImage);
+                    return frameObj;
+                }));
 
                 // Insert all GIF frames into the timeline
                 const updatedFrames = [...frames];
@@ -416,7 +401,7 @@ export default function App() {
       setSelection(null);
   };
 
-  const handleExportStart = async (format: ExportFormat) => {
+  const handleExportStart = async (format: ExportFormat, quality: ExportQuality) => {
     setIsExporting(true);
     setExportProgress(0);
 
@@ -449,11 +434,17 @@ export default function App() {
                 error: (e) => { console.error(e); alert("Video encoding error: " + e.message); }
             });
 
+            const bitrateMap = {
+                low: 1_000_000,
+                medium: 4_000_000,
+                high: 10_000_000
+            };
+
             videoEncoder.configure({
                 codec: 'avc1.42001f', // Standard AVC
                 width: canvasSize.width,
                 height: canvasSize.height,
-                bitrate: 4_000_000,
+                bitrate: bitrateMap[quality],
                 framerate: fps
             });
 
@@ -502,6 +493,12 @@ export default function App() {
         }
     } else if (format === 'gif') {
       try {
+        const qualityMap = {
+            low: 30,
+            medium: 10,
+            high: 1
+        };
+
         const gifBlob = await new Promise<Blob>((resolve, reject) => {
           gifshot.createGIF({
             images: compositeFrames,
@@ -509,7 +506,7 @@ export default function App() {
             gifHeight: canvasSize.height,
             frameDuration: 1 / fps, // gifshot uses seconds per frame
             numWorkers: 2, // Use more workers for faster processing
-            quality: 10 // Lower quality for smaller file size, adjust as needed
+            quality: qualityMap[quality]
           }, (obj: any) => {
             if (obj.error) {
               reject(obj.error);
@@ -571,9 +568,15 @@ export default function App() {
 
           const selectedMimeType = mimeTypes[format]?.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
 
+          const bitrateMap = {
+              low: 1_000_000,
+              medium: 8_000_000,
+              high: 20_000_000
+          };
+
           const mediaRecorder = new MediaRecorder(stream, {
               mimeType: selectedMimeType,
-              videoBitsPerSecond: 8000000
+              videoBitsPerSecond: bitrateMap[quality]
           });
 
           const chunks: BlobPart[] = [];
