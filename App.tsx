@@ -106,6 +106,7 @@ export default function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const isExportCancelledRef = useRef(false);
 
   const importFileRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef<number | undefined>(undefined);
@@ -471,12 +472,17 @@ export default function App() {
   const handleExportStart = async (format: ExportFormat, quality: ExportQuality) => {
     setIsExporting(true);
     setExportProgress(0);
+    isExportCancelledRef.current = false;
 
     const total = frames.length;
     const compositeFrames: string[] = [];
 
     // Pre-render all frames
     for (let i = 0; i < total; i++) {
+      if (isExportCancelledRef.current) {
+          setIsExporting(false);
+          return;
+      }
       const dataUrl = await compositeLayers(frames[i], layers, canvasSize.width, canvasSize.height, '#ffffff', backgroundImage);
       compositeFrames.push(dataUrl);
       setExportProgress(Math.round(((i + 1) / total) * 30));
@@ -523,6 +529,10 @@ export default function App() {
             if (!ctx) throw new Error("No context");
 
             for (let i = 0; i < compositeFrames.length; i++) {
+                 if (isExportCancelledRef.current) {
+                     setIsExporting(false);
+                     return;
+                 }
                  const img = new Image();
                  await new Promise<void>((resolve) => { img.onload = () => resolve(); img.src = compositeFrames[i]; });
                  
@@ -668,6 +678,11 @@ export default function App() {
           mediaRecorder.start();
 
           for (let i = 0; i < compositeFrames.length; i++) {
+              if (isExportCancelledRef.current) {
+                  mediaRecorder.stop();
+                  setIsExporting(false);
+                  return;
+              }
               const img = new Image();
               await new Promise<void>((resolve) => {
                   img.onload = () => resolve();
@@ -1118,7 +1133,23 @@ export default function App() {
             </div>
         </div>
       )}
-      {isExportModalOpen && <ExportModal isOpen={isExportModalOpen} onClose={() => !isExporting && setIsExportModalOpen(false)} onExport={handleExportStart} isExporting={isExporting} progress={exportProgress} />}
+      {isExportModalOpen && (
+        <ExportModal 
+          isOpen={isExportModalOpen} 
+          onClose={() => !isExporting && setIsExportModalOpen(false)} 
+          onExport={handleExportStart} 
+          onCancel={() => {
+            isExportCancelledRef.current = true;
+            setIsExporting(false);
+            setIsExportModalOpen(false);
+          }}
+          isExporting={isExporting} 
+          progress={exportProgress} 
+          projectName={projectName}
+          frameCount={frames.length}
+          fps={fps}
+        />
+      )}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
       
       <FrameManagerModal 
