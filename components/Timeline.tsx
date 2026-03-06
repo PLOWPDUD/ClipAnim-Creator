@@ -14,6 +14,9 @@ interface TimelineProps {
   audioTracks: AudioTrack[];
   onAddAudioTrack: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onRemoveAudioTrack: (id: string) => void;
+  onUpdateAudioTrack: (id: string, updates: Partial<AudioTrack>) => void;
+  onCutAudioTrack: (id: string, cutTime: number) => void;
+  fps: number;
   isFocusMode?: boolean;
   onOpenFrameManager: () => void;
   onOpenRecorder: () => void;
@@ -31,6 +34,9 @@ export const Timeline: React.FC<TimelineProps> = ({
   audioTracks,
   onAddAudioTrack,
   onRemoveAudioTrack,
+  onUpdateAudioTrack,
+  onCutAudioTrack,
+  fps,
   isFocusMode = false,
   onOpenFrameManager,
   onOpenRecorder
@@ -38,6 +44,11 @@ export const Timeline: React.FC<TimelineProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const [showAudio, setShowAudio] = useState(false);
+  const [draggingTrackId, setDraggingTrackId] = useState<string | null>(null);
+  const [dragStartX, setDragStartX] = useState(0);
+  const [dragStartStartTime, setDragStartStartTime] = useState(0);
+
+  const FRAME_WIDTH = 66; // 64px width + 2px margin
 
   // Auto scroll to active frame
   useEffect(() => {
@@ -49,8 +60,33 @@ export const Timeline: React.FC<TimelineProps> = ({
     }
   }, [currentFrameIndex]);
 
+  const handleAudioPointerDown = (e: React.PointerEvent, track: AudioTrack) => {
+    e.stopPropagation();
+    setDraggingTrackId(track.id);
+    setDragStartX(e.clientX);
+    setDragStartStartTime(track.startTime);
+  };
+
+  const handleTimelinePointerMove = (e: React.PointerEvent) => {
+    if (draggingTrackId) {
+      const dx = e.clientX - dragStartX;
+      const dt = dx / FRAME_WIDTH / fps;
+      const newStartTime = Math.max(0, dragStartStartTime + dt);
+      onUpdateAudioTrack(draggingTrackId, { startTime: newStartTime });
+    }
+  };
+
+  const handleTimelinePointerUp = () => {
+    setDraggingTrackId(null);
+  };
+
   return (
-    <div className={`flex flex-col shrink-0 bg-transparent pb-4 pb-[env(safe-area-inset-bottom)] transition-all duration-300 ${isFocusMode ? 'pt-0 pointer-events-none' : 'pt-8 pointer-events-auto'}`}>
+    <div 
+        className={`flex flex-col shrink-0 bg-transparent pb-4 pb-[env(safe-area-inset-bottom)] transition-all duration-300 ${isFocusMode ? 'pt-0 pointer-events-none' : 'pt-8 pointer-events-auto'}`}
+        onPointerMove={handleTimelinePointerMove}
+        onPointerUp={handleTimelinePointerUp}
+        onPointerLeave={handleTimelinePointerUp}
+    >
       {!isFocusMode && (
         <div className="h-10 flex items-center px-4 justify-between animate-in fade-in slide-in-from-bottom-2">
           <div className="flex items-center space-x-2">
@@ -121,24 +157,57 @@ export const Timeline: React.FC<TimelineProps> = ({
                 <input ref={audioInputRef} type="file" accept="audio/*" className="hidden" onChange={onAddAudioTrack} />
             </div>
 
-            <div className="max-h-32 overflow-y-auto no-scrollbar space-y-1">
+            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-1">
                 {audioTracks.map((track) => (
-                    <div key={track.id} className="h-8 flex relative overflow-hidden bg-black/50 backdrop-blur-md border border-white/10 rounded group">
-                        <div className="w-32 shrink-0 border-r border-white/10 flex items-center px-2 z-20 bg-black/20">
-                            <Icons.Volume2 size={12} className="text-gray-300 mr-2" />
-                            <span className="text-[10px] text-gray-100 truncate flex-1">{track.name}</span>
-                            <button onClick={() => onRemoveAudioTrack(track.id)} className="text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Icons.X size={12}/>
-                            </button>
+                    <div key={track.id} className="h-12 flex relative overflow-hidden bg-black/50 backdrop-blur-md border border-white/10 rounded group">
+                        <div className="w-36 shrink-0 border-r border-white/10 flex flex-col justify-center px-2 z-20 bg-black/20">
+                            <div className="flex items-center mb-1">
+                                <Icons.Volume2 size={10} className="text-gray-300 mr-1" />
+                                <span className="text-[9px] text-gray-100 truncate flex-1">{track.name}</span>
+                                <button onClick={() => onRemoveAudioTrack(track.id)} className="text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Icons.X size={10}/>
+                                </button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <input 
+                                    type="range" 
+                                    min="0" 
+                                    max="1" 
+                                    step="0.01" 
+                                    value={track.volume} 
+                                    onChange={(e) => onUpdateAudioTrack(track.id, { volume: parseFloat(e.target.value) })}
+                                    className="w-full h-1 bg-gray-700 rounded-full appearance-none accent-[var(--accent-color)] cursor-pointer"
+                                />
+                                <button 
+                                    onClick={() => onCutAudioTrack(track.id, currentFrameIndex / fps)}
+                                    className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white"
+                                    title="Cut at Playhead"
+                                >
+                                    <Icons.Pencil size={10} />
+                                </button>
+                            </div>
                         </div>
                         <div className="flex-1 relative overflow-hidden"> 
                             <div 
-                                className="absolute inset-y-0 left-[50vw] flex items-center pointer-events-none transition-transform duration-100"
-                                style={{ transform: `translateX(-${currentFrameIndex * 66}px)` }}
+                                className="absolute inset-y-0 left-[50vw] flex items-center transition-transform duration-100"
+                                style={{ transform: `translateX(-${currentFrameIndex * FRAME_WIDTH}px)` }}
                             >
-                                <div className="h-full flex items-center gap-0.5 rounded px-2" style={{ width: `${frames.length * 66}px`, backgroundColor: `${track.color}40` }}>
-                                    {Array.from({ length: Math.ceil(frames.length * 10) }).map((_, i) => (
-                                        <div key={i} className="w-1 rounded-full opacity-80" style={{ height: `${30 + Math.random() * 70}%`, backgroundColor: track.color }} />
+                                <div 
+                                    className="h-full flex items-center gap-0.5 rounded px-2 cursor-grab active:cursor-grabbing group/clip" 
+                                    style={{ 
+                                        position: 'absolute',
+                                        left: `${track.startTime * fps * FRAME_WIDTH}px`,
+                                        width: `${track.duration * fps * FRAME_WIDTH}px`, 
+                                        backgroundColor: `${track.color}40`,
+                                        border: `1px solid ${track.color}80`
+                                    }}
+                                    onPointerDown={(e) => handleAudioPointerDown(e, track)}
+                                >
+                                    <div className="absolute top-0 left-0 px-1 text-[8px] text-white/60 pointer-events-none">
+                                        {track.startTime.toFixed(1)}s
+                                    </div>
+                                    {Array.from({ length: Math.ceil(track.duration * fps * 2) }).map((_, i) => (
+                                        <div key={i} className="w-1 rounded-full opacity-80" style={{ height: `${20 + Math.random() * 60}%`, backgroundColor: track.color }} />
                                     ))}
                                 </div>
                             </div>

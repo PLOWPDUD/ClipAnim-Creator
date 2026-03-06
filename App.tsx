@@ -225,6 +225,11 @@ export default function App() {
     setHasUnsavedChanges(true);
   };
 
+  const reorderLayers = (newLayers: Layer[]) => {
+    setLayers(newLayers);
+    setHasUnsavedChanges(true);
+  };
+
   // 2. Updated Handle Import Image with Correct GIF Parsing
   const handleImportImage = async (file: File) => {
     const reader = new FileReader();
@@ -335,44 +340,106 @@ export default function App() {
       if (!file) return;
       const url = URL.createObjectURL(file);
       const id = crypto.randomUUID();
-      const newTrack: AudioTrack = {
-          id,
-          url,
-          name: file.name,
-          color: COLORS[audioTracks.length % COLORS.length],
-          volume: 1
-      };
       const audio = new Audio(url);
-      audioElementsRef.current.set(id, audio);
-      setAudioTracks([...audioTracks, newTrack]);
-      setHasUnsavedChanges(true);
+      audio.onloadedmetadata = () => {
+          const newTrack: AudioTrack = {
+              id,
+              url,
+              name: file.name,
+              color: COLORS[audioTracks.length % COLORS.length],
+              volume: 1,
+              startTime: 0,
+              duration: audio.duration,
+              offset: 0
+          };
+          audioElementsRef.current.set(id, audio);
+          setAudioTracks([...audioTracks, newTrack]);
+          setHasUnsavedChanges(true);
+      };
   };
 
   const handleAddRecordedAudio = (blob: Blob) => {
       const url = URL.createObjectURL(blob);
       const id = crypto.randomUUID();
-      const newTrack: AudioTrack = {
-          id,
-          url,
-          name: `Recording ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-          color: COLORS[audioTracks.length % COLORS.length],
-          volume: 1
-      };
       const audio = new Audio(url);
-      audioElementsRef.current.set(id, audio);
-      setAudioTracks([...audioTracks, newTrack]);
-      setHasUnsavedChanges(true);
-      setIsAudioRecorderOpen(false);
+      audio.onloadedmetadata = () => {
+          const newTrack: AudioTrack = {
+              id,
+              url,
+              name: `Recording ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+              color: COLORS[audioTracks.length % COLORS.length],
+              volume: 1,
+              startTime: 0,
+              duration: audio.duration,
+              offset: 0
+          };
+          audioElementsRef.current.set(id, audio);
+          setAudioTracks([...audioTracks, newTrack]);
+          setHasUnsavedChanges(true);
+          setIsAudioRecorderOpen(false);
+      };
+  };
+
+  const handleUpdateAudioTrack = (id: string, updates: Partial<AudioTrack>) => {
+    setAudioTracks(prev => prev.map(t => {
+        if (t.id === id) {
+            const updated = { ...t, ...updates };
+            const audio = audioElementsRef.current.get(id);
+            if (audio) {
+                if (updates.volume !== undefined) audio.volume = updates.volume;
+            }
+            return updated;
+        }
+        return t;
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleCutAudioTrack = (id: string, cutTime: number) => {
+    const track = audioTracks.find(t => t.id === id);
+    if (!track) return;
+
+    const relativeCutTime = cutTime - track.startTime;
+    if (relativeCutTime <= 0.1 || relativeCutTime >= track.duration - 0.1) return;
+
+    const firstPart: AudioTrack = {
+        ...track,
+        duration: relativeCutTime
+    };
+
+    const secondPart: AudioTrack = {
+        ...track,
+        id: crypto.randomUUID(),
+        startTime: cutTime,
+        duration: track.duration - relativeCutTime,
+        offset: track.offset + relativeCutTime
+    };
+
+    const audio2 = new Audio(track.url);
+    audio2.onloadedmetadata = () => {
+        audio2.volume = secondPart.volume;
+        audioElementsRef.current.set(secondPart.id, audio2);
+        setAudioTracks(prev => prev.flatMap(t => t.id === id ? [firstPart, secondPart] : [t]));
+        setHasUnsavedChanges(true);
+    };
   };
 
   const handleRemoveAudioTrack = (id: string) => {
+      const trackToRemove = audioTracks.find(t => t.id === id);
       const audio = audioElementsRef.current.get(id);
+      
       if (audio) {
           audio.pause();
-          URL.revokeObjectURL(audio.src);
           audioElementsRef.current.delete(id);
+          
+          // Only revoke if no other track uses this URL
+          const isUrlShared = audioTracks.some(t => t.id !== id && t.url === trackToRemove?.url);
+          if (!isUrlShared && trackToRemove) {
+              URL.revokeObjectURL(trackToRemove.url);
+          }
       }
-      setAudioTracks(audioTracks.filter(t => t.id !== id));
+      
+      setAudioTracks(prev => prev.filter(t => t.id !== id));
       setHasUnsavedChanges(true);
   };
 
@@ -656,6 +723,14 @@ export default function App() {
       }
   };
 
+  const clearAudio = () => {
+      audioElementsRef.current.forEach(audio => {
+          audio.pause();
+          URL.revokeObjectURL(audio.src);
+      });
+      audioElementsRef.current.clear();
+  };
+
   const loadProject = async (id: string) => {
       setIsLoading(true);
       try {
@@ -665,6 +740,9 @@ export default function App() {
             setIsLoading(false);
             return;
         }
+        
+        clearAudio();
+
         setProjectId(data.id);
         setProjectName(data.name);
         setCanvasSize(data.canvasSize);
@@ -691,6 +769,7 @@ export default function App() {
   };
 
   const createNewProject = () => {
+      clearAudio();
       const pid = crypto.randomUUID();
       setProjectId(pid);
       setProjectName("New Animation");
@@ -803,18 +882,35 @@ export default function App() {
 
   const animate = (timestamp: number) => {
     if (!isPlaying) return;
-    let targetFrame = 0;
-    const mainTrack = audioTracks[0];
-    const mainAudio = mainTrack ? audioElementsRef.current.get(mainTrack.id) : null;
-    if (mainAudio && !mainAudio.paused && mainAudio.duration > 0) {
-        targetFrame = Math.floor(mainAudio.currentTime * fps);
-    } else {
-        if (startTimeRef.current === 0) startTimeRef.current = timestamp;
-        const elapsed = (timestamp - startTimeRef.current) / 1000;
-        targetFrame = Math.floor(elapsed * fps);
-    }
+    
+    if (startTimeRef.current === 0) startTimeRef.current = timestamp;
+    const elapsed = (timestamp - startTimeRef.current) / 1000;
+    const targetFrame = Math.floor(elapsed * fps);
+
     if (targetFrame >= frames.length) { setIsPlaying(false); return; }
     if (targetFrame !== currentFrameIndex) setCurrentFrameIndex(targetFrame);
+
+    // Audio Sync
+    audioTracks.forEach(track => {
+        const audio = audioElementsRef.current.get(track.id);
+        if (audio) {
+            const trackEndTime = track.startTime + track.duration;
+            if (elapsed >= track.startTime && elapsed < trackEndTime) {
+                if (audio.paused) {
+                    audio.currentTime = track.offset + (elapsed - track.startTime);
+                    audio.play().catch(console.error);
+                } else {
+                    const expectedTime = track.offset + (elapsed - track.startTime);
+                    if (Math.abs(audio.currentTime - expectedTime) > 0.15) {
+                        audio.currentTime = expectedTime;
+                    }
+                }
+            } else {
+                if (!audio.paused) audio.pause();
+            }
+        }
+    });
+
     requestRef.current = requestAnimationFrame(animate);
   };
 
@@ -823,7 +919,15 @@ export default function App() {
       const startTime = currentFrameIndex / fps;
       audioTracks.forEach(track => {
           const audio = audioElementsRef.current.get(track.id);
-          if (audio) { audio.currentTime = startTime; audio.play().catch(console.error); }
+          if (audio) { 
+              const trackEndTime = track.startTime + track.duration;
+              if (startTime >= track.startTime && startTime < trackEndTime) {
+                  audio.currentTime = track.offset + (startTime - track.startTime);
+                  audio.play().catch(console.error);
+              } else {
+                  audio.pause();
+              }
+          }
       });
       startTimeRef.current = performance.now() - (startTime * 1000);
       requestRef.current = requestAnimationFrame(animate);
@@ -840,7 +944,12 @@ export default function App() {
         const time = index / fps;
         audioTracks.forEach(track => {
             const audio = audioElementsRef.current.get(track.id);
-            if (audio && Number.isFinite(time)) audio.currentTime = time;
+            if (audio && Number.isFinite(time)) {
+                const trackEndTime = track.startTime + track.duration;
+                if (time >= track.startTime && time < trackEndTime) {
+                    audio.currentTime = track.offset + (time - track.startTime);
+                }
+            }
         });
     }
   };
@@ -1026,7 +1135,7 @@ export default function App() {
         onSave={handleAddRecordedAudio}
       />
 
-      {isLayerPanelOpen && <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onDuplicateLayer={duplicateLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onClose={() => setIsLayerPanelOpen(false)} />}
+      {isLayerPanelOpen && <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onDuplicateLayer={duplicateLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onReorderLayers={reorderLayers} onClose={() => setIsLayerPanelOpen(false)} />}
       {!isFocusMode && (
         <header className="h-14 bg-[#1e1e1e] flex items-center px-4 justify-between border-b border-gray-700 shrink-0 z-30">
             <div className="flex items-center space-x-2">
@@ -1103,7 +1212,25 @@ export default function App() {
                 textToolFont={textToolFont} 
             />
             <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <Timeline frames={frames} currentFrameIndex={currentFrameIndex} onSelectFrame={handleSelectFrame} onAddFrame={addFrame} onDeleteFrame={deleteFrame} onCopyFrame={copyFrame} isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)} audioTracks={audioTracks} onAddAudioTrack={handleAddAudioTrack} onRemoveAudioTrack={handleRemoveAudioTrack} isFocusMode={isFocusMode} onOpenFrameManager={() => setIsFrameManagerOpen(true)} onOpenRecorder={() => setIsAudioRecorderOpen(true)} />
+                <Timeline 
+                  frames={frames} 
+                  currentFrameIndex={currentFrameIndex} 
+                  onSelectFrame={handleSelectFrame} 
+                  onAddFrame={addFrame} 
+                  onDeleteFrame={deleteFrame} 
+                  onCopyFrame={copyFrame} 
+                  isPlaying={isPlaying} 
+                  onTogglePlay={() => setIsPlaying(!isPlaying)} 
+                  audioTracks={audioTracks} 
+                  onAddAudioTrack={handleAddAudioTrack} 
+                  onRemoveAudioTrack={handleRemoveAudioTrack} 
+                  onUpdateAudioTrack={handleUpdateAudioTrack}
+                  onCutAudioTrack={handleCutAudioTrack}
+                  fps={fps}
+                  isFocusMode={isFocusMode} 
+                  onOpenFrameManager={() => setIsFrameManagerOpen(true)} 
+                  onOpenRecorder={() => setIsAudioRecorderOpen(true)} 
+                />
             </div>
         </div>
       </main>

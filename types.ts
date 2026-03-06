@@ -31,6 +31,9 @@ export interface AudioTrack {
   name: string;
   color: string; // For UI visualization
   volume: number;
+  startTime: number; // Start time in seconds relative to the timeline
+  duration: number;  // Duration in seconds to play
+  offset: number;    // Offset in seconds from the start of the original file
 }
 
 export interface SelectionState {

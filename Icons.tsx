@@ -53,7 +53,8 @@ import {
   Monitor,
   LayoutGrid,
   Check,
-  Mic
+  Mic,
+  GripVertical
 } from 'lucide-react';
 
 export const Icons = {
@@ -111,5 +112,6 @@ export const Icons = {
   Reset: Monitor,
   FrameGrid: LayoutGrid,
   Check,
-  Mic
+  Mic,
+  GripVertical
 };
