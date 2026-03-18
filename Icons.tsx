@@ -54,7 +54,8 @@ import {
   LayoutGrid,
   Check,
   Mic,
-  GripVertical
+  GripVertical,
+  Wand2
 } from 'lucide-react';
 
 export const Icons = {
@@ -113,5 +114,6 @@ export const Icons = {
   FrameGrid: LayoutGrid,
   Check,
   Mic,
-  GripVertical
+  GripVertical,
+  Wand2
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType, OnionSkinSettings } from './types';
+import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType, OnionSkinSettings, Shortcuts } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
@@ -54,6 +54,35 @@ export default function App() {
   const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
   const [accentColor, setAccentColor] = useState('#FF3B30');
   const [uiFont, setUiFont] = useState('ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif');
+  const [shortcuts, setShortcuts] = useState<Shortcuts>(() => {
+    const defaultShortcuts: Shortcuts = {
+      selectTool: 'v',
+      wandTool: 'w',
+      penTool: 'b',
+      eraserTool: 'e',
+      fillTool: 'g',
+      shapeTool: 'u',
+      textTool: 't',
+      playPause: 'Space',
+      nextFrame: 'ArrowRight',
+      prevFrame: 'ArrowLeft',
+      addFrame: 'n',
+      deleteFrame: 'Backspace',
+      undo: 'Ctrl+z',
+      redo: 'Ctrl+y',
+    };
+    try {
+      const saved = localStorage.getItem('clipanim_shortcuts');
+      if (saved) {
+        return { ...defaultShortcuts, ...JSON.parse(saved) };
+      }
+    } catch {}
+    return defaultShortcuts;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('clipanim_shortcuts', JSON.stringify(shortcuts));
+  }, [shortcuts]);
 
   const [projectId, setProjectId] = useState<string>(crypto.randomUUID());
   const [projectName, setProjectName] = useState('My Animation');
@@ -990,6 +1019,7 @@ export default function App() {
 
   const undo = () => {
     if (historyIndex > 0) {
+      setSelection(null);
       setHistoryIndex(historyIndex - 1);
       const newFrames = history[historyIndex - 1];
       setFrames(newFrames);
@@ -999,6 +1029,7 @@ export default function App() {
   };
   const redo = () => {
     if (historyIndex < history.length - 1) {
+      setSelection(null);
       setHistoryIndex(historyIndex + 1);
       const newFrames = history[historyIndex + 1];
       setFrames(newFrames);
@@ -1065,6 +1096,68 @@ export default function App() {
       setHasUnsavedChanges(true);
   };
 
+  useEffect(() => {
+    if (view === 'menu') return;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      let keyStr = e.key;
+      if (keyStr === ' ') keyStr = 'Space';
+      if (keyStr.length === 1) keyStr = keyStr.toLowerCase();
+
+      const modifiers = [];
+      if (e.ctrlKey || e.metaKey) modifiers.push('Ctrl');
+      if (e.shiftKey) modifiers.push('Shift');
+      if (e.altKey) modifiers.push('Alt');
+
+      const finalKey = [...modifiers, keyStr].join('+');
+
+      let handled = false;
+
+      switch (finalKey) {
+        case shortcuts.selectTool: setTool('select'); handled = true; break;
+        case shortcuts.wandTool: setTool('wand'); handled = true; break;
+        case shortcuts.penTool: setTool('pen'); handled = true; break;
+        case shortcuts.eraserTool: setTool('eraser'); handled = true; break;
+        case shortcuts.fillTool: setTool('fill'); handled = true; break;
+        case shortcuts.shapeTool: setTool('shape'); handled = true; break;
+        case shortcuts.textTool: setTool('text'); handled = true; break;
+        case shortcuts.playPause: setIsPlaying(p => !p); handled = true; break;
+        case shortcuts.nextFrame: setCurrentFrameIndex(i => Math.min(frames.length - 1, i + 1)); handled = true; break;
+        case shortcuts.prevFrame: setCurrentFrameIndex(i => Math.max(0, i - 1)); handled = true; break;
+        case shortcuts.addFrame: addFrame(); handled = true; break;
+        case 'Escape':
+          if (selection) {
+            handleSelectionCommit();
+            handled = true;
+          }
+          break;
+        case shortcuts.deleteFrame: 
+        case 'Delete':
+          if (selection) {
+            setSelection(null);
+            handled = true;
+          } else if (finalKey === shortcuts.deleteFrame) {
+            deleteFrame(currentFrameIndex); 
+            handled = true;
+          }
+          break;
+        case shortcuts.undo: undo(); handled = true; break;
+        case shortcuts.redo: redo(); handled = true; break;
+      }
+
+      if (handled) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [shortcuts, view, frames.length, currentFrameIndex, isPlaying, tool, history, historyIndex, selection]);
+
   if (view === 'menu') {
       return (
         <div className="flex flex-col h-screen bg-[#121212] text-white p-6 overflow-hidden">
@@ -1075,6 +1168,8 @@ export default function App() {
                 setAccentColor={setAccentColor}
                 uiFont={uiFont}
                 setUiFont={setUiFont}
+                shortcuts={shortcuts}
+                setShortcuts={setShortcuts}
              />
              <div className="mb-8 flex justify-between items-end">
                  <div>

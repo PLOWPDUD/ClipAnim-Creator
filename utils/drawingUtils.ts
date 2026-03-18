@@ -148,6 +148,8 @@ export const floodFill = (
   const width = canvas.width;
   const height = canvas.height;
   
+  if (startX < 0 || startY < 0 || startX >= width || startY >= height) return;
+
   // Get image data
   const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
@@ -211,6 +213,108 @@ export const floodFill = (
   }
 
   ctx.putImageData(imageData, 0, 0);
+};
+
+export const magicWandSelect = (
+  ctx: CanvasRenderingContext2D,
+  startX: number,
+  startY: number
+): SelectionState | null => {
+  const canvas = ctx.canvas;
+  const width = canvas.width;
+  const height = canvas.height;
+  
+  if (startX < 0 || startY < 0 || startX >= width || startY >= height) return null;
+
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  
+  const targetColor = getPixel(data, startX, startY, width);
+  
+  // If clicking on transparent pixel, do nothing
+  if (targetColor.a === 0) return null;
+
+  const queue: [number, number][] = [[startX, startY]];
+  const visited = new Uint8Array(width * height);
+  const selectedPixels: [number, number][] = [];
+  
+  let minX = width, minY = height, maxX = 0, maxY = 0;
+
+  visited[startY * width + startX] = 1;
+
+  while (queue.length > 0) {
+    const [x, y] = queue.pop()!;
+    selectedPixels.push([x, y]);
+    
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+
+    // Check neighbors
+    const neighbors = [
+      [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]
+    ];
+
+    for (const [nx, ny] of neighbors) {
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        const idx = ny * width + nx;
+        if (!visited[idx]) {
+          visited[idx] = 1;
+          const neighborColor = getPixel(data, nx, ny, width);
+          if (colorsMatch(neighborColor, targetColor)) {
+            queue.push([nx, ny]);
+          }
+        }
+      }
+    }
+  }
+
+  if (selectedPixels.length === 0) return null;
+
+  const selWidth = maxX - minX + 1;
+  const selHeight = maxY - minY + 1;
+
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = selWidth;
+  tempCanvas.height = selHeight;
+  const tempCtx = tempCanvas.getContext('2d');
+  if (!tempCtx) return null;
+
+  const selImageData = tempCtx.createImageData(selWidth, selHeight);
+  const selData = selImageData.data;
+
+  // Move pixels from original to selection
+  for (const [x, y] of selectedPixels) {
+    const origIdx = (y * width + x) * 4;
+    const selIdx = ((y - minY) * selWidth + (x - minX)) * 4;
+    
+    // Copy to selection
+    selData[selIdx] = data[origIdx];
+    selData[selIdx + 1] = data[origIdx + 1];
+    selData[selIdx + 2] = data[origIdx + 2];
+    selData[selIdx + 3] = data[origIdx + 3];
+
+    // Clear from original
+    data[origIdx] = 0;
+    data[origIdx + 1] = 0;
+    data[origIdx + 2] = 0;
+    data[origIdx + 3] = 0;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  tempCtx.putImageData(selImageData, 0, 0);
+
+  return {
+    x: minX,
+    y: minY,
+    width: selWidth,
+    height: selHeight,
+    dataUrl: tempCanvas.toDataURL(),
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1
+  };
 };
 
 function getPixel(data: Uint8ClampedArray, x: number, y: number, width: number) {

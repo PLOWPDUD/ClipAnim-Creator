@@ -59,8 +59,31 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activePopover, setActivePopover] = useState<ToolType | 'color' | null>(null);
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
-  const [colorTab, setColorTab] = useState<'wheel' | 'sliders'>('wheel');
+  const [colorTab, setColorTab] = useState<'wheel' | 'sliders' | 'palette'>('wheel');
   const [hsv, setHsv] = useState({ h: 0, s: 0, v: 0 });
+  const [savedColors, setSavedColors] = useState<string[]>(() => {
+    try {
+        const saved = localStorage.getItem('clipanim_custom_palette');
+        return saved ? JSON.parse(saved) : ['#FF3B30', '#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF2D55', '#00C7BE', '#FFCC00', '#000000', '#FFFFFF'];
+    } catch {
+        return ['#FF3B30', '#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF2D55', '#00C7BE', '#FFCC00', '#000000', '#FFFFFF'];
+    }
+  });
+
+  const saveColorToPalette = () => {
+    if (!savedColors.includes(currentColor)) {
+        const newColors = [...savedColors, currentColor];
+        setSavedColors(newColors);
+        localStorage.setItem('clipanim_custom_palette', JSON.stringify(newColors));
+    }
+  };
+
+  const removeColorFromPalette = (e: React.MouseEvent, colorToRemove: string) => {
+    e.stopPropagation();
+    const newColors = savedColors.filter(c => c !== colorToRemove);
+    setSavedColors(newColors);
+    localStorage.setItem('clipanim_custom_palette', JSON.stringify(newColors));
+  };
 
   const wheelRef = useRef<HTMLDivElement>(null);
   const svRef = useRef<HTMLDivElement>(null);
@@ -114,6 +137,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   const tools: { id: ToolType; icon: React.ElementType; label: string }[] = [
     { id: 'select', icon: Icons.MousePointer2, label: 'Select' },
+    { id: 'wand', icon: Icons.Wand2, label: 'Wand' },
     { id: 'pen', icon: Icons.Pencil, label: 'Brush' },
     { id: 'eraser', icon: Icons.Eraser, label: 'Eraser' },
     { id: 'fill', icon: Icons.PaintBucket, label: 'Fill' },
@@ -214,6 +238,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <div className="flex bg-gray-800 p-1 rounded-lg">
                 <button onClick={() => setColorTab('wheel')} className={`flex-1 text-xs py-1 rounded ${colorTab === 'wheel' ? 'bg-[var(--accent-color)] text-white' : 'text-gray-400'}`}>Wheel</button>
                 <button onClick={() => setColorTab('sliders')} className={`flex-1 text-xs py-1 rounded ${colorTab === 'sliders' ? 'bg-[var(--accent-color)] text-white' : 'text-gray-400'}`}>Sliders</button>
+                <button onClick={() => setColorTab('palette')} className={`flex-1 text-xs py-1 rounded ${colorTab === 'palette' ? 'bg-[var(--accent-color)] text-white' : 'text-gray-400'}`}>Palette</button>
             </div>
             {colorTab === 'wheel' && (
                 <div className="flex flex-col items-center py-2">
@@ -233,6 +258,33 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 <div className="space-y-4 py-2">
                     <div className="w-full h-24 rounded-lg overflow-hidden border border-gray-600 relative">
                         <input type="color" value={currentColor} onChange={(e) => onChangeColor(e.target.value)} className="absolute -top-[50%] -left-[50%] w-[200%] h-[200%] p-0 m-0 border-none cursor-crosshair" />
+                    </div>
+                </div>
+            )}
+            {colorTab === 'palette' && (
+                <div className="flex flex-col gap-3 py-2">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full border border-gray-600 shrink-0" style={{ backgroundColor: currentColor }} />
+                        <button onClick={saveColorToPalette} className="flex-1 py-1.5 bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1">
+                            <Icons.Plus size={14} /> Save Color
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2 max-h-40 overflow-y-auto no-scrollbar">
+                        {savedColors.map((c, i) => (
+                            <button
+                                key={i}
+                                onClick={() => onChangeColor(c)}
+                                className="relative w-full aspect-square rounded-lg border border-gray-700 hover:scale-110 transition-transform group"
+                                style={{ backgroundColor: c }}
+                            >
+                                <div 
+                                    onClick={(e) => removeColorFromPalette(e, c)}
+                                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                    <Icons.X size={10} />
+                                </div>
+                            </button>
+                        ))}
                     </div>
                 </div>
             )}

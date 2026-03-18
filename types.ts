@@ -1,5 +1,5 @@
 
-export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'shape' | 'text';
+export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'wand' | 'shape' | 'text';
 
 export type BrushType = 'pen' | 'marker' | 'highlighter' | 'spray' | 'pixel';
 
@@ -54,6 +54,23 @@ export interface OnionSkinSettings {
   afterOpacity: number;
   numBefore: number;
   numAfter: number;
+}
+
+export interface Shortcuts {
+  selectTool: string;
+  wandTool: string;
+  penTool: string;
+  eraserTool: string;
+  fillTool: string;
+  shapeTool: string;
+  textTool: string;
+  playPause: string;
+  nextFrame: string;
+  prevFrame: string;
+  addFrame: string;
+  deleteFrame: string;
+  undo: string;
+  redo: string;
 }
 
 export interface AppState {

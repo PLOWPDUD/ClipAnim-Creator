@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings } from '../types';
-import { floodFill } from '../utils/drawingUtils';
+import { floodFill, magicWandSelect } from '../utils/drawingUtils';
 
 export interface CanvasAreaHandle {
   resetView: () => void;
@@ -75,6 +75,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const containerRef = useRef<HTMLDivElement>(null);
   
   const selectionOverlayRef = useRef<HTMLDivElement>(null);
+  const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
   const latestSelectionState = useRef<SelectionState | null>(null);
 
@@ -118,6 +119,18 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
           s.height = `${selection.height}px`;
           s.transform = `rotate(${selection.rotation}deg) scale(${selection.scaleX}, ${selection.scaleY})`;
           latestSelectionState.current = selection;
+          
+          if (selectionCanvasRef.current) {
+              const ctx = selectionCanvasRef.current.getContext('2d');
+              if (ctx) {
+                  const img = new Image();
+                  img.onload = () => {
+                      ctx.clearRect(0, 0, selection.width, selection.height);
+                      ctx.drawImage(img, 0, 0, selection.width, selection.height);
+                  };
+                  img.src = selection.dataUrl;
+              }
+          }
       }
   }, [selection]);
 
@@ -342,6 +355,11 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
     const activeLayer = layers.find(l => l.id === activeLayerId);
 
+    if (activeLayer?.isLocked || !activeLayer?.isVisible) {
+        isDrawing.current = false;
+        return;
+    }
+
     if (tool === 'text') {
         if (textInput) {
             commitText();
@@ -362,35 +380,78 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         return;
     }
 
-    if (activeLayer?.isLocked || !activeLayer?.isVisible) {
+    if (tool === 'wand') {
+        if (selection) onSelectionCommit();
+        const ctx = activeCanvasRef.current?.getContext('2d');
+        if (ctx) {
+            const newSelection = magicWandSelect(ctx, Math.floor(x), Math.floor(y));
+            if (newSelection) {
+                saveCanvas();
+                onSelectionCreate(newSelection);
+            }
+        }
         isDrawing.current = false;
         return;
     }
 
+    const mapToSelection = (px: number, py: number) => {
+        if (!selection) return { x: px, y: py };
+        const dx = px - (selection.x + selection.width / 2);
+        const dy = py - (selection.y + selection.height / 2);
+        const rad = (-selection.rotation * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        let sx = dx * cos - dy * sin;
+        let sy = dx * sin + dy * cos;
+        sx /= selection.scaleX;
+        sy /= selection.scaleY;
+        sx += selection.width / 2;
+        sy += selection.height / 2;
+        return { x: sx, y: sy };
+    };
+
+    const mappedCoords = mapToSelection(x, y);
+    const mx = mappedCoords.x;
+    const my = mappedCoords.y;
+
     isDrawing.current = true;
-    drawStart.current = { x, y };
-    lastPoint.current = { x, y };
+    drawStart.current = { x: mx, y: my };
+    lastPoint.current = { x: mx, y: my };
     
-    const ctx = activeCanvasRef.current?.getContext('2d');
+    const ctx = selection ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
     if (!ctx) return;
 
     if (tool === 'fill') {
-        floodFill(ctx, Math.floor(x), Math.floor(y), color);
-        saveCanvas();
+        floodFill(ctx, Math.floor(mx), Math.floor(my), color);
+        if (!selection) saveCanvas();
+        else {
+            // Update selection dataUrl
+            const newUrl = selectionCanvasRef.current?.toDataURL();
+            if (newUrl) onSelectionUpdate({ ...selection, dataUrl: newUrl });
+        }
         isDrawing.current = false;
     } else if (tool === 'shape') {
         canvasSnapshot.current = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     } else {
         setupBrush(ctx);
+        if (tool === 'eraser' && selection) {
+            ctx.globalCompositeOperation = 'destination-out';
+        } else if (selection) {
+            ctx.globalCompositeOperation = 'source-atop';
+        }
+        
         if (brushType === 'pixel' && tool === 'pen') {
         } else if (brushType !== 'spray') {
             ctx.beginPath();
-            ctx.moveTo(x, y);
+            ctx.moveTo(mx, my);
         }
     }
   };
 
   const handleSelectionPointerDown = (e: React.PointerEvent) => {
+      if (tool !== 'select') {
+          return; // Let it bubble up to draw or wand
+      }
       e.stopPropagation();
       if (e.button === 2) return;
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -404,6 +465,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   };
 
   const handleResizePointerDown = (e: React.PointerEvent, type: 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br') => {
+      if (tool !== 'select') return;
       e.stopPropagation();
       if (e.button === 2) return;
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -417,6 +479,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   };
 
   const handleRotatePointerDown = (e: React.PointerEvent) => {
+      if (tool !== 'select') return;
       e.stopPropagation();
       if (e.button === 2) return;
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -481,7 +544,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         if (dist > 2) hasMoved.current = true;
     }
 
-    if (tool === 'select' && selectionMode.current && selection) {
+    if ((tool === 'select' || tool === 'wand') && selectionMode.current && selection) {
         const init = initialSelection.current;
         if (selectionMode.current === 'create' && dragStart.current) {
             if (marqueeRef.current) {
@@ -559,20 +622,44 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     }
     
     if (isDrawing.current) {
-        const ctx = activeCanvasRef.current?.getContext('2d');
+        const mapToSelection = (px: number, py: number) => {
+            if (!selection) return { x: px, y: py };
+            const dx = px - (selection.x + selection.width / 2);
+            const dy = py - (selection.y + selection.height / 2);
+            const rad = (-selection.rotation * Math.PI) / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            let sx = dx * cos - dy * sin;
+            let sy = dx * sin + dy * cos;
+            sx /= selection.scaleX;
+            sy /= selection.scaleY;
+            sx += selection.width / 2;
+            sy += selection.height / 2;
+            return { x: sx, y: sy };
+        };
+
+        const mappedCoords = mapToSelection(x, y);
+        const mx = mappedCoords.x;
+        const my = mappedCoords.y;
+
+        const ctx = selection ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
         if (!ctx) return;
 
         if (tool === 'shape' && drawStart.current && canvasSnapshot.current) {
             ctx.putImageData(canvasSnapshot.current, 0, 0);
             const startX = drawStart.current.x;
             const startY = drawStart.current.y;
-            const w = x - startX;
-            const h = y - startY;
+            const w = mx - startX;
+            const h = my - startY;
 
             ctx.beginPath();
             ctx.lineWidth = strokeWidth;
             ctx.strokeStyle = color;
-            ctx.globalCompositeOperation = 'source-over';
+            if (selection) {
+                ctx.globalCompositeOperation = 'source-atop';
+            } else {
+                ctx.globalCompositeOperation = 'source-over';
+            }
             if (shapeType === 'rectangle') ctx.rect(startX, startY, w, h);
             else if (shapeType === 'circle') {
                 const cx = startX + w / 2;
@@ -580,13 +667,13 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 ctx.ellipse(cx, cy, Math.abs(w / 2), Math.abs(h / 2), 0, 0, 2 * Math.PI);
             } else if (shapeType === 'line') {
                 ctx.moveTo(startX, startY);
-                ctx.lineTo(x, y);
+                ctx.lineTo(mx, my);
             }
             ctx.stroke();
         } else if (tool === 'pen' && brushType === 'pixel') {
              if (lastPoint.current) {
-                 drawPixelLine(ctx, lastPoint.current.x, lastPoint.current.y, x, y);
-                 lastPoint.current = { x, y };
+                 drawPixelLine(ctx, lastPoint.current.x, lastPoint.current.y, mx, my);
+                 lastPoint.current = { x: mx, y: my };
              }
         } else if (tool === 'pen' && brushType === 'spray') {
              const density = Math.max(1, strokeWidth * 2);
@@ -594,11 +681,11 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                  const offsetX = (Math.random() - 0.5) * strokeWidth * 2;
                  const offsetY = (Math.random() - 0.5) * strokeWidth * 2;
                  if (offsetX * offsetX + offsetY * offsetY <= strokeWidth * strokeWidth) {
-                     ctx.fillRect(x + offsetX, y + offsetY, 1, 1);
+                     ctx.fillRect(mx + offsetX, my + offsetY, 1, 1);
                  }
              }
         } else if (tool === 'pen' || tool === 'eraser') {
-            ctx.lineTo(x, y);
+            ctx.lineTo(mx, my);
             ctx.stroke();
         }
     }
@@ -617,8 +704,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         lastPanPoint.current = null;
     }
 
-    if (tool === 'select') {
-        if (selectionMode.current === 'create' && dragStart.current) {
+    if (tool === 'select' || tool === 'wand') {
+        if (tool === 'select' && selectionMode.current === 'create' && dragStart.current) {
             const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
             const startX = dragStart.current.x;
             const startY = dragStart.current.y;
@@ -652,7 +739,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     initialSelection.current = null;
 
     if (isDrawing.current) {
-        const ctx = activeCanvasRef.current?.getContext('2d');
+        const ctx = selection ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
         if (ctx) {
             if ((tool === 'pen' && brushType !== 'spray' && brushType !== 'pixel') || tool === 'eraser') {
                 if (!hasMoved.current && drawStart.current) {
@@ -660,8 +747,13 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     ctx.stroke();
                 }
                 ctx.closePath();
-                ctx.globalCompositeOperation = 'source-over';
-                saveCanvas();
+                if (!selection) ctx.globalCompositeOperation = 'source-over';
+                
+                if (!selection) saveCanvas();
+                else {
+                    const newUrl = selectionCanvasRef.current?.toDataURL();
+                    if (newUrl) onSelectionUpdate({ ...selection, dataUrl: newUrl });
+                }
             } else if (brushType === 'pixel') {
                 if (!hasMoved.current && drawStart.current) {
                     setupBrush(ctx);
@@ -669,12 +761,24 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     ctx.fillStyle = color;
                     ctx.fillRect(Math.floor(drawStart.current.x - size/2), Math.floor(drawStart.current.y - size/2), size, size);
                 }
-                saveCanvas();
+                if (!selection) saveCanvas();
+                else {
+                    const newUrl = selectionCanvasRef.current?.toDataURL();
+                    if (newUrl) onSelectionUpdate({ ...selection, dataUrl: newUrl });
+                }
             } else if (brushType === 'spray') {
-                 saveCanvas();
+                 if (!selection) saveCanvas();
+                 else {
+                     const newUrl = selectionCanvasRef.current?.toDataURL();
+                     if (newUrl) onSelectionUpdate({ ...selection, dataUrl: newUrl });
+                 }
             } else if (tool === 'shape') {
                 ctx.closePath();
-                saveCanvas();
+                if (!selection) saveCanvas();
+                else {
+                    const newUrl = selectionCanvasRef.current?.toDataURL();
+                    if (newUrl) onSelectionUpdate({ ...selection, dataUrl: newUrl });
+                }
             }
         }
         isDrawing.current = false;
@@ -800,7 +904,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     height={canvasHeight}
                     className="absolute inset-0 w-full h-full z-20"
                     style={{ 
-                        cursor: isGesture.current ? 'grabbing' : (tool === 'select' || tool === 'text' ? 'text' : 'crosshair'),
+                        cursor: isGesture.current ? 'grabbing' : (tool === 'select' || tool === 'text' ? 'text' : tool === 'wand' ? 'crosshair' : 'crosshair'),
                         opacity: layers.find(l => l.id === activeLayerId)?.opacity ?? 1,
                         mixBlendMode: getMixBlendMode(layers.find(l => l.id === activeLayerId)?.blendMode ?? 'source-over')
                     }}
@@ -822,7 +926,12 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         cursor: 'move'
                     }}
                 >
-                    <img src={selection.dataUrl} className="w-full h-full select-none pointer-events-none" alt="selection" />
+                    <canvas 
+                        ref={selectionCanvasRef} 
+                        width={selection.width} 
+                        height={selection.height} 
+                        className="w-full h-full select-none pointer-events-none" 
+                    />
                     
                     {/* Interactive Selection UI */}
                     <div className="absolute inset-0 border-2 border-[#007AFF] pointer-events-none"></div>
@@ -877,6 +986,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             <span>{Math.round(transform.current.scale * 100)}%</span>
             <span>{Math.round(transform.current.rotation)}°</span>
             {tool === 'select' && <span>Select Mode</span>}
+            {tool === 'wand' && <span>Wand Mode</span>}
             {tool === 'text' && <span>Text Mode</span>}
         </div>
     </div>
