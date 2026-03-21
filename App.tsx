@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType, OnionSkinSettings, Shortcuts } from './types';
+import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType, OnionSkinSettings, Shortcuts, BackpackItem } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
@@ -8,6 +8,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { LayerPanel } from './components/LayerPanel';
 import { ExportModal, ExportFormat, ExportQuality } from './components/ExportModal';
 import { HelpModal } from './components/HelpModal';
+import { BackpackModal } from './components/BackpackModal';
 import gifshot from 'gifshot';
 import { parseGIF, decompressFrames } from 'gifuct-js';
 import { FrameManagerModal } from './components/FrameManagerModal';
@@ -104,6 +105,13 @@ export default function App() {
   const [shapeType, setShapeType] = useState<ShapeType>('rectangle');
   const [color, setColor] = useState('#000000');
   
+  const [backpackItems, setBackpackItems] = useState<BackpackItem[]>(() => {
+    const saved = localStorage.getItem('backpackItems');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [isBackpackOpen, setIsBackpackOpen] = useState(false);
+  const [isSelectingForBackpack, setIsSelectingForBackpack] = useState(false);
+
   const [penSize, setPenSize] = useState(5);
   const [eraserSize, setEraserSize] = useState(30);
   const [shapeSize, setShapeSize] = useState(5);
@@ -150,6 +158,16 @@ export default function App() {
       else if (tool === 'shape') setShapeSize(width);
       else setPenSize(width);
   };
+
+  useEffect(() => {
+    localStorage.setItem('backpackItems', JSON.stringify(backpackItems));
+  }, [backpackItems]);
+
+  useEffect(() => {
+    if (tool !== 'select' && isSelectingForBackpack) {
+      setIsSelectingForBackpack(false);
+    }
+  }, [tool]);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--accent-color', accentColor);
@@ -248,6 +266,11 @@ export default function App() {
 
   const toggleLayerLock = (id: string) => {
     setLayers(layers.map(l => l.id === id ? { ...l, isLocked: !l.isLocked } : l));
+    setHasUnsavedChanges(true);
+  };
+
+  const renameLayer = (id: string, newName: string) => {
+    setLayers(layers.map(l => l.id === id ? { ...l, name: newName } : l));
     setHasUnsavedChanges(true);
   };
 
@@ -472,6 +495,25 @@ export default function App() {
       
       setAudioTracks(prev => prev.filter(t => t.id !== id));
       setHasUnsavedChanges(true);
+  };
+
+  const handleSelectionCreate = (newSelection: SelectionState) => {
+    if (isSelectingForBackpack) {
+      if (newSelection.dataUrl) {
+        const newItem: BackpackItem = {
+          id: crypto.randomUUID(),
+          dataUrl: newSelection.dataUrl,
+          createdAt: Date.now()
+        };
+        setBackpackItems(prev => [...prev, newItem]);
+      }
+      setIsSelectingForBackpack(false);
+      setSelection(null);
+      setIsBackpackOpen(true);
+      setTool('pen');
+    } else {
+      setSelection(newSelection);
+    }
   };
 
   const handleSelectionCommit = async () => {
@@ -1253,7 +1295,39 @@ export default function App() {
         onSave={handleAddRecordedAudio}
       />
 
-      {isLayerPanelOpen && <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onDuplicateLayer={duplicateLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onReorderLayers={reorderLayers} onClose={() => setIsLayerPanelOpen(false)} />}
+      <BackpackModal
+        isOpen={isBackpackOpen}
+        onClose={() => setIsBackpackOpen(false)}
+        items={backpackItems}
+        onSelectItem={(item) => {
+          const img = new window.Image();
+          img.onload = () => {
+            setSelection({
+              x: canvasSize.width / 2 - img.width / 2,
+              y: canvasSize.height / 2 - img.height / 2,
+              width: img.width,
+              height: img.height,
+              dataUrl: item.dataUrl,
+              rotation: 0,
+              scaleX: 1,
+              scaleY: 1
+            });
+            setTool('select');
+            setIsBackpackOpen(false);
+          };
+          img.src = item.dataUrl;
+        }}
+        onDeleteItem={(id) => {
+          setBackpackItems(prev => prev.filter(i => i.id !== id));
+        }}
+        onStartSelecting={() => {
+          setIsBackpackOpen(false);
+          setTool('select');
+          setIsSelectingForBackpack(true);
+        }}
+      />
+
+      {isLayerPanelOpen && <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onDuplicateLayer={duplicateLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onRenameLayer={renameLayer} onReorderLayers={reorderLayers} onClose={() => setIsLayerPanelOpen(false)} />}
       {!isFocusMode && (
         <header className="h-14 bg-[#1e1e1e] flex items-center px-4 justify-between border-b border-gray-700 shrink-0 z-30">
             <div className="flex items-center space-x-2">
@@ -1268,6 +1342,7 @@ export default function App() {
                 <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white"><Icons.Clipboard size={20} /></button>
             </div>
             <div className="flex items-center space-x-2">
+                <button onClick={() => setIsBackpackOpen(true)} className={`p-2 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title="Backpack"><Icons.Briefcase size={20} /></button>
                 <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className="p-2 text-gray-400 hover:text-white"><Icons.Layers size={20} /></button>
                 <button onClick={saveProject} className="p-2 text-gray-400 hover:text-white"><Icons.Save size={20} /></button>
                 <button onClick={() => setIsExportModalOpen(true)} className="p-2 text-gray-400 hover:text-white"><Icons.Download size={20} /></button>
@@ -1321,7 +1396,7 @@ export default function App() {
                 showGrid={showGrid} 
                 isPlaying={isPlaying} 
                 selection={selection} 
-                onSelectionCreate={setSelection} 
+                onSelectionCreate={handleSelectionCreate} 
                 onSelectionUpdate={setSelection} 
                 onSelectionCommit={handleSelectionCommit} 
                 canvasWidth={canvasSize.width} 

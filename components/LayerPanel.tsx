@@ -27,6 +27,7 @@ interface SortableLayerItemProps {
   onToggleVisibility: (id: string) => void;
   onRemoveLayer: (id: string) => void;
   onUpdateLayerSettings: (id: string, opacity: number, blendMode: GlobalCompositeOperation) => void;
+  onRenameLayer: (id: string, newName: string) => void;
   layersCount: number;
 }
 
@@ -38,6 +39,7 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
   onToggleVisibility,
   onRemoveLayer,
   onUpdateLayerSettings,
+  onRenameLayer,
   layersCount,
 }) => {
   const {
@@ -49,6 +51,18 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
     isDragging,
   } = useSortable({ id: layer.id });
 
+  const [isEditingName, setIsEditingName] = React.useState(false);
+  const [editNameValue, setEditNameValue] = React.useState(layer.name);
+
+  const handleRenameSubmit = () => {
+    if (editNameValue.trim() !== '') {
+      onRenameLayer(layer.id, editNameValue.trim());
+    } else {
+      setEditNameValue(layer.name);
+    }
+    setIsEditingName(false);
+  };
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -57,7 +71,7 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
   };
 
   const blendModes: GlobalCompositeOperation[] = [
-    'source-over', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion'
+    'source-over', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity'
   ];
 
   return (
@@ -79,9 +93,30 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
           <Icons.GripVertical size={14} />
         </div>
 
-        <span className={`truncate flex-1 font-medium text-sm ml-1 ${isActive ? 'text-[#FF3B30]' : 'text-gray-300'}`}>
-          {layer.name}
-        </span>
+        {isEditingName ? (
+          <input
+            autoFocus
+            type="text"
+            value={editNameValue}
+            onChange={(e) => setEditNameValue(e.target.value)}
+            onBlur={handleRenameSubmit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleRenameSubmit();
+              if (e.key === 'Escape') {
+                setEditNameValue(layer.name);
+                setIsEditingName(false);
+              }
+            }}
+            className="flex-1 ml-1 bg-black/50 text-white text-sm px-1 py-0.5 outline-none border border-[#FF3B30] rounded"
+          />
+        ) : (
+          <span 
+            onDoubleClick={(e) => { e.stopPropagation(); setIsEditingName(true); }}
+            className={`truncate flex-1 font-medium text-sm ml-1 ${isActive ? 'text-[#FF3B30]' : 'text-gray-300'}`}
+          >
+            {layer.name}
+          </span>
+        )}
 
         <div className="flex items-center gap-1">
           <button
@@ -161,6 +196,7 @@ interface LayerPanelProps {
   onToggleVisibility: (id: string) => void;
   onToggleLock: (id: string) => void;
   onUpdateLayerSettings: (id: string, opacity: number, blendMode: GlobalCompositeOperation) => void;
+  onRenameLayer: (id: string, newName: string) => void;
   onReorderLayers: (newLayers: Layer[]) => void;
   onClose: () => void;
 }
@@ -175,6 +211,7 @@ export const LayerPanel: React.FC<LayerPanelProps> = ({
   onToggleVisibility,
   onToggleLock,
   onUpdateLayerSettings,
+  onRenameLayer,
   onReorderLayers,
   onClose
 }) => {
@@ -245,6 +282,7 @@ export const LayerPanel: React.FC<LayerPanelProps> = ({
                 onToggleVisibility={onToggleVisibility}
                 onRemoveLayer={onRemoveLayer}
                 onUpdateLayerSettings={onUpdateLayerSettings}
+                onRenameLayer={onRenameLayer}
                 layersCount={layers.length}
               />
             ))}

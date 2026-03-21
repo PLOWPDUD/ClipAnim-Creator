@@ -3,11 +3,17 @@ export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'wand' | 'shape' |
 
 export type BrushType = 'pen' | 'marker' | 'highlighter' | 'spray' | 'pixel';
 
-export type ShapeType = 'rectangle' | 'circle' | 'line';
+export type ShapeType = 'rectangle' | 'circle' | 'line' | 'triangle' | 'star' | 'hexagon' | 'heart' | 'arrow' | 'speech-bubble';
 
 export interface Point {
   x: number;
   y: number;
+}
+
+export interface BackpackItem {
+  id: string;
+  dataUrl: string;
+  createdAt: number;
 }
 
 export interface Layer {

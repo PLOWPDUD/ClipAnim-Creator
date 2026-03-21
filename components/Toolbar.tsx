@@ -135,13 +135,27 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     setPopoverPos({ top, left });
   };
 
+  const getShapeIcon = () => {
+      switch (shapeType) {
+          case 'circle': return Icons.Circle;
+          case 'line': return Icons.Line;
+          case 'triangle': return Icons.Triangle;
+          case 'star': return Icons.Star;
+          case 'hexagon': return Icons.Hexagon;
+          case 'heart': return Icons.Heart;
+          case 'arrow': return Icons.ArrowRight;
+          case 'speech-bubble': return Icons.MessageCircle;
+          default: return Icons.Square;
+      }
+  };
+
   const tools: { id: ToolType; icon: React.ElementType; label: string }[] = [
     { id: 'select', icon: Icons.MousePointer2, label: 'Select' },
     { id: 'wand', icon: Icons.Wand2, label: 'Wand' },
     { id: 'pen', icon: Icons.Pencil, label: 'Brush' },
     { id: 'eraser', icon: Icons.Eraser, label: 'Eraser' },
     { id: 'fill', icon: Icons.PaintBucket, label: 'Fill' },
-    { id: 'shape', icon: shapeType === 'circle' ? Icons.Circle : shapeType === 'line' ? Icons.Line : Icons.Square, label: 'Shapes' },
+    { id: 'shape', icon: getShapeIcon(), label: 'Shapes' },
     { id: 'text', icon: Icons.Type, label: 'Text' },
   ];
 
@@ -338,16 +352,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       {/* Shape Settings */}
       {activePopover === 'shape' && (
         <div className="fixed bg-[#252525] p-4 rounded-xl shadow-2xl w-56 border border-gray-700 z-50 flex flex-col gap-4" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
-             <div className="flex gap-2">
+             <div className="grid grid-cols-3 gap-2">
                 {[
                     { type: 'rectangle', icon: Icons.Square },
                     { type: 'circle', icon: Icons.Circle },
                     { type: 'line', icon: Icons.Line },
+                    { type: 'triangle', icon: Icons.Triangle },
+                    { type: 'star', icon: Icons.Star },
+                    { type: 'hexagon', icon: Icons.Hexagon },
+                    { type: 'heart', icon: Icons.Heart },
+                    { type: 'arrow', icon: Icons.ArrowRight },
+                    { type: 'speech-bubble', icon: Icons.MessageCircle },
                 ].map((s) => (
                     <button 
                         key={s.type}
                         onClick={() => onSelectShapeType(s.type as ShapeType)}
-                        className={`flex-1 p-2 rounded-lg flex items-center justify-center transition-colors ${shapeType === s.type ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+                        className={`p-2 rounded-lg flex items-center justify-center transition-colors ${shapeType === s.type ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
                         title={s.type}
                     >
                         <s.icon size={20} />

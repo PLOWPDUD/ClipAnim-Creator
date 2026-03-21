@@ -45,6 +45,43 @@ const getMixBlendMode = (mode: GlobalCompositeOperation): any => {
     return 'normal';
 };
 
+const getResizeCursor = (handle: string, rotation: number, scaleX: number, scaleY: number) => {
+    let baseAngle = 0;
+    if (handle === 'resize-tl') baseAngle = 315;
+    else if (handle === 'resize-tr') baseAngle = 45;
+    else if (handle === 'resize-br') baseAngle = 135;
+    else if (handle === 'resize-bl') baseAngle = 225;
+
+    if (scaleX < 0) {
+        if (baseAngle === 315) baseAngle = 45;
+        else if (baseAngle === 45) baseAngle = 315;
+        else if (baseAngle === 135) baseAngle = 225;
+        else if (baseAngle === 225) baseAngle = 135;
+    }
+    if (scaleY < 0) {
+        if (baseAngle === 315) baseAngle = 225;
+        else if (baseAngle === 45) baseAngle = 135;
+        else if (baseAngle === 135) baseAngle = 45;
+        else if (baseAngle === 225) baseAngle = 315;
+    }
+
+    let angle = (baseAngle + rotation) % 360;
+    if (angle < 0) angle += 360;
+
+    const sector = Math.round(angle / 45) % 8;
+    switch (sector) {
+        case 0: return 'ns-resize';
+        case 1: return 'nesw-resize';
+        case 2: return 'ew-resize';
+        case 3: return 'nwse-resize';
+        case 4: return 'ns-resize';
+        case 5: return 'nesw-resize';
+        case 6: return 'ew-resize';
+        case 7: return 'nwse-resize';
+    }
+    return 'nwse-resize';
+};
+
 export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   currentFrame,
   layers,
@@ -584,8 +621,11 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                  const rad = (-init.rotation * Math.PI) / 180;
                  const cos = Math.cos(rad);
                  const sin = Math.sin(rad);
-                 const ldx = (dx * cos - dy * sin);
-                 const ldy = (dx * sin + dy * cos);
+                 let ldx = (dx * cos - dy * sin);
+                 let ldy = (dx * sin + dy * cos);
+
+                 ldx /= init.scaleX;
+                 ldy /= init.scaleY;
 
                  let handle = selectionMode.current;
                  if (init.scaleX < 0) {
@@ -601,13 +641,48 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     else if (handle === 'resize-br') handle = 'resize-tr';
                  }
 
-                 if (handle === 'resize-br') { newW = init.width + ldx; newH = init.height + ldy; }
-                 else if (handle === 'resize-bl') { newW = init.width - ldx; newH = init.height + ldy; newX = init.x + ldx; }
-                 else if (handle === 'resize-tr') { newW = init.width + ldx; newH = init.height - ldy; newY = init.y + ldy; }
-                 else if (handle === 'resize-tl') { newW = init.width - ldx; newH = init.height - ldy; newX = init.x + ldx; newY = init.y + ldy; }
+                 let deltaLeft = 0, deltaRight = 0, deltaTop = 0, deltaBottom = 0;
 
-                 if (newW < 5) { const diff = 5 - newW; newW = 5; if (handle.includes('l')) newX -= diff; }
-                 if (newH < 5) { const diff = 5 - newH; newH = 5; if (handle.includes('t')) newY -= diff; }
+                 if (handle === 'resize-br') { deltaRight = ldx; deltaBottom = ldy; }
+                 else if (handle === 'resize-bl') { deltaLeft = ldx; deltaBottom = ldy; }
+                 else if (handle === 'resize-tr') { deltaRight = ldx; deltaTop = ldy; }
+                 else if (handle === 'resize-tl') { deltaLeft = ldx; deltaTop = ldy; }
+
+                 newW = init.width - deltaLeft + deltaRight;
+                 newH = init.height - deltaTop + deltaBottom;
+
+                 if (newW < 5) {
+                     if (handle.includes('l')) { deltaLeft = init.width - 5 + deltaRight; }
+                     else { deltaRight = 5 - init.width + deltaLeft; }
+                     newW = 5;
+                 }
+                 if (newH < 5) {
+                     if (handle.includes('t')) { deltaTop = init.height - 5 + deltaBottom; }
+                     else { deltaBottom = 5 - init.height + deltaTop; }
+                     newH = 5;
+                 }
+
+                 const dcx = (deltaLeft + deltaRight) / 2;
+                 const dcy = (deltaTop + deltaBottom) / 2;
+
+                 const scaledDcx = dcx * init.scaleX;
+                 const scaledDcy = dcy * init.scaleY;
+
+                 const radPos = (init.rotation * Math.PI) / 180;
+                 const cosPos = Math.cos(radPos);
+                 const sinPos = Math.sin(radPos);
+
+                 const gdcx = scaledDcx * cosPos - scaledDcy * sinPos;
+                 const gdcy = scaledDcx * sinPos + scaledDcy * cosPos;
+
+                 const oldCenterX = init.x + init.width / 2;
+                 const oldCenterY = init.y + init.height / 2;
+
+                 const newCenterX = oldCenterX + gdcx;
+                 const newCenterY = oldCenterY + gdcy;
+
+                 newX = newCenterX - newW / 2;
+                 newY = newCenterY - newH / 2;
             }
 
             if (selectionOverlayRef.current) {
@@ -668,6 +743,97 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             } else if (shapeType === 'line') {
                 ctx.moveTo(startX, startY);
                 ctx.lineTo(mx, my);
+            } else if (shapeType === 'triangle') {
+                ctx.moveTo(startX + w / 2, startY);
+                ctx.lineTo(startX + w, startY + h);
+                ctx.lineTo(startX, startY + h);
+                ctx.closePath();
+            } else if (shapeType === 'star') {
+                const cx = startX + w / 2;
+                const cy = startY + h / 2;
+                const outerRadius = Math.min(Math.abs(w), Math.abs(h)) / 2;
+                const innerRadius = outerRadius / 2;
+                const spikes = 5;
+                let rot = Math.PI / 2 * 3;
+                let x = cx;
+                let y = cy;
+                const step = Math.PI / spikes;
+                ctx.moveTo(cx, cy - outerRadius);
+                for (let i = 0; i < spikes; i++) {
+                    x = cx + Math.cos(rot) * outerRadius;
+                    y = cy + Math.sin(rot) * outerRadius;
+                    ctx.lineTo(x, y);
+                    rot += step;
+                    x = cx + Math.cos(rot) * innerRadius;
+                    y = cy + Math.sin(rot) * innerRadius;
+                    ctx.lineTo(x, y);
+                    rot += step;
+                }
+                ctx.lineTo(cx, cy - outerRadius);
+                ctx.closePath();
+            } else if (shapeType === 'hexagon') {
+                const cx = startX + w / 2;
+                const cy = startY + h / 2;
+                const radius = Math.min(Math.abs(w), Math.abs(h)) / 2;
+                for (let i = 0; i < 6; i++) {
+                    const angle = (Math.PI / 3) * i;
+                    const x = cx + radius * Math.cos(angle);
+                    const y = cy + radius * Math.sin(angle);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+            } else if (shapeType === 'heart') {
+                const cx = startX + w / 2;
+                const cy = startY + h / 2;
+                const width = Math.abs(w);
+                const height = Math.abs(h);
+                const topCurveHeight = height * 0.3;
+                ctx.moveTo(cx, cy + height / 2);
+                ctx.bezierCurveTo(
+                    cx - width / 2, cy + height / 2 - topCurveHeight,
+                    cx - width / 2, cy - height / 2,
+                    cx, cy - height / 2 + topCurveHeight
+                );
+                ctx.bezierCurveTo(
+                    cx + width / 2, cy - height / 2,
+                    cx + width / 2, cy + height / 2 - topCurveHeight,
+                    cx, cy + height / 2
+                );
+                ctx.closePath();
+            } else if (shapeType === 'arrow') {
+                const headlen = Math.min(Math.abs(w), Math.abs(h)) * 0.3;
+                const angle = Math.atan2(h, w);
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(mx, my);
+                ctx.lineTo(mx - headlen * Math.cos(angle - Math.PI / 6), my - headlen * Math.sin(angle - Math.PI / 6));
+                ctx.moveTo(mx, my);
+                ctx.lineTo(mx - headlen * Math.cos(angle + Math.PI / 6), my - headlen * Math.sin(angle + Math.PI / 6));
+            } else if (shapeType === 'speech-bubble') {
+                const minX = Math.min(startX, mx);
+                const minY = Math.min(startY, my);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                const radius = Math.min(absW, absH) * 0.2;
+                const tailWidth = radius;
+                const tailHeight = radius * 1.5;
+                const tailX = minX + absW * 0.2;
+                
+                ctx.moveTo(minX + radius, minY);
+                ctx.lineTo(minX + absW - radius, minY);
+                ctx.quadraticCurveTo(minX + absW, minY, minX + absW, minY + radius);
+                ctx.lineTo(minX + absW, minY + absH - radius - tailHeight);
+                ctx.quadraticCurveTo(minX + absW, minY + absH - tailHeight, minX + absW - radius, minY + absH - tailHeight);
+                
+                ctx.lineTo(tailX + tailWidth, minY + absH - tailHeight);
+                ctx.lineTo(tailX, minY + absH);
+                ctx.lineTo(tailX, minY + absH - tailHeight);
+                
+                ctx.lineTo(minX + radius, minY + absH - tailHeight);
+                ctx.quadraticCurveTo(minX, minY + absH - tailHeight, minX, minY + absH - radius - tailHeight);
+                ctx.lineTo(minX, minY + radius);
+                ctx.quadraticCurveTo(minX, minY, minX + radius, minY);
+                ctx.closePath();
             }
             ctx.stroke();
         } else if (tool === 'pen' && brushType === 'pixel') {
@@ -831,7 +997,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             
             {showGrid && !isPlaying && (
                 <div 
-                    className="absolute inset-0 pointer-events-none z-[25] opacity-20"
+                    className="absolute inset-0 pointer-events-none z-[90] opacity-20"
                     style={{
                         backgroundImage: `linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)`,
                         backgroundSize: '20px 20px'
@@ -879,8 +1045,27 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 </defs>
             </svg>
 
-            {layers.map(layer => {
-                if (!layer.isVisible || layer.id === activeLayerId) return null;
+            {layers.map((layer, index) => {
+                if (!layer.isVisible) return null;
+                
+                if (layer.id === activeLayerId) {
+                    return (
+                        <canvas
+                            key={layer.id}
+                            ref={activeCanvasRef}
+                            width={canvasWidth}
+                            height={canvasHeight}
+                            className="absolute inset-0 w-full h-full"
+                            style={{ 
+                                zIndex: index + 10,
+                                cursor: isGesture.current ? 'grabbing' : (tool === 'select' || tool === 'text' ? 'text' : tool === 'wand' ? 'crosshair' : 'crosshair'),
+                                opacity: layer.opacity,
+                                mixBlendMode: getMixBlendMode(layer.blendMode)
+                            }}
+                        />
+                    );
+                }
+
                 const layerData = currentFrame.layers?.[layer.id];
                 if (!layerData) return null;
                 return (
@@ -888,8 +1073,9 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         key={layer.id} 
                         src={layerData} 
                         alt="" 
-                        className="absolute inset-0 w-full h-full pointer-events-none z-10" 
+                        className="absolute inset-0 w-full h-full pointer-events-none" 
                         style={{
+                            zIndex: index + 10,
                             opacity: layer.opacity,
                             mixBlendMode: getMixBlendMode(layer.blendMode)
                         }}
@@ -897,24 +1083,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 );
             })}
 
-            {layers.find(l => l.id === activeLayerId)?.isVisible && (
-                <canvas
-                    ref={activeCanvasRef}
-                    width={canvasWidth}
-                    height={canvasHeight}
-                    className="absolute inset-0 w-full h-full z-20"
-                    style={{ 
-                        cursor: isGesture.current ? 'grabbing' : (tool === 'select' || tool === 'text' ? 'text' : tool === 'wand' ? 'crosshair' : 'crosshair'),
-                        opacity: layers.find(l => l.id === activeLayerId)?.opacity ?? 1,
-                        mixBlendMode: getMixBlendMode(layers.find(l => l.id === activeLayerId)?.blendMode ?? 'source-over')
-                    }}
-                />
-            )}
-
             {selection && (
                 <div 
                     ref={selectionOverlayRef}
-                    className="absolute z-30 select-none" 
+                    className="absolute z-[100] select-none" 
                     onPointerDown={handleSelectionPointerDown}
                     style={{
                         left: selection.x,
@@ -937,10 +1109,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     <div className="absolute inset-0 border-2 border-[#007AFF] pointer-events-none"></div>
                     
                     {/* Bigger Corner Handles */}
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tl')} className="absolute -top-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg cursor-nwse-resize z-40 pointer-events-auto" />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tr')} className="absolute -top-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg cursor-nesw-resize z-40 pointer-events-auto" />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-bl')} className="absolute -bottom-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg cursor-nesw-resize z-40 pointer-events-auto" />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-br')} className="absolute -bottom-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg cursor-nwse-resize z-40 pointer-events-auto" />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tl')} className="absolute -top-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-tl', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tr')} className="absolute -top-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-tr', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-bl')} className="absolute -bottom-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-bl', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-br')} className="absolute -bottom-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-br', selection.rotation, selection.scaleX, selection.scaleY) }} />
 
                     {/* Interactive Rotation Handle */}
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none" style={{ transform: 'translateY(-100%)' }}>
@@ -956,7 +1128,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             )}
             
             {tool === 'select' && isCreatingSelection && (
-                 <div ref={marqueeRef} className="absolute border border-dashed border-red-500 bg-red-500/10 pointer-events-none z-50" />
+                 <div ref={marqueeRef} className="absolute border border-dashed border-red-500 bg-red-500/10 pointer-events-none z-[100]" />
             )}
 
             {textInput && (
@@ -966,7 +1138,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     value={textInput.value}
                     onChange={(e) => setTextInput({ ...textInput, value: e.target.value })}
                     onKeyDown={(e) => { if(e.key === 'Enter') commitText(); }}
-                    className="absolute z-50 bg-transparent border-none outline-none p-0 m-0"
+                    className="absolute z-[100] bg-transparent border-none outline-none p-0 m-0"
                     style={{ 
                         left: textInput.x, 
                         top: textInput.y, 

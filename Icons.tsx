@@ -56,7 +56,14 @@ import {
   Mic,
   GripVertical,
   Wand2,
-  Share2
+  Share2,
+  Triangle,
+  Star,
+  Hexagon,
+  Heart,
+  ArrowRight,
+  MessageCircle,
+  Briefcase
 } from 'lucide-react';
 
 export const Icons = {
@@ -94,6 +101,12 @@ export const Icons = {
   Square, 
   Circle, 
   Line: Minus,
+  Triangle,
+  Star,
+  Hexagon,
+  Heart,
+  ArrowRight,
+  MessageCircle,
   Clipboard, 
   Home, 
   Save,
@@ -117,5 +130,6 @@ export const Icons = {
   Mic,
   GripVertical,
   Wand2,
-  Share2
+  Share2,
+  Briefcase
 };
