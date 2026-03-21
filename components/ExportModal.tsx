@@ -14,6 +14,7 @@ interface ExportModalProps {
   projectName: string;
   frameCount: number;
   fps: number;
+  exportedFile?: { url: string, name: string, blob: Blob } | null;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({ 
@@ -25,11 +26,38 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   progress,
   projectName,
   frameCount,
-  fps
+  fps,
+  exportedFile
 }) => {
   const [quality, setQuality] = React.useState<ExportQuality>('medium');
 
   if (!isOpen) return null;
+
+  const handleDownload = () => {
+    if (!exportedFile) return;
+    const a = document.createElement('a');
+    a.href = exportedFile.url;
+    a.download = exportedFile.name;
+    a.click();
+  };
+
+  const handleShare = async () => {
+    if (!exportedFile) return;
+    try {
+      if (navigator.share) {
+        const file = new File([exportedFile.blob], exportedFile.name, { type: exportedFile.blob.type });
+        await navigator.share({
+          title: projectName,
+          text: 'Check out my animation created with ClipAnim!',
+          files: [file]
+        });
+      } else {
+        alert("Sharing is not supported on this browser. Please download the file instead.");
+      }
+    } catch (e) {
+      console.error("Share failed:", e);
+    }
+  };
 
   const formats: { id: ExportFormat; label: string; icon: React.ElementType; color: string; desc: string }[] = [
     { id: 'mp4', label: 'MP4 Video', icon: Icons.FileVideo, color: 'text-blue-400', desc: 'Standard video, great for social media.' },
@@ -66,6 +94,40 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                  className="px-6 py-2 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white text-xs font-bold transition-all border border-gray-700"
              >
                  Cancel Export
+             </button>
+          </div>
+        )}
+
+        {!isExporting && exportedFile && (
+          <div className="absolute inset-0 z-50 bg-[#1e1e1e] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-200">
+             <div className="w-20 h-20 rounded-full bg-emerald-500/20 flex items-center justify-center mb-6">
+                 <Icons.Check className="text-emerald-500" size={40} />
+             </div>
+             <h2 className="text-3xl font-bold mb-2">Export Complete!</h2>
+             <p className="text-gray-400 mb-8">Your movie is ready to be shared or downloaded.</p>
+             
+             <div className="flex gap-4">
+                 <button 
+                     onClick={handleShare}
+                     className="px-8 py-4 rounded-2xl bg-[#FF3B30] hover:bg-[#FF453A] text-white font-bold transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(255,59,48,0.3)] hover:scale-105 active:scale-95"
+                 >
+                     <Icons.Share2 size={20} />
+                     Share Movie
+                 </button>
+                 <button 
+                     onClick={handleDownload}
+                     className="px-8 py-4 rounded-2xl bg-gray-800 hover:bg-gray-700 text-white font-bold transition-all flex items-center gap-2 border border-gray-700 hover:scale-105 active:scale-95"
+                 >
+                     <Icons.Download size={20} />
+                     Download
+                 </button>
+             </div>
+             
+             <button 
+                 onClick={onClose}
+                 className="mt-8 px-6 py-2 rounded-full text-gray-500 hover:text-white text-sm font-bold transition-colors"
+             >
+                 Close
              </button>
           </div>
         )}

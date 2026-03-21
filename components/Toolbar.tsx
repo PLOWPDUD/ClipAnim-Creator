@@ -189,8 +189,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <div className="w-8 h-px bg-gray-700 my-2 shrink-0" />
 
             {/* Color / Transforms */}
-            {hasSelection ? (
-            <div className="flex flex-col gap-2 shrink-0">
+            <button 
+                onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPopoverPos({ top: r.top + r.height/2, left: r.right+12 }); setActivePopover(activePopover === 'color' ? null : 'color'); }} 
+                className="w-10 h-10 rounded-full border-2 border-white/20 shrink-0" 
+                style={{ backgroundColor: currentColor }} 
+            />
+
+            {hasSelection && (
+            <div className="flex flex-col gap-2 shrink-0 mt-2">
                 <button onClick={onRotate} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title="Rotate">
                     <Icons.RotateCw size={20} />
                 </button>
@@ -201,12 +207,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     <Icons.FlipVertical size={20} />
                 </button>
             </div>
-            ) : (
-            <button 
-                onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPopoverPos({ top: r.top + r.height/2, left: r.right+12 }); setActivePopover(activePopover === 'color' ? null : 'color'); }} 
-                className="w-10 h-10 rounded-full border-2 border-white/20 shrink-0" 
-                style={{ backgroundColor: currentColor }} 
-            />
             )}
 
             <div className="w-8 h-px bg-gray-700 my-2 shrink-0" />

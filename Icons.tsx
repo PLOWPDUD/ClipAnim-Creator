@@ -55,7 +55,8 @@ import {
   Check,
   Mic,
   GripVertical,
-  Wand2
+  Wand2,
+  Share2
 } from 'lucide-react';
 
 export const Icons = {
@@ -115,5 +116,6 @@ export const Icons = {
   Check,
   Mic,
   GripVertical,
-  Wand2
+  Wand2,
+  Share2
 };

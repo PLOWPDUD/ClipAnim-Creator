@@ -135,6 +135,7 @@ export default function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [exportedFile, setExportedFile] = useState<{ url: string, name: string, blob: Blob } | null>(null);
   const isExportCancelledRef = useRef(false);
 
   const importFileRef = useRef<HTMLInputElement>(null);
@@ -582,14 +583,10 @@ export default function App() {
             const { buffer } = muxer.target;
             const blob = new Blob([buffer], { type: 'video/mp4' });
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${projectName}.mp4`;
-            a.click();
             
+            setExportedFile({ url, name: `${projectName}.mp4`, blob });
             setIsExporting(false);
             setExportProgress(100);
-            setIsExportModalOpen(false);
 
         } catch (e: any) {
             console.error("MP4 Export failed", e);
@@ -623,14 +620,10 @@ export default function App() {
         });
 
         const url = URL.createObjectURL(gifBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${projectName}.gif`;
-        a.click();
-
+        
+        setExportedFile({ url, name: `${projectName}.gif`, blob: gifBlob });
         setIsExporting(false);
         setExportProgress(100);
-        setIsExportModalOpen(false);
 
       } catch (e: any) {
         console.error("GIF Export failed", e);
@@ -648,13 +641,10 @@ export default function App() {
         setExportProgress(30 + Math.round(metadata.percent * 0.7));
       });
       const url = URL.createObjectURL(content);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${projectName}_frames.zip`;
-      a.click();
+      
+      setExportedFile({ url, name: `${projectName}_frames.zip`, blob: content });
       setIsExporting(false);
       setExportProgress(100);
-      setIsExportModalOpen(false);
     } else {
       // Fallback for WebM/AVI using MediaRecorder
       try {
@@ -693,15 +683,11 @@ export default function App() {
           mediaRecorder.onstop = () => {
               const blob = new Blob(chunks, { type: selectedMimeType });
               const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
               const ext = format === 'avi' ? 'avi' : 'webm';
-              a.download = `${projectName}.${ext}`;
-              a.click();
               
+              setExportedFile({ url, name: `${projectName}.${ext}`, blob });
               setIsExporting(false);
               setExportProgress(100);
-              setIsExportModalOpen(false);
           };
 
           mediaRecorder.start();
@@ -1231,7 +1217,12 @@ export default function App() {
       {isExportModalOpen && (
         <ExportModal 
           isOpen={isExportModalOpen} 
-          onClose={() => !isExporting && setIsExportModalOpen(false)} 
+          onClose={() => {
+            if (!isExporting) {
+              setIsExportModalOpen(false);
+              setExportedFile(null);
+            }
+          }} 
           onExport={handleExportStart} 
           onCancel={() => {
             isExportCancelledRef.current = true;
@@ -1243,6 +1234,7 @@ export default function App() {
           projectName={projectName}
           frameCount={frames.length}
           fps={fps}
+          exportedFile={exportedFile}
         />
       )}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
