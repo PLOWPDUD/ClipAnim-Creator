@@ -5,7 +5,8 @@ import {
   DndContext,
   closestCenter,
   KeyboardSensor,
-  PointerSensor,
+  TouchSensor,
+  MouseSensor,
   useSensor,
   useSensors,
   DragEndEvent,
@@ -89,7 +90,7 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
         onClick={() => onSelectLayer(layer.id)}
         className="flex items-center justify-between p-2 cursor-pointer group"
       >
-        <div {...attributes} {...listeners} className="p-1.5 text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing">
+        <div {...attributes} {...listeners} className="p-1.5 text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing touch-none">
           <Icons.GripVertical size={14} />
         </div>
 
@@ -216,9 +217,15 @@ export const LayerPanel: React.FC<LayerPanelProps> = ({
   onClose
 }) => {
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: {
         distance: 5,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
       },
     }),
     useSensor(KeyboardSensor, {
