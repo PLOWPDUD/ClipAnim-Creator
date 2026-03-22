@@ -101,6 +101,7 @@ export default function App() {
 
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isLooping, setIsLooping] = useState(true);
   const [tool, setTool] = useState<ToolType>('pen');
   const [brushType, setBrushType] = useState<BrushType>('pen');
   const [shapeType, setShapeType] = useState<ShapeType>('rectangle');
@@ -985,10 +986,21 @@ export default function App() {
     if (!isPlaying) return;
     
     if (startTimeRef.current === 0) startTimeRef.current = timestamp;
-    const elapsed = (timestamp - startTimeRef.current) / 1000;
-    const targetFrame = Math.floor(elapsed * fps);
+    let elapsed = (timestamp - startTimeRef.current) / 1000;
+    let targetFrame = Math.floor(elapsed * fps);
+    const totalFrames = frames.length;
 
-    if (targetFrame >= frames.length) { setIsPlaying(false); return; }
+    if (targetFrame >= totalFrames) { 
+      if (isLooping) {
+        startTimeRef.current = timestamp;
+        elapsed = 0;
+        targetFrame = 0;
+        setCurrentFrameIndex(0);
+      } else {
+        setIsPlaying(false); 
+        return; 
+      }
+    }
     if (targetFrame !== currentFrameIndex) setCurrentFrameIndex(targetFrame);
 
     // Audio Sync
@@ -1041,7 +1053,10 @@ export default function App() {
 
   const handleSelectFrame = (index: number) => {
     setCurrentFrameIndex(index);
-    if (!isPlaying && audioTracks.length > 0) {
+    if (isPlaying) {
+      startTimeRef.current = performance.now() - (index / fps * 1000);
+    }
+    if (audioTracks.length > 0) {
         const time = index / fps;
         audioTracks.forEach(track => {
             const audio = audioElementsRef.current.get(track.id);
@@ -1049,6 +1064,11 @@ export default function App() {
                 const trackEndTime = track.startTime + track.duration;
                 if (time >= track.startTime && time < trackEndTime) {
                     audio.currentTime = track.offset + (time - track.startTime);
+                    if (isPlaying && audio.paused) {
+                        audio.play().catch(console.error);
+                    }
+                } else {
+                    if (!audio.paused) audio.pause();
                 }
             }
         });
@@ -1470,6 +1490,8 @@ export default function App() {
                   onCopyFrame={copyFrame} 
                   isPlaying={isPlaying} 
                   onTogglePlay={() => setIsPlaying(!isPlaying)} 
+                  isLooping={isLooping}
+                  onToggleLoop={() => setIsLooping(!isLooping)}
                   audioTracks={audioTracks} 
                   onAddAudioTrack={handleAddAudioTrack} 
                   onRemoveAudioTrack={handleRemoveAudioTrack} 

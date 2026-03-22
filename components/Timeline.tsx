@@ -11,6 +11,8 @@ interface TimelineProps {
   onCopyFrame: (index: number) => void;
   isPlaying: boolean;
   onTogglePlay: () => void;
+  isLooping: boolean;
+  onToggleLoop: () => void;
   audioTracks: AudioTrack[];
   onAddAudioTrack: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onRemoveAudioTrack: (id: string) => void;
@@ -32,6 +34,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   onCopyFrame,
   isPlaying,
   onTogglePlay,
+  isLooping,
+  onToggleLoop,
   audioTracks,
   onAddAudioTrack,
   onRemoveAudioTrack,
@@ -112,6 +116,13 @@ export const Timeline: React.FC<TimelineProps> = ({
                       <span className="absolute top-0 right-0 w-2 h-2 bg-blue-500 rounded-full border border-[#1e1e1e]" />
                   )}
               </button>
+              <button 
+                  onClick={onToggleLoop}
+                  className={`p-1.5 rounded-full transition-colors ${isLooping ? 'text-[var(--accent-color)] bg-black/40' : 'text-gray-300 hover:text-white drop-shadow-md'}`}
+                  title={isLooping ? "Looping On" : "Looping Off"}
+              >
+                  <Icons.Repeat size={16} />
+              </button>
           </div>
           
           <button 
@@ -133,6 +144,20 @@ export const Timeline: React.FC<TimelineProps> = ({
                   <Icons.Copy size={16} />
                </button>
           </div>
+        </div>
+      )}
+
+      {!isFocusMode && (
+        <div className="px-4 mb-2 animate-in fade-in slide-in-from-bottom-2">
+            <input 
+                type="range" 
+                min="0" 
+                max={frames.length - 1} 
+                value={currentFrameIndex} 
+                onChange={(e) => onSelectFrame(parseInt(e.target.value))}
+                className="w-full h-1.5 bg-black/40 rounded-full appearance-none accent-[var(--accent-color)] cursor-pointer hover:bg-black/60 transition-colors"
+                title="Scrub Frames"
+            />
         </div>
       )}
 
