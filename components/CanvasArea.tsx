@@ -41,6 +41,7 @@ interface CanvasAreaProps {
   // Fill Tool
   fillOpacity: number;
   fillTolerance: number;
+  smoothing: number;
 }
 
 const getMixBlendMode = (mode: GlobalCompositeOperation): any => {
@@ -113,8 +114,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   backgroundImage,
   textToolFont,
   fillOpacity,
-  fillTolerance
+  fillTolerance,
+  smoothing
 }, ref) => {
+  console.log('CanvasArea render', { layers, activeLayerId });
   const activeCanvasRef = useRef<HTMLCanvasElement>(null);
   const transformRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -137,6 +140,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   // Tracking movement to distinguish tap from drag
   const hasMoved = useRef(false);
   const drawStart = useRef<{x: number, y: number} | null>(null);
+  const points = useRef<{x: number, y: number}[]>([]);
   const lastPoint = useRef<{x: number, y: number} | null>(null);
   const canvasSnapshot = useRef<ImageData | null>(null);
 
@@ -212,7 +216,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             ctx.drawImage(img, 0, 0);
         };
     }
-  }, [currentFrame?.id, activeLayerId, currentFrame?.layers, canvasWidth, canvasHeight, brushType]);
+  }, [currentFrame?.id, activeLayerId, currentFrame?.layers, canvasWidth, canvasHeight, brushType, layers]);
 
   const updateTransformStyle = () => {
     if (transformRef.current) {
@@ -462,6 +466,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     isDrawing.current = true;
     drawStart.current = { x: mx, y: my };
     lastPoint.current = { x: mx, y: my };
+    points.current = [{ x: mx, y: my }];
     
     const ctx = selection ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
     if (!ctx) return;
@@ -859,8 +864,24 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                  }
              }
         } else if (tool === 'pen' || tool === 'eraser') {
-            ctx.lineTo(mx, my);
-            ctx.stroke();
+            if (smoothing > 0 && tool === 'pen') {
+                points.current.push({ x: mx, y: my });
+                if (points.current.length === 2) {
+                    ctx.lineTo(mx, my);
+                    ctx.stroke();
+                } else if (points.current.length > 2) {
+                    const lastPoint = points.current[points.current.length - 2];
+                    const midPoint = {
+                        x: (lastPoint.x + mx) / 2,
+                        y: (lastPoint.y + my) / 2
+                    };
+                    ctx.quadraticCurveTo(lastPoint.x, lastPoint.y, midPoint.x, midPoint.y);
+                    ctx.stroke();
+                }
+            } else {
+                ctx.lineTo(mx, my);
+                ctx.stroke();
+            }
         }
     }
   };

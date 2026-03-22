@@ -32,6 +32,8 @@ interface ToolbarProps {
   onChangeFillOpacity: (opacity: number) => void;
   fillTolerance: number;
   onChangeFillTolerance: (tolerance: number) => void;
+  smoothing: number;
+  onChangeSmoothing: (smoothing: number) => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -62,7 +64,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   fillOpacity,
   onChangeFillOpacity,
   fillTolerance,
-  onChangeFillTolerance
+  onChangeFillTolerance,
+  smoothing,
+  onChangeSmoothing
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activePopover, setActivePopover] = useState<ToolType | 'color' | null>(null);
@@ -340,6 +344,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     <span>{strokeWidth}px</span>
                 </div>
                 <input type="range" min="1" max="100" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
+            </div>
+            <div>
+                <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
+                    <span>Smoothing</span>
+                    <span>{smoothing}%</span>
+                </div>
+                <input type="range" min="0" max="100" value={smoothing} onChange={(e) => onChangeSmoothing(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
             </div>
         </div>
       )}

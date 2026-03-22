@@ -120,6 +120,7 @@ export default function App() {
   const [textToolFont, setTextToolFont] = useState('sans-serif');
   const [fillOpacity, setFillOpacity] = useState(1);
   const [fillTolerance, setFillTolerance] = useState(0);
+  const [smoothing, setSmoothing] = useState(0);
 
   const [onionSkin, setOnionSkin] = useState(false);
   const [onionSkinSettings, setOnionSkinSettings] = useState<OnionSkinSettings>({
@@ -1452,6 +1453,8 @@ export default function App() {
             onChangeFillOpacity={setFillOpacity}
             fillTolerance={fillTolerance}
             onChangeFillTolerance={setFillTolerance}
+            smoothing={smoothing}
+            onChangeSmoothing={setSmoothing}
         />
         <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
             <CanvasArea 
@@ -1482,6 +1485,7 @@ export default function App() {
                 textToolFont={textToolFont} 
                 fillOpacity={fillOpacity}
                 fillTolerance={fillTolerance}
+                smoothing={smoothing}
             />
             <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
                 <Timeline 

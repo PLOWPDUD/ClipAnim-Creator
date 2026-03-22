@@ -92,6 +92,7 @@ export interface AppState {
   onionSkinSettings: OnionSkinSettings;
   fillOpacity: number;
   fillTolerance: number;
+  smoothing: number;
   backgroundColor: string;
 }
 
