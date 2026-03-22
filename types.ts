@@ -14,6 +14,7 @@ export interface BackpackItem {
   id: string;
   dataUrl: string;
   createdAt: number;
+  name?: string;
 }
 
 export interface Layer {

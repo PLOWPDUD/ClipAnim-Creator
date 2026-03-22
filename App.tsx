@@ -1389,6 +1389,9 @@ export default function App() {
         onDeleteItem={(id) => {
           setBackpackItems(prev => prev.filter(i => i.id !== id));
         }}
+        onUpdateItem={(id, name) => {
+          setBackpackItems(prev => prev.map(item => item.id === id ? { ...item, name } : item));
+        }}
         onStartSelecting={() => {
           setIsBackpackOpen(false);
           setTool('select');

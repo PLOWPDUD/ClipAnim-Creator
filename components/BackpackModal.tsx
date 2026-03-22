@@ -8,6 +8,7 @@ interface BackpackModalProps {
   items: BackpackItem[];
   onSelectItem: (item: BackpackItem) => void;
   onDeleteItem: (id: string) => void;
+  onUpdateItem: (id: string, name: string) => void;
   onStartSelecting: () => void;
 }
 
@@ -17,15 +18,24 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
   items,
   onSelectItem,
   onDeleteItem,
+  onUpdateItem,
   onStartSelecting
 }) => {
   const [isDeleteMode, setIsDeleteMode] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
 
   if (!isOpen) return null;
 
   const handleClose = () => {
     setIsDeleteMode(false);
+    setEditingItemId(null);
     onClose();
+  };
+
+  const handleSaveName = (id: string) => {
+    onUpdateItem(id, editingName);
+    setEditingItemId(null);
   };
 
   return (
@@ -77,31 +87,60 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
               {items.map(item => (
                 <div 
                   key={item.id} 
-                  onClick={() => {
-                    if (isDeleteMode) {
-                      onDeleteItem(item.id);
-                      if (items.length === 1) setIsDeleteMode(false);
-                    } else {
-                      onSelectItem(item);
-                    }
-                  }}
-                  className={`relative group bg-[#252525] rounded-lg border overflow-hidden aspect-square flex items-center justify-center p-2 transition-all cursor-pointer ${isDeleteMode ? 'border-red-500/50 hover:border-red-500' : 'border-gray-700 hover:border-[var(--accent-color)]'}`}
+                  className={`relative group bg-[#252525] rounded-lg border overflow-hidden flex flex-col transition-all ${isDeleteMode ? 'border-red-500/50 hover:border-red-500' : 'border-gray-700 hover:border-[var(--accent-color)]'}`}
                 >
-                  <img src={item.dataUrl} alt="Saved item" className={`max-w-full max-h-full object-contain transition-opacity ${isDeleteMode ? 'opacity-50 group-hover:opacity-30' : ''}`} />
+                  <div 
+                    className="flex-1 flex items-center justify-center p-2 cursor-pointer"
+                    onClick={() => {
+                      if (isDeleteMode) {
+                        onDeleteItem(item.id);
+                        if (items.length === 1) setIsDeleteMode(false);
+                      } else {
+                        onSelectItem(item);
+                      }
+                    }}
+                  >
+                    <img src={item.dataUrl} alt="Saved item" className={`max-w-full max-h-full object-contain transition-opacity ${isDeleteMode ? 'opacity-50 group-hover:opacity-30' : ''}`} />
+                    
+                    {isDeleteMode ? (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="p-3 bg-red-500 text-white rounded-full shadow-lg transform group-hover:scale-110 transition-transform">
+                          <Icons.Trash2 size={24} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <div className="p-3 bg-[var(--accent-color)] text-white rounded-full shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
+                          <Icons.Check size={24} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   
-                  {isDeleteMode ? (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="p-3 bg-red-500 text-white rounded-full shadow-lg transform group-hover:scale-110 transition-transform">
-                        <Icons.Trash2 size={24} />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <div className="p-3 bg-[var(--accent-color)] text-white rounded-full shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
-                        <Icons.Check size={24} />
-                      </div>
-                    </div>
-                  )}
+                  <div className="p-2 bg-[#1a1a1a] border-t border-gray-700 flex items-center gap-2">
+                    {editingItemId === item.id ? (
+                      <>
+                        <input 
+                          type="text" 
+                          value={editingName} 
+                          onChange={(e) => setEditingName(e.target.value)}
+                          className="flex-1 bg-black text-xs p-1 rounded border border-gray-600 focus:border-[var(--accent-color)] outline-none"
+                          autoFocus
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(item.id); }}
+                        />
+                        <button onClick={() => handleSaveName(item.id)} className="text-[var(--accent-color)]">
+                          <Icons.Check size={14} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-xs text-gray-300 truncate">{item.name || 'Unnamed'}</span>
+                        <button onClick={() => { setEditingItemId(item.id); setEditingName(item.name || ''); }} className="text-gray-500 hover:text-white">
+                          <Icons.Settings size={14} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
