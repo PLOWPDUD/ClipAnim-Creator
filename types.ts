@@ -43,6 +43,7 @@ export interface AudioTrack {
   offset: number;    // Offset in seconds from the start of the original file
 }
 
+// Selection state
 export interface SelectionState {
   x: number;
   y: number;
@@ -52,6 +53,13 @@ export interface SelectionState {
   rotation: number; // degrees
   scaleX: number; // 1 or -1
   scaleY: number; // 1 or -1
+  type?: 'text' | 'image';
+  textData?: {
+    text: string;
+    font: string;
+    color: string;
+    fontSize: number;
+  };
 }
 
 export interface OnionSkinSettings {

@@ -28,6 +28,7 @@ interface CanvasAreaProps {
   onSelectionCreate: (data: SelectionState) => void;
   onSelectionUpdate: (data: SelectionState) => void;
   onSelectionCommit: () => void;
+  onSelectionDelete: () => void;
 
   // Canvas Settings
   canvasWidth: number;
@@ -108,6 +109,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   onSelectionCreate,
   onSelectionUpdate,
   onSelectionCommit,
+  onSelectionDelete,
   canvasWidth,
   canvasHeight,
   backgroundColor,
@@ -149,7 +151,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const selectionMode = useRef<'create' | 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | 'rotate' | null>(null);
   const [isCreatingSelection, setIsCreatingSelection] = useState(false);
 
-  const [textInput, setTextInput] = useState<{x: number, y: number, value: string} | null>(null);
+  const [textInput, setTextInput] = useState<{x: number, y: number, value: string, font?: string, color?: string, fontSize?: number} | null>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(ref, () => ({
@@ -284,9 +286,11 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           if (ctx) {
-             const fontSize = Math.max(12, strokeWidth);
+             const fontSize = textInput.fontSize || Math.max(12, strokeWidth);
+             const font = textInput.font || textToolFont;
+             const colorValue = textInput.color || color;
              // Use selected font family
-             ctx.font = `bold ${fontSize}px ${textToolFont}`;
+             ctx.font = `bold ${fontSize}px ${font}`;
              const metrics = ctx.measureText(textInput.value);
              const width = Math.ceil(metrics.width);
              const height = Math.ceil(fontSize * 1.2);
@@ -295,8 +299,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
              canvas.height = height;
              
              // Re-set font after resize
-             ctx.font = `bold ${fontSize}px ${textToolFont}`;
-             ctx.fillStyle = color;
+             ctx.font = `bold ${fontSize}px ${font}`;
+             ctx.fillStyle = colorValue;
              ctx.textBaseline = 'top';
              ctx.fillText(textInput.value, 0, 0);
 
@@ -308,7 +312,14 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                  dataUrl: canvas.toDataURL(),
                  rotation: 0,
                  scaleX: 1,
-                 scaleY: 1
+                 scaleY: 1,
+                 type: 'text',
+                 textData: {
+                     text: textInput.value,
+                     font: font,
+                     color: colorValue,
+                     fontSize: fontSize
+                 }
              });
           }
       }
@@ -998,6 +1009,21 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
 
   if (!currentFrame) return null;
 
+  const handleSelectionDoubleClick = () => {
+      const s = latestSelectionState.current;
+      if (s && s.type === 'text' && s.textData) {
+          setTextInput({
+              x: s.x,
+              y: s.y,
+              value: s.textData.text,
+              font: s.textData.font,
+              color: s.textData.color,
+              fontSize: s.textData.fontSize
+          });
+          onSelectionDelete();
+      }
+  };
+
   return (
     <div 
       ref={containerRef} 
@@ -1118,6 +1144,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     ref={selectionOverlayRef}
                     className="absolute z-[100] select-none" 
                     onPointerDown={handleSelectionPointerDown}
+                    onDoubleClick={handleSelectionDoubleClick}
                     style={{
                         left: selection.x,
                         top: selection.y,

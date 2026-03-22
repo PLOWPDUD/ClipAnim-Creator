@@ -1478,6 +1478,7 @@ export default function App() {
                 onSelectionCreate={handleSelectionCreate} 
                 onSelectionUpdate={setSelection} 
                 onSelectionCommit={handleSelectionCommit} 
+                onSelectionDelete={() => setSelection(null)}
                 canvasWidth={canvasSize.width} 
                 canvasHeight={canvasSize.height} 
                 backgroundColor={backgroundColor}
