@@ -13,6 +13,8 @@ interface SettingsModalProps {
   setCanvasSize: (size: { width: number, height: number }) => void;
   backgroundImage: string | null;
   setBackgroundImage: (url: string | null) => void;
+  backgroundColor: string;
+  setBackgroundColor: (color: string) => void;
   onBackupProject: () => void;
   onionSkinSettings: OnionSkinSettings;
   setOnionSkinSettings: (settings: OnionSkinSettings) => void;
@@ -29,6 +31,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setCanvasSize,
   backgroundImage,
   setBackgroundImage,
+  backgroundColor,
+  setBackgroundColor,
   onBackupProject,
   onionSkinSettings,
   setOnionSkinSettings
@@ -140,9 +144,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
              <div className="w-full h-px bg-gray-700" />
 
-            {/* Background Image */}
+            {/* Background */}
             <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Background Image</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Background</label>
+                <div className="flex gap-4 items-center mb-4">
+                    <div className="flex-1">
+                        <span className="text-[10px] text-gray-500 block mb-1">Color</span>
+                        <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2 border border-gray-700">
+                            <input 
+                                type="color" 
+                                value={backgroundColor === 'transparent' ? '#ffffff' : backgroundColor}
+                                onChange={(e) => setBackgroundColor(e.target.value)}
+                                className="w-8 h-8 rounded cursor-pointer bg-transparent border-none"
+                                disabled={backgroundColor === 'transparent'}
+                            />
+                            <input 
+                                type="text" 
+                                value={backgroundColor}
+                                onChange={(e) => setBackgroundColor(e.target.value)}
+                                className="bg-transparent text-white text-sm focus:outline-none w-full font-mono"
+                            />
+                        </div>
+                    </div>
+                    <button 
+                        onClick={() => setBackgroundColor(backgroundColor === 'transparent' ? '#ffffff' : 'transparent')}
+                        className={`mt-4 px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
+                            backgroundColor === 'transparent' 
+                            ? 'bg-[#FF3B30]/20 border-[#FF3B30] text-[#FF3B30]' 
+                            : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+                        }`}
+                    >
+                        Transparent
+                    </button>
+                </div>
+
                 {backgroundImage ? (
                     <div className="relative w-full aspect-video bg-gray-800 rounded-lg overflow-hidden border border-gray-700 group">
                         <img src={backgroundImage} alt="BG" className="w-full h-full object-cover" />
@@ -159,7 +194,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         className="w-full h-24 border-2 border-dashed border-gray-700 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-[#FF3B30] hover:text-[#FF3B30] transition-colors"
                     >
                         <Icons.Image size={24} className="mb-2" />
-                        <span className="text-xs">Import Background</span>
+                        <span className="text-xs">Import Background Image</span>
                     </button>
                 )}
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />

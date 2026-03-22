@@ -88,6 +88,7 @@ export default function App() {
   const [projectId, setProjectId] = useState<string>(crypto.randomUUID());
   const [projectName, setProjectName] = useState('My Animation');
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
+  const [backgroundColor, setBackgroundColor] = useState('#ffffff');
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
 
   const [layers, setLayers] = useState<Layer[]>([createDefaultLayer()]);
@@ -116,6 +117,8 @@ export default function App() {
   const [eraserSize, setEraserSize] = useState(30);
   const [shapeSize, setShapeSize] = useState(5);
   const [textToolFont, setTextToolFont] = useState('sans-serif');
+  const [fillOpacity, setFillOpacity] = useState(1);
+  const [fillTolerance, setFillTolerance] = useState(0);
 
   const [onionSkin, setOnionSkin] = useState(false);
   const [onionSkinSettings, setOnionSkinSettings] = useState<OnionSkinSettings>({
@@ -133,7 +136,25 @@ export default function App() {
   const [isFrameManagerOpen, setIsFrameManagerOpen] = useState(false);
   const [isAudioRecorderOpen, setIsAudioRecorderOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   
+  const updateAllThumbnails = async (newBgColor?: string, newBgImage?: string | null) => {
+    const bgColor = newBgColor !== undefined ? newBgColor : backgroundColor;
+    const bgImage = newBgImage !== undefined ? newBgImage : backgroundImage;
+    
+    const updatedFrames = await Promise.all(frames.map(async (f) => {
+        const thumb = await compositeLayers(f, layers, canvasSize.width, canvasSize.height, bgColor, bgImage);
+        return { ...f, thumbnailUrl: thumb };
+    }));
+    setFrames(updatedFrames);
+  };
+
+  useEffect(() => {
+    if (!isSettingsOpen && view === 'editor' && frames.length > 0) {
+        updateAllThumbnails();
+    }
+  }, [isSettingsOpen]);
+
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const [clipboard, setClipboard] = useState<SelectionState | null>(null);
 
@@ -337,7 +358,7 @@ export default function App() {
                         thumbnailUrl: '' // Will be set below
                     };
                     
-                    frameObj.thumbnailUrl = await compositeLayers(frameObj, layers, canvasSize.width, canvasSize.height, 'transparent', backgroundImage);
+                    frameObj.thumbnailUrl = await compositeLayers(frameObj, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage);
                     return frameObj;
                 }));
 
@@ -555,7 +576,7 @@ export default function App() {
           setIsExporting(false);
           return;
       }
-      const dataUrl = await compositeLayers(frames[i], layers, canvasSize.width, canvasSize.height, '#ffffff', backgroundImage);
+      const dataUrl = await compositeLayers(frames[i], layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage);
       compositeFrames.push(dataUrl);
       setExportProgress(Math.round(((i + 1) / total) * 30));
     }
@@ -769,7 +790,7 @@ export default function App() {
   const saveProject = async () => {
       let thumb = '';
       if (frames.length > 0) {
-          thumb = await compositeLayers(frames[0], layers, canvasSize.width, canvasSize.height, '#ffffff', backgroundImage);
+          thumb = await compositeLayers(frames[0], layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage);
       }
       const projectData: ProjectData = {
           id: projectId,
@@ -777,6 +798,7 @@ export default function App() {
           lastModified: Date.now(),
           thumbnailUrl: thumb,
           canvasSize,
+          backgroundColor,
           backgroundImage,
           layers,
           frames,
@@ -818,6 +840,7 @@ export default function App() {
         setProjectId(data.id);
         setProjectName(data.name);
         setCanvasSize(data.canvasSize);
+        setBackgroundColor(data.backgroundColor || '#ffffff');
         setBackgroundImage(data.backgroundImage || null);
         setLayers(data.layers);
         setFrames(data.frames);
@@ -846,6 +869,7 @@ export default function App() {
       setProjectId(pid);
       setProjectName("New Animation");
       setCanvasSize({ width: 800, height: 600 });
+      setBackgroundColor('#ffffff');
       const defaultL = [createDefaultLayer()];
       setLayers(defaultL);
       setActiveLayerId(defaultL[0].id);
@@ -871,14 +895,18 @@ export default function App() {
 
   const deleteProject = async (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
-      if (confirm("Are you sure you want to delete this project?")) {
-          try {
-              await deleteProjectFromDB(id);
-              const updatedList = await getProjectList();
-              setSavedProjects(updatedList);
-          } catch (e) {
-              console.error("Failed to delete", e);
-          }
+      setProjectToDelete(id);
+  };
+
+  const confirmDeleteProject = async () => {
+      if (!projectToDelete) return;
+      try {
+          await deleteProjectFromDB(projectToDelete);
+          const updatedList = await getProjectList();
+          setSavedProjects(updatedList);
+          setProjectToDelete(null);
+      } catch (e) {
+          console.error("Failed to delete", e);
       }
   };
 
@@ -889,6 +917,7 @@ export default function App() {
           lastModified: Date.now(),
           thumbnailUrl: frames[0]?.thumbnailUrl || '',
           canvasSize,
+          backgroundColor,
           backgroundImage,
           layers,
           frames,
@@ -916,7 +945,7 @@ export default function App() {
             const newId = crypto.randomUUID();
             let thumb = data.thumbnailUrl;
             if (!thumb && data.frames.length > 0) {
-                 thumb = await compositeLayers(data.frames[0], data.layers, data.canvasSize.width, data.canvasSize.height, '#ffffff', data.backgroundImage);
+                 thumb = await compositeLayers(data.frames[0], data.layers, data.canvasSize.width, data.canvasSize.height, data.backgroundColor || '#ffffff', data.backgroundImage);
             }
             const fullData: ProjectData = { ...data, id: newId, lastModified: Date.now(), thumbnailUrl: thumb || '' };
             await saveProjectToDB(fullData);
@@ -1030,7 +1059,7 @@ export default function App() {
     const newFrames = [...frames];
     const currentFrame = { ...newFrames[currentFrameIndex] };
     currentFrame.layers = { ...currentFrame.layers, [layerId]: dataUrl };
-    currentFrame.thumbnailUrl = await compositeLayers(currentFrame, layers, canvasSize.width, canvasSize.height, 'transparent', backgroundImage);
+    currentFrame.thumbnailUrl = await compositeLayers(currentFrame, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage);
     newFrames[currentFrameIndex] = currentFrame;
     updateFramesWithHistory(newFrames);
     setHasUnsavedChanges(true);
@@ -1068,7 +1097,7 @@ export default function App() {
 
   const addFrame = async () => {
     const newFrame = createBlankFrame(layers, canvasSize.width, canvasSize.height);
-    newFrame.thumbnailUrl = await compositeLayers(newFrame, layers, canvasSize.width, canvasSize.height, 'transparent', backgroundImage);
+    newFrame.thumbnailUrl = await compositeLayers(newFrame, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage);
     const newFrames = [...frames];
     newFrames.splice(currentFrameIndex + 1, 0, newFrame);
     updateFramesWithHistory(newFrames);
@@ -1232,7 +1261,13 @@ export default function App() {
                              <h3 className="font-bold truncate">{project.name}</h3>
                              <p className="text-[10px] text-gray-400">{new Date(project.lastModified).toLocaleDateString()}</p>
                          </div>
-                         <button onClick={(e) => deleteProject(e, project.id)} className="absolute top-2 right-2 p-2 bg-black/60 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><Icons.Trash2 size={16} /></button>
+                         <button 
+                            onClick={(e) => deleteProject(e, project.id)} 
+                            className="absolute top-2 right-2 p-2 bg-black/60 hover:bg-red-600 text-white rounded-full opacity-100 transition-opacity z-10"
+                            title="Delete Project"
+                          >
+                            <Icons.Trash2 size={16} />
+                          </button>
                      </div>
                  ))}
              </div>
@@ -1245,7 +1280,7 @@ export default function App() {
     <div key={projectId} className="flex flex-col h-screen bg-[#121212] text-white overflow-hidden relative">
       {showExitConfirm && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-[#1e1e1e] rounded-3xl p-8 max-sm w-full border border-gray-700 shadow-2xl text-center">
+            <div className="bg-[#1e1e1e] rounded-3xl p-8 max-w-sm w-full border border-gray-700 shadow-2xl text-center">
                 <div className="w-16 h-16 bg-[var(--accent-color)]/20 rounded-full flex items-center justify-center text-[var(--accent-color)] mx-auto mb-6"> <Icons.Save size={32} /> </div>
                 <h2 className="text-2xl font-bold mb-2">Unsaved Changes</h2>
                 <div className="grid grid-cols-1 gap-3">
@@ -1281,6 +1316,20 @@ export default function App() {
       )}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
       
+      {projectToDelete && (
+        <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-[#1e1e1e] rounded-3xl p-8 max-w-sm w-full border border-gray-700 shadow-2xl text-center">
+                <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center text-red-500 mx-auto mb-6"> <Icons.Trash2 size={32} /> </div>
+                <h2 className="text-2xl font-bold mb-2">Delete Animation?</h2>
+                <p className="text-gray-400 mb-8">This action cannot be undone. All frames and audio will be permanently removed.</p>
+                <div className="grid grid-cols-1 gap-3">
+                    <button onClick={confirmDeleteProject} className="w-full py-4 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 transition-colors">Delete Permanently</button>
+                    <button onClick={() => setProjectToDelete(null)} className="w-full py-4 bg-gray-700 text-white font-bold rounded-2xl hover:bg-gray-600 transition-colors">Cancel</button>
+                </div>
+            </div>
+        </div>
+      )}
+
       <FrameManagerModal 
         isOpen={isFrameManagerOpen}
         onClose={() => setIsFrameManagerOpen(false)}
@@ -1376,6 +1425,10 @@ export default function App() {
             onOpenHelp={() => setIsHelpOpen(true)} 
             textToolFont={textToolFont}
             onSelectTextToolFont={setTextToolFont}
+            fillOpacity={fillOpacity}
+            onChangeFillOpacity={setFillOpacity}
+            fillTolerance={fillTolerance}
+            onChangeFillTolerance={setFillTolerance}
         />
         <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
             <CanvasArea 
@@ -1401,8 +1454,11 @@ export default function App() {
                 onSelectionCommit={handleSelectionCommit} 
                 canvasWidth={canvasSize.width} 
                 canvasHeight={canvasSize.height} 
+                backgroundColor={backgroundColor}
                 backgroundImage={backgroundImage} 
                 textToolFont={textToolFont} 
+                fillOpacity={fillOpacity}
+                fillTolerance={fillTolerance}
             />
             <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
                 <Timeline 
@@ -1423,11 +1479,28 @@ export default function App() {
                   isFocusMode={isFocusMode} 
                   onOpenFrameManager={() => setIsFrameManagerOpen(true)} 
                   onOpenRecorder={() => setIsAudioRecorderOpen(true)} 
+                  backgroundColor={backgroundColor}
                 />
             </div>
         </div>
       </main>
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} fps={fps} setFps={setFps} projectName={projectName} setProjectName={setProjectName} canvasSize={canvasSize} setCanvasSize={setCanvasSize} backgroundImage={backgroundImage} setBackgroundImage={setBackgroundImage} onBackupProject={handleBackupProject} onionSkinSettings={onionSkinSettings} setOnionSkinSettings={setOnionSkinSettings} />
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+        fps={fps} 
+        setFps={setFps} 
+        projectName={projectName} 
+        setProjectName={setProjectName} 
+        canvasSize={canvasSize} 
+        setCanvasSize={setCanvasSize} 
+        backgroundColor={backgroundColor}
+        setBackgroundColor={setBackgroundColor}
+        backgroundImage={backgroundImage} 
+        setBackgroundImage={setBackgroundImage} 
+        onBackupProject={handleBackupProject} 
+        onionSkinSettings={onionSkinSettings} 
+        setOnionSkinSettings={setOnionSkinSettings} 
+      />
     </div>
   );
 }

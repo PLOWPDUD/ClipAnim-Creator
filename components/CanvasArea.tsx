@@ -32,10 +32,15 @@ interface CanvasAreaProps {
   // Canvas Settings
   canvasWidth: number;
   canvasHeight: number;
+  backgroundColor: string;
   backgroundImage: string | null;
 
   // Text Tool
   textToolFont: string;
+  
+  // Fill Tool
+  fillOpacity: number;
+  fillTolerance: number;
 }
 
 const getMixBlendMode = (mode: GlobalCompositeOperation): any => {
@@ -104,8 +109,11 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   onSelectionCommit,
   canvasWidth,
   canvasHeight,
+  backgroundColor,
   backgroundImage,
-  textToolFont
+  textToolFont,
+  fillOpacity,
+  fillTolerance
 }, ref) => {
   const activeCanvasRef = useRef<HTMLCanvasElement>(null);
   const transformRef = useRef<HTMLDivElement>(null);
@@ -459,7 +467,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     if (!ctx) return;
 
     if (tool === 'fill') {
-        floodFill(ctx, Math.floor(mx), Math.floor(my), color);
+        floodFill(ctx, Math.floor(mx), Math.floor(my), color, fillOpacity, fillTolerance);
         if (!selection) saveCanvas();
         else {
             // Update selection dataUrl
@@ -983,12 +991,13 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     >
         <div 
             ref={transformRef}
-            className="relative shadow-2xl bg-white origin-center"
+            className="relative shadow-2xl origin-center"
             style={{ 
                 transform: `translate(0px, 0px) rotate(0deg) scale(1)`,
                 width: canvasWidth, 
                 height: canvasHeight,
-                imageRendering: 'auto'
+                imageRendering: 'auto',
+                backgroundColor: backgroundColor === 'transparent' ? 'transparent' : backgroundColor
             }}
         >
             {backgroundImage && (

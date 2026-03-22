@@ -142,7 +142,9 @@ export const floodFill = (
   ctx: CanvasRenderingContext2D,
   startX: number,
   startY: number,
-  fillColorHex: string
+  fillColorHex: string,
+  opacity: number = 1,
+  tolerance: number = 0
 ) => {
   const canvas = ctx.canvas;
   const width = canvas.width;
@@ -156,12 +158,13 @@ export const floodFill = (
   
   const targetColor = getPixel(data, startX, startY, width);
   const fillColor = hexToRgba(fillColorHex);
+  fillColor.a = Math.round(opacity * 255);
 
-  // If colors are the same, return
-  if (colorsMatch(targetColor, fillColor)) return;
+  // If colors are the same and opacity is 1, return
+  if (opacity === 1 && colorsMatch(targetColor, fillColor, tolerance)) return;
 
   const queue: [number, number][] = [[startX, startY]];
-  const visited = new Set<string>();
+  const visited = new Uint8Array(width * height);
   
   // Simple optimization to prevent infinite loops or huge memory usage in complex cases
   let iterations = 0;
@@ -170,14 +173,14 @@ export const floodFill = (
   while (queue.length > 0 && iterations < maxIterations) {
     iterations++;
     const [x, y] = queue.pop()!;
-    const key = `${x},${y}`;
-    if (visited.has(key)) continue;
+    const idx = y * width + x;
+    if (visited[idx]) continue;
 
     let currentX = x;
     let currentY = y;
     
     // Find left bound
-    while (currentX >= 0 && colorsMatch(getPixel(data, currentX, currentY, width), targetColor)) {
+    while (currentX >= 0 && colorsMatch(getPixel(data, currentX, currentY, width), targetColor, tolerance)) {
       currentX--;
     }
     currentX++; // Step back to valid pixel
@@ -186,12 +189,13 @@ export const floodFill = (
     let spanBelow = false;
 
     // Scan right
-    while (currentX < width && colorsMatch(getPixel(data, currentX, currentY, width), targetColor)) {
+    while (currentX < width && colorsMatch(getPixel(data, currentX, currentY, width), targetColor, tolerance)) {
       setPixel(data, currentX, currentY, width, fillColor);
+      visited[currentY * width + currentX] = 1;
       
       if (currentY > 0) {
-        const checkAbove = colorsMatch(getPixel(data, currentX, currentY - 1, width), targetColor);
-        if (!spanAbove && checkAbove) {
+        const checkAbove = colorsMatch(getPixel(data, currentX, currentY - 1, width), targetColor, tolerance);
+        if (!spanAbove && checkAbove && !visited[(currentY - 1) * width + currentX]) {
           queue.push([currentX, currentY - 1]);
           spanAbove = true;
         } else if (spanAbove && !checkAbove) {
@@ -200,8 +204,8 @@ export const floodFill = (
       }
 
       if (currentY < height - 1) {
-        const checkBelow = colorsMatch(getPixel(data, currentX, currentY + 1, width), targetColor);
-        if (!spanBelow && checkBelow) {
+        const checkBelow = colorsMatch(getPixel(data, currentX, currentY + 1, width), targetColor, tolerance);
+        if (!spanBelow && checkBelow && !visited[(currentY + 1) * width + currentX]) {
           queue.push([currentX, currentY + 1]);
           spanBelow = true;
         } else if (spanBelow && !checkBelow) {
@@ -329,12 +333,50 @@ function getPixel(data: Uint8ClampedArray, x: number, y: number, width: number) 
 
 function setPixel(data: Uint8ClampedArray, x: number, y: number, width: number, color: { r: number, g: number, b: number, a: number }) {
   const index = (y * width + x) * 4;
-  data[index] = color.r;
-  data[index + 1] = color.g;
-  data[index + 2] = color.b;
-  data[index + 3] = color.a;
+  
+  if (color.a === 255) {
+    data[index] = color.r;
+    data[index + 1] = color.g;
+    data[index + 2] = color.b;
+    data[index + 3] = 255;
+    return;
+  }
+  
+  const bgR = data[index];
+  const bgG = data[index + 1];
+  const bgB = data[index + 2];
+  const bgA = data[index + 3] / 255;
+
+  const alpha = color.a / 255;
+  const invAlpha = 1 - alpha;
+  const outA = alpha + bgA * invAlpha;
+
+  if (outA === 0) {
+    data[index] = 0;
+    data[index + 1] = 0;
+    data[index + 2] = 0;
+    data[index + 3] = 0;
+    return;
+  }
+
+  data[index] = (color.r * alpha + bgR * bgA * invAlpha) / outA;
+  data[index + 1] = (color.g * alpha + bgG * bgA * invAlpha) / outA;
+  data[index + 2] = (color.b * alpha + bgB * bgA * invAlpha) / outA;
+  data[index + 3] = outA * 255;
 }
 
-function colorsMatch(c1: { r: number, g: number, b: number, a: number }, c2: { r: number, g: number, b: number, a: number }) {
-  return c1.r === c2.r && c1.g === c2.g && c1.b === c2.b && c1.a === c2.a;
+function colorsMatch(c1: { r: number, g: number, b: number, a: number }, c2: { r: number, g: number, b: number, a: number }, tolerance: number = 0) {
+  if (tolerance === 0) {
+    return c1.r === c2.r && c1.g === c2.g && c1.b === c2.b && c1.a === c2.a;
+  }
+  
+  const rDiff = Math.abs(c1.r - c2.r);
+  const gDiff = Math.abs(c1.g - c2.g);
+  const bDiff = Math.abs(c1.b - c2.b);
+  const aDiff = Math.abs(c1.a - c2.a);
+  
+  // Convert tolerance from 0-100 to 0-255
+  const t = (tolerance / 100) * 255;
+  
+  return rDiff <= t && gDiff <= t && bDiff <= t && aDiff <= t;
 }

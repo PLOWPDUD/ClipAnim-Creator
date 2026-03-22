@@ -89,6 +89,9 @@ export interface AppState {
   strokeWidth: number;
   onionSkin: boolean;
   onionSkinSettings: OnionSkinSettings;
+  fillOpacity: number;
+  fillTolerance: number;
+  backgroundColor: string;
 }
 
 export interface ProjectMeta {
@@ -104,6 +107,7 @@ export interface ProjectData {
     lastModified: number;
     thumbnailUrl: string;
     canvasSize: { width: number; height: number };
+    backgroundColor: string;
     backgroundImage: string | null;
     layers: Layer[];
     frames: Frame[];

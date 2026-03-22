@@ -28,6 +28,10 @@ interface ToolbarProps {
   onOpenHelp: () => void;
   textToolFont: string;
   onSelectTextToolFont: (font: string) => void;
+  fillOpacity: number;
+  onChangeFillOpacity: (opacity: number) => void;
+  fillTolerance: number;
+  onChangeFillTolerance: (tolerance: number) => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -54,7 +58,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onSelectShapeType,
   onOpenHelp,
   textToolFont,
-  onSelectTextToolFont
+  onSelectTextToolFont,
+  fillOpacity,
+  onChangeFillOpacity,
+  fillTolerance,
+  onChangeFillTolerance
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activePopover, setActivePopover] = useState<ToolType | 'color' | null>(null);
@@ -127,7 +135,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     const rect = e.currentTarget.getBoundingClientRect();
     const top = rect.top + rect.height / 2;
     const left = rect.right + 12;
-    if (currentTool === toolId && ['pen', 'eraser', 'shape', 'text'].includes(toolId)) {
+    if (currentTool === toolId && ['pen', 'eraser', 'shape', 'text', 'fill'].includes(toolId)) {
         setActivePopover(activePopover === toolId ? null : toolId);
     } else {
         onSelectTool(toolId);
@@ -345,6 +353,27 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     <span>{strokeWidth}px</span>
                 </div>
                 <input type="range" min="1" max="100" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
+            </div>
+        </div>
+      )}
+
+      {/* Fill Settings */}
+      {activePopover === 'fill' && (
+        <div className="fixed bg-[#252525] p-4 rounded-xl shadow-2xl w-56 border border-gray-700 z-50 flex flex-col gap-4" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
+            <div>
+                <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
+                    <span>Opacity</span>
+                    <span>{Math.round(fillOpacity * 100)}%</span>
+                </div>
+                <input type="range" min="0" max="1" step="0.01" value={fillOpacity} onChange={(e) => onChangeFillOpacity(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
+            </div>
+            <div className="w-full h-px bg-gray-700" />
+            <div>
+                <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
+                    <span>Tolerance</span>
+                    <span>{fillTolerance}%</span>
+                </div>
+                <input type="range" min="0" max="100" value={fillTolerance} onChange={(e) => onChangeFillTolerance(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
             </div>
         </div>
       )}

@@ -20,6 +20,7 @@ interface TimelineProps {
   isFocusMode?: boolean;
   onOpenFrameManager: () => void;
   onOpenRecorder: () => void;
+  backgroundColor: string;
 }
 
 export const Timeline: React.FC<TimelineProps> = ({
@@ -39,7 +40,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   fps,
   isFocusMode = false,
   onOpenFrameManager,
-  onOpenRecorder
+  onOpenRecorder,
+  backgroundColor
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
@@ -228,16 +230,17 @@ export const Timeline: React.FC<TimelineProps> = ({
                     key={frame.id}
                     onClick={() => !isFocusMode && onSelectFrame(index)}
                     className={`
-                        relative flex-shrink-0 w-16 h-20 mx-0.5 bg-white rounded-[4px] overflow-hidden border transition-all duration-150 select-none
+                        relative flex-shrink-0 w-16 h-20 mx-0.5 rounded-[4px] overflow-hidden border transition-all duration-150 select-none
                         ${isFocusMode ? 'pointer-events-none opacity-20 border-gray-500' : 'cursor-pointer hover:opacity-100 border-gray-600 opacity-80 scale-95 shadow-md'}
                         ${!isFocusMode && currentFrameIndex === index ? 'border-[var(--accent-color)] ring-2 ring-[var(--accent-color)]/50 scale-100 z-10 shadow-lg !opacity-100' : ''}
                         ${isFocusMode && currentFrameIndex === index ? 'opacity-50 scale-100 border-white' : ''}
                     `}
+                    style={{ backgroundColor: backgroundColor === 'transparent' ? 'transparent' : backgroundColor }}
                 >
                     {frame.thumbnailUrl ? (
-                         <img src={frame.thumbnailUrl} alt={`Frame ${index + 1}`} className="w-full h-full object-contain pointer-events-none bg-white" />
+                         <img src={frame.thumbnailUrl} alt={`Frame ${index + 1}`} className="w-full h-full object-contain pointer-events-none" />
                     ) : (
-                        <div className="w-full h-full bg-white" />
+                        <div className="w-full h-full" />
                     )}
                     <span className="absolute bottom-0.5 right-0.5 text-[8px] font-bold text-[#121212] bg-white/90 px-1 rounded-sm">
                         {index + 1}

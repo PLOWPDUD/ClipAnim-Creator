@@ -18,6 +18,7 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
   onDuplicateFrames
 }) => {
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   if (!isOpen) return null;
 
@@ -41,10 +42,13 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
 
   const handleDelete = () => {
     if (selectedIndices.size === 0) return;
-    if (confirm(`Delete ${selectedIndices.size} frame(s)?`)) {
-      onDeleteFrames(Array.from(selectedIndices));
-      setSelectedIndices(new Set());
-    }
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = () => {
+    onDeleteFrames(Array.from(selectedIndices));
+    setSelectedIndices(new Set());
+    setShowDeleteConfirm(false);
   };
 
   const handleDuplicate = () => {
@@ -134,6 +138,20 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
                 {/* Add New Frame Button within Manager? Optional, but let's stick to management only for now to keep it clean */}
             </div>
         </div>
+
+        {showDeleteConfirm && (
+            <div className="absolute inset-0 z-[70] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+                <div className="bg-[#1e1e1e] rounded-3xl p-8 max-w-sm w-full border border-gray-700 shadow-2xl text-center">
+                    <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center text-red-500 mx-auto mb-6"> <Icons.Trash2 size={32} /> </div>
+                    <h2 className="text-2xl font-bold mb-2">Delete {selectedIndices.size} Frames?</h2>
+                    <p className="text-gray-400 mb-8">This action cannot be undone. Selected frames will be permanently removed.</p>
+                    <div className="grid grid-cols-1 gap-3">
+                        <button onClick={confirmDelete} className="w-full py-4 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 transition-colors">Delete Permanently</button>
+                        <button onClick={() => setShowDeleteConfirm(false)} className="w-full py-4 bg-gray-700 text-white font-bold rounded-2xl hover:bg-gray-600 transition-colors">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        )}
 
       </div>
     </div>
