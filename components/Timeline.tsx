@@ -103,9 +103,6 @@ export const Timeline: React.FC<TimelineProps> = ({
               >
                   <Icons.FrameGrid size={18} />
               </button>
-              <span className="text-[10px] text-white font-mono uppercase tracking-wider drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] border-l border-white/20 pl-2">
-                  Frame {currentFrameIndex + 1} / {frames.length}
-              </span>
               <button 
                   onClick={() => setShowAudio(!showAudio)}
                   className={`p-1.5 rounded-full transition-colors ${showAudio ? 'text-[var(--accent-color)] bg-black/40' : 'text-gray-300 hover:text-white drop-shadow-md'}`}
@@ -148,16 +145,19 @@ export const Timeline: React.FC<TimelineProps> = ({
       )}
 
       {!isFocusMode && (
-        <div className="px-4 mb-2 animate-in fade-in slide-in-from-bottom-2">
+        <div className="px-4 mb-2 flex items-center gap-4 animate-in fade-in slide-in-from-bottom-2">
             <input 
                 type="range" 
                 min="0" 
                 max={frames.length - 1} 
                 value={currentFrameIndex} 
                 onChange={(e) => onSelectFrame(parseInt(e.target.value))}
-                className="w-full h-1.5 bg-black/40 rounded-full appearance-none accent-[var(--accent-color)] cursor-pointer hover:bg-black/60 transition-colors"
+                className="flex-1 h-1.5 bg-black/40 rounded-full appearance-none accent-[var(--accent-color)] cursor-pointer hover:bg-black/60 transition-colors"
                 title="Scrub Frames"
             />
+            <span className="text-[10px] text-white font-mono whitespace-nowrap opacity-80 bg-black/40 px-2 py-0.5 rounded border border-white/10">
+                Frame {currentFrameIndex + 1} / {frames.length}
+            </span>
         </div>
       )}
 
