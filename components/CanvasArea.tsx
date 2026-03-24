@@ -597,8 +597,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
           const dA_x = (selection.anchorX ?? selection.width / 2) - newAnchorX;
           const dA_y = (selection.anchorY ?? selection.height / 2) - newAnchorY;
           
-          const newX = selection.x - selection.scaleX * dA_x * cosT + selection.scaleY * dA_y * sinT;
-          const newY = selection.y - selection.scaleX * dA_x * sinT - selection.scaleY * dA_y * cosT;
+          const newX = selection.x + dA_x - selection.scaleX * dA_x * cosT + selection.scaleY * dA_y * sinT;
+          const newY = selection.y + dA_y - selection.scaleX * dA_x * sinT - selection.scaleY * dA_y * cosT;
 
           const newState = {
               ...selection,
@@ -755,8 +755,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             const dA_x = (init.anchorX ?? init.width / 2) - newAnchorX;
             const dA_y = (init.anchorY ?? init.height / 2) - newAnchorY;
             
-            const newX = init.x - init.scaleX * dA_x * cosT + init.scaleY * dA_y * sinT;
-            const newY = init.y - init.scaleX * dA_x * sinT - init.scaleY * dA_y * cosT;
+            const newX = init.x + dA_x - init.scaleX * dA_x * cosT + init.scaleY * dA_y * sinT;
+            const newY = init.y + dA_y - init.scaleX * dA_x * sinT - init.scaleY * dA_y * cosT;
             
             if (selectionOverlayRef.current) {
                 selectionOverlayRef.current.style.left = `${newX}px`;
