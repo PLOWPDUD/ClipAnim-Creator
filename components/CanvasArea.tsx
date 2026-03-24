@@ -137,6 +137,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const isGesture = useRef(false);
   const isDrawing = useRef(false);
+  const isDrawingOnSelectionRef = useRef(false);
   
   const initialPinchDistance = useRef<number | null>(null);
   const initialAngle = useRef<number | null>(null);
@@ -180,8 +181,11 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
               if (ctx) {
                   const img = new Image();
                   img.onload = () => {
+                      ctx.save();
+                      ctx.globalCompositeOperation = 'source-over';
                       ctx.clearRect(0, 0, selection.width, selection.height);
                       ctx.drawImage(img, 0, 0, selection.width, selection.height);
+                      ctx.restore();
                   };
                   img.src = selection.dataUrl;
               }
@@ -475,33 +479,47 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     };
 
     const mappedCoords = mapToSelection(x, y);
-    const mx = mappedCoords.x;
-    const my = mappedCoords.y;
+    let mx = mappedCoords.x;
+    let my = mappedCoords.y;
+
+    let didCommit = false;
+    // Auto-commit if clicking outside selection with a drawing tool
+    if (selection && (mx < 0 || mx > selection.width || my < 0 || my > selection.height)) {
+        onSelectionCommit();
+        mx = x;
+        my = y;
+        didCommit = true;
+    }
 
     isDrawing.current = true;
     drawStart.current = { x: mx, y: my };
     lastPoint.current = { x: mx, y: my };
     points.current = [{ x: mx, y: my }];
     
-    const ctx = selection ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
+    // Re-check selection because it might have been committed above
+    // However, since state updates are async, we need to check if we just committed
+    const isActuallyDrawingOnSelection = selection && !didCommit;
+    isDrawingOnSelectionRef.current = !!isActuallyDrawingOnSelection;
+    const ctx = isActuallyDrawingOnSelection ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
     if (!ctx) return;
 
     if (tool === 'fill') {
         floodFill(ctx, Math.floor(mx), Math.floor(my), color, fillOpacity, fillTolerance);
-        if (!selection) saveCanvas();
+        if (!isDrawingOnSelectionRef.current) saveCanvas();
         else {
             // Update selection dataUrl
             const newUrl = selectionCanvasRef.current?.toDataURL();
-            if (newUrl) onSelectionUpdate({ ...selection, dataUrl: newUrl });
+            if (newUrl) onSelectionUpdate({ ...selection!, dataUrl: newUrl });
         }
         isDrawing.current = false;
+        isDrawingOnSelectionRef.current = false;
     } else if (tool === 'shape') {
         canvasSnapshot.current = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     } else {
         setupBrush(ctx);
-        if (tool === 'eraser' && selection) {
+        if (tool === 'eraser' && isDrawingOnSelectionRef.current) {
             ctx.globalCompositeOperation = 'destination-out';
-        } else if (selection) {
+        } else if (isDrawingOnSelectionRef.current) {
             ctx.globalCompositeOperation = 'source-atop';
         }
         
@@ -609,7 +627,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         if (dist > 2) hasMoved.current = true;
     }
 
-    if ((tool === 'select' || tool === 'wand') && selectionMode.current && selection) {
+    if ((tool === 'select' || tool === 'wand') && selectionMode.current) {
         const init = initialSelection.current;
         if (selectionMode.current === 'create' && dragStart.current) {
             if (marqueeRef.current) {
@@ -749,7 +767,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         const mx = mappedCoords.x;
         const my = mappedCoords.y;
 
-        const ctx = selection ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
+        const ctx = isDrawingOnSelectionRef.current ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
         if (!ctx) return;
 
         if (tool === 'shape' && drawStart.current && canvasSnapshot.current) {
@@ -953,7 +971,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     initialSelection.current = null;
 
     if (isDrawing.current) {
-        const ctx = selection ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
+        const ctx = isDrawingOnSelectionRef.current ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
         if (ctx) {
             if ((tool === 'pen' && brushType !== 'spray' && brushType !== 'pixel') || tool === 'eraser') {
                 if (!hasMoved.current && drawStart.current) {
@@ -961,12 +979,12 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     ctx.stroke();
                 }
                 ctx.closePath();
-                if (!selection) ctx.globalCompositeOperation = 'source-over';
+                ctx.globalCompositeOperation = 'source-over';
                 
-                if (!selection) saveCanvas();
+                if (!isDrawingOnSelectionRef.current) saveCanvas();
                 else {
                     const newUrl = selectionCanvasRef.current?.toDataURL();
-                    if (newUrl) onSelectionUpdate({ ...selection, dataUrl: newUrl });
+                    if (newUrl) onSelectionUpdate({ ...selection!, dataUrl: newUrl });
                 }
             } else if (brushType === 'pixel') {
                 if (!hasMoved.current && drawStart.current) {
@@ -975,27 +993,28 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     ctx.fillStyle = color;
                     ctx.fillRect(Math.floor(drawStart.current.x - size/2), Math.floor(drawStart.current.y - size/2), size, size);
                 }
-                if (!selection) saveCanvas();
+                if (!isDrawingOnSelectionRef.current) saveCanvas();
                 else {
                     const newUrl = selectionCanvasRef.current?.toDataURL();
-                    if (newUrl) onSelectionUpdate({ ...selection, dataUrl: newUrl });
+                    if (newUrl) onSelectionUpdate({ ...selection!, dataUrl: newUrl });
                 }
             } else if (brushType === 'spray') {
-                 if (!selection) saveCanvas();
+                 if (!isDrawingOnSelectionRef.current) saveCanvas();
                  else {
                      const newUrl = selectionCanvasRef.current?.toDataURL();
-                     if (newUrl) onSelectionUpdate({ ...selection, dataUrl: newUrl });
+                     if (newUrl) onSelectionUpdate({ ...selection!, dataUrl: newUrl });
                  }
             } else if (tool === 'shape') {
                 ctx.closePath();
-                if (!selection) saveCanvas();
+                if (!isDrawingOnSelectionRef.current) saveCanvas();
                 else {
                     const newUrl = selectionCanvasRef.current?.toDataURL();
-                    if (newUrl) onSelectionUpdate({ ...selection, dataUrl: newUrl });
+                    if (newUrl) onSelectionUpdate({ ...selection!, dataUrl: newUrl });
                 }
             }
         }
         isDrawing.current = false;
+        isDrawingOnSelectionRef.current = false;
         drawStart.current = null;
         lastPoint.current = null;
         canvasSnapshot.current = null;
@@ -1171,7 +1190,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     />
                     
                     {/* Interactive Selection UI */}
-                    <div className="absolute inset-0 border-2 border-[#007AFF] pointer-events-none"></div>
+                    <div className="absolute inset-0 border-4 border-[#007AFF] pointer-events-none"></div>
                     
                     {/* Bigger Corner Handles */}
                     <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tl')} className="absolute -top-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-tl', selection.rotation, selection.scaleX, selection.scaleY) }} />
@@ -1197,7 +1216,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             )}
             
             {tool === 'select' && isCreatingSelection && (
-                 <div ref={marqueeRef} className="absolute border border-dashed border-red-500 bg-red-500/10 pointer-events-none z-[100]" />
+                 <div ref={marqueeRef} className="absolute border-2 border-dashed border-red-500 bg-red-500/20 pointer-events-none z-[110]" />
             )}
 
             {textInput && (
