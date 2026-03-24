@@ -402,7 +402,9 @@ export default function App() {
               dataUrl: result,
               rotation: 0,
               scaleX: 1,
-              scaleY: 1
+              scaleY: 1,
+              anchorX: width / 2,
+              anchorY: height / 2
             });
             setTool('select');
             setHasUnsavedChanges(true);
@@ -1380,7 +1382,9 @@ export default function App() {
               dataUrl: item.dataUrl,
               rotation: 0,
               scaleX: 1,
-              scaleY: 1
+              scaleY: 1,
+              anchorX: img.width / 2,
+              anchorY: img.height / 2
             });
             setTool('select');
             setIsBackpackOpen(false);

@@ -153,7 +153,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
 
   const dragStart = useRef<{x: number, y: number} | null>(null);
   const initialSelection = useRef<SelectionState | null>(null);
-  const selectionMode = useRef<'create' | 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | 'resize-l' | 'resize-r' | 'rotate' | null>(null);
+  const selectionMode = useRef<'create' | 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | 'resize-l' | 'resize-r' | 'rotate' | 'anchor' | null>(null);
   const [isCreatingSelection, setIsCreatingSelection] = useState(false);
 
   const [textInput, setTextInput] = useState<{x: number, y: number, value: string, font?: string, color?: string, fontSize?: number} | null>(null);
@@ -321,6 +321,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                  rotation: 0,
                  scaleX: 1,
                  scaleY: 1,
+                 anchorX: width / 2,
+                 anchorY: height / 2,
                  type: 'text',
                  textData: {
                      text: textInput.value,
@@ -464,8 +466,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
 
     const mapToSelection = (px: number, py: number) => {
         if (!selection) return { x: px, y: py };
-        const dx = px - (selection.x + selection.width / 2);
-        const dy = py - (selection.y + selection.height / 2);
+        const anchorX = selection.anchorX ?? selection.width / 2;
+        const anchorY = selection.anchorY ?? selection.height / 2;
+        const dx = px - (selection.x + anchorX);
+        const dy = py - (selection.y + anchorY);
         const rad = (-selection.rotation * Math.PI) / 180;
         const cos = Math.cos(rad);
         const sin = Math.sin(rad);
@@ -473,8 +477,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         let sy = dx * sin + dy * cos;
         sx /= selection.scaleX;
         sy /= selection.scaleY;
-        sx += selection.width / 2;
-        sy += selection.height / 2;
+        sx += anchorX;
+        sy += anchorY;
         return { x: sx, y: sy };
     };
 
@@ -573,6 +577,18 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
       latestSelectionState.current = selection ? { ...selection } : null;
   };
 
+  const handleAnchorPointerDown = (e: React.PointerEvent) => {
+      if (tool !== 'select') return;
+      e.stopPropagation();
+      if (e.button === 2) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      selectionMode.current = 'anchor';
+      initialSelection.current = selection ? { ...selection } : null;
+      latestSelectionState.current = selection ? { ...selection } : null;
+  };
+
   const handlePointerMove = (e: React.PointerEvent) => {
     if (isPlaying) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -644,17 +660,57 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 s.height = `${height}px`;
             }
         } else if (selectionMode.current === 'rotate' && init) {
-            const centerX = init.x + init.width / 2;
-            const centerY = init.y + init.height / 2;
-            // Calculate angle from center to pointer
-            const angle = Math.atan2(y - centerY, x - centerX) * (180 / Math.PI);
+            const anchorX = init.x + (init.anchorX ?? init.width / 2);
+            const anchorY = init.y + (init.anchorY ?? init.height / 2);
+            // Calculate angle from anchor to pointer
+            const angle = Math.atan2(y - anchorY, x - anchorX) * (180 / Math.PI);
             // Since the handle is at the top, add 90 degrees to align
             const newRotation = (angle + 90) % 360;
             
             if (selectionOverlayRef.current) {
                 selectionOverlayRef.current.style.transform = `rotate(${newRotation}deg) scale(${init.scaleX}, ${init.scaleY})`;
+                selectionOverlayRef.current.style.transformOrigin = `${init.anchorX ?? init.width / 2}px ${init.anchorY ?? init.height / 2}px`;
             }
             latestSelectionState.current = { ...init, rotation: newRotation };
+        } else if (selectionMode.current === 'anchor' && init) {
+            const dx = x - init.x;
+            const dy = y - init.y;
+            
+            // Rotate the offset back to unrotated space to find the local anchor position
+            const rad = (-init.rotation * Math.PI) / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            
+            const localX = dx * cos - dy * sin;
+            const localY = dx * sin + dy * cos;
+            
+            const newAnchorX = localX;
+            const newAnchorY = localY;
+            
+            // Adjust x and y to keep the selection visually in the same place
+            const theta = (init.rotation * Math.PI) / 180;
+            const cosT = Math.cos(theta);
+            const sinT = Math.sin(theta);
+            
+            const dA_x = (init.anchorX ?? init.width / 2) - newAnchorX;
+            const dA_y = (init.anchorY ?? init.height / 2) - newAnchorY;
+            
+            const newX = init.x + (1 - cosT) * dA_x + sinT * dA_y;
+            const newY = init.y - sinT * dA_x + (1 - cosT) * dA_y;
+            
+            if (selectionOverlayRef.current) {
+                selectionOverlayRef.current.style.left = `${newX}px`;
+                selectionOverlayRef.current.style.top = `${newY}px`;
+                selectionOverlayRef.current.style.transformOrigin = `${newAnchorX}px ${newAnchorY}px`;
+            }
+            
+            latestSelectionState.current = { 
+                ...init, 
+                x: newX, 
+                y: newY, 
+                anchorX: newAnchorX, 
+                anchorY: newAnchorY 
+            };
         } else if (dragStart.current && init) {
             const dx = x - dragStart.current.x;
             const dy = y - dragStart.current.y;
@@ -735,22 +791,37 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                  newY = newCenterY - newH / 2;
             }
 
+            const newAnchorX = ((init.anchorX ?? init.width / 2) / init.width) * newW;
+            const newAnchorY = ((init.anchorY ?? init.height / 2) / init.height) * newH;
+
             if (selectionOverlayRef.current) {
                 const s = selectionOverlayRef.current.style;
                 s.left = `${newX}px`;
                 s.top = `${newY}px`;
                 s.width = `${newW}px`;
                 s.height = `${newH}px`;
+                s.transformOrigin = `${newAnchorX}px ${newAnchorY}px`;
             }
-            latestSelectionState.current = { ...init, x: newX, y: newY, width: newW, height: newH };
+            
+            latestSelectionState.current = { 
+                ...init, 
+                x: newX, 
+                y: newY, 
+                width: newW, 
+                height: newH,
+                anchorX: newAnchorX,
+                anchorY: newAnchorY
+            };
         }
     }
     
     if (isDrawing.current) {
         const mapToSelection = (px: number, py: number) => {
             if (!selection) return { x: px, y: py };
-            const dx = px - (selection.x + selection.width / 2);
-            const dy = py - (selection.y + selection.height / 2);
+            const anchorX = selection.anchorX ?? selection.width / 2;
+            const anchorY = selection.anchorY ?? selection.height / 2;
+            const dx = px - (selection.x + anchorX);
+            const dy = py - (selection.y + anchorY);
             const rad = (-selection.rotation * Math.PI) / 180;
             const cos = Math.cos(rad);
             const sin = Math.sin(rad);
@@ -758,8 +829,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             let sy = dx * sin + dy * cos;
             sx /= selection.scaleX;
             sy /= selection.scaleY;
-            sx += selection.width / 2;
-            sy += selection.height / 2;
+            sx += anchorX;
+            sy += anchorY;
             return { x: sx, y: sy };
         };
 
@@ -957,7 +1028,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     tempCtx?.putImageData(imageData, 0, 0);
                     ctx.clearRect(left, top, width, height);
                     saveCanvas(); 
-                    onSelectionCreate({ x: left, y: top, width, height, dataUrl: tempCanvas.toDataURL(), rotation: 0, scaleX: 1, scaleY: 1 });
+                    onSelectionCreate({ x: left, y: top, width, height, dataUrl: tempCanvas.toDataURL(), rotation: 0, scaleX: 1, scaleY: 1, anchorX: width / 2, anchorY: height / 2 });
                 }
             }
             setIsCreatingSelection(false);
@@ -1178,7 +1249,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         width: selection.width,
                         height: selection.height,
                         transform: `rotate(${selection.rotation}deg) scale(${selection.scaleX}, ${selection.scaleY})`,
-                        transformOrigin: 'center',
+                        transformOrigin: `${selection.anchorX ?? selection.width / 2}px ${selection.anchorY ?? selection.height / 2}px`,
                         cursor: 'move'
                     }}
                 >
@@ -1211,6 +1282,19 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         >
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
                         </div>
+                    </div>
+
+                    {/* Anchor Point */}
+                    <div 
+                        onPointerDown={handleAnchorPointerDown}
+                        className="absolute w-6 h-6 rounded-full bg-white border-2 border-[#FF3B30] flex items-center justify-center text-[#FF3B30] shadow-xl z-50 pointer-events-auto cursor-crosshair"
+                        style={{
+                            left: selection.anchorX ?? selection.width / 2,
+                            top: selection.anchorY ?? selection.height / 2,
+                            transform: 'translate(-50%, -50%)'
+                        }}
+                    >
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#FF3B30]" />
                     </div>
                 </div>
             )}

@@ -114,19 +114,22 @@ export const drawSelectionOntoCanvas = async (
     img.onload = () => {
       ctx.save();
       
-      // Move to center of selection
-      const cx = selection.x + selection.width / 2;
-      const cy = selection.y + selection.height / 2;
+      const anchorX = selection.anchorX ?? selection.width / 2;
+      const anchorY = selection.anchorY ?? selection.height / 2;
       
-      ctx.translate(cx, cy);
+      // Move to anchor point in canvas space
+      const ax = selection.x + anchorX;
+      const ay = selection.y + anchorY;
+      
+      ctx.translate(ax, ay);
       ctx.rotate((selection.rotation * Math.PI) / 180);
       ctx.scale(selection.scaleX, selection.scaleY);
       
-      // Draw centered
+      // Draw relative to anchor
       ctx.drawImage(
         img, 
-        -selection.width / 2, 
-        -selection.height / 2, 
+        -anchorX, 
+        -anchorY, 
         selection.width, 
         selection.height
       );
@@ -317,7 +320,9 @@ export const magicWandSelect = (
     dataUrl: tempCanvas.toDataURL(),
     rotation: 0,
     scaleX: 1,
-    scaleY: 1
+    scaleY: 1,
+    anchorX: selWidth / 2,
+    anchorY: selHeight / 2
   };
 };
 

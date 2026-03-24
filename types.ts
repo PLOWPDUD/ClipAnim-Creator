@@ -53,6 +53,8 @@ export interface SelectionState {
   rotation: number; // degrees
   scaleX: number; // 1 or -1
   scaleY: number; // 1 or -1
+  anchorX?: number; // relative to selection x
+  anchorY?: number; // relative to selection y
   type?: 'text' | 'image';
   textData?: {
     text: string;
