@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import { motion } from 'motion/react';
 import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings } from '../types';
 import { floodFill, magicWandSelect } from '../utils/drawingUtils';
 
@@ -130,6 +131,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   
   const selectionOverlayRef = useRef<HTMLDivElement>(null);
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
+  const anchorPointRef = useRef<HTMLDivElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
   const latestSelectionState = useRef<SelectionState | null>(null);
 
@@ -581,7 +583,37 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
       if (tool !== 'select') return;
       e.stopPropagation();
       if (e.button === 2) return;
-      e.currentTarget.setPointerCapture(e.pointerId);
+
+      // Double click to reset anchor to center
+      if (e.detail === 2 && selection) {
+          const newAnchorX = selection.width / 2;
+          const newAnchorY = selection.height / 2;
+          
+          // Adjust x and y to keep the selection visually in the same place
+          const theta = (selection.rotation * Math.PI) / 180;
+          const cosT = Math.cos(theta);
+          const sinT = Math.sin(theta);
+          
+          const dA_x = (selection.anchorX ?? selection.width / 2) - newAnchorX;
+          const dA_y = (selection.anchorY ?? selection.height / 2) - newAnchorY;
+          
+          const newX = selection.x - selection.scaleX * dA_x * cosT + selection.scaleY * dA_y * sinT;
+          const newY = selection.y - selection.scaleX * dA_x * sinT - selection.scaleY * dA_y * cosT;
+
+          const newState = {
+              ...selection,
+              x: newX,
+              y: newY,
+              anchorX: newAnchorX,
+              anchorY: newAnchorY
+          };
+          
+          latestSelectionState.current = newState;
+          onSelectionUpdate(newState);
+          return;
+      }
+
+      containerRef.current?.setPointerCapture(e.pointerId);
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
       selectionMode.current = 'anchor';
@@ -673,19 +705,47 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             }
             latestSelectionState.current = { ...init, rotation: newRotation };
         } else if (selectionMode.current === 'anchor' && init) {
-            const dx = x - init.x;
-            const dy = y - init.y;
+            const currentAnchorX = init.anchorX ?? init.width / 2;
+            const currentAnchorY = init.anchorY ?? init.height / 2;
             
-            // Rotate the offset back to unrotated space to find the local anchor position
-            const rad = (-init.rotation * Math.PI) / 180;
+            // Center of rotation in canvas space is the current anchor position (init.x, init.y)
+            const cx = init.x;
+            const cy = init.y;
+            
+            // Vector from center to pointer
+            const dx = x - cx;
+            const dy = y - cy;
+            
+            // Rotate back to local space
+            const rad = (init.rotation * Math.PI) / 180;
             const cos = Math.cos(rad);
             const sin = Math.sin(rad);
             
-            const localX = dx * cos - dy * sin;
-            const localY = dx * sin + dy * cos;
+            const localDX = (dx * cos + dy * sin) / init.scaleX;
+            const localDY = (-dx * sin + dy * cos) / init.scaleY;
             
-            const newAnchorX = localX;
-            const newAnchorY = localY;
+            // New anchor position in local space
+            const localX = currentAnchorX + localDX;
+            const localY = currentAnchorY + localDY;
+            
+            let newAnchorX = localX;
+            let newAnchorY = localY;
+
+            // Snapping to center and corners
+            const snapThreshold = 10;
+            const targets = [
+                { x: 0, y: 0 }, { x: init.width / 2, y: 0 }, { x: init.width, y: 0 },
+                { x: 0, y: init.height / 2 }, { x: init.width / 2, y: init.height / 2 }, { x: init.width, y: init.height / 2 },
+                { x: 0, y: init.height }, { x: init.width / 2, y: init.height }, { x: init.width, y: init.height }
+            ];
+
+            for (const target of targets) {
+                if (Math.abs(localX - target.x) < snapThreshold && Math.abs(localY - target.y) < snapThreshold) {
+                    newAnchorX = target.x;
+                    newAnchorY = target.y;
+                    break;
+                }
+            }
             
             // Adjust x and y to keep the selection visually in the same place
             const theta = (init.rotation * Math.PI) / 180;
@@ -695,13 +755,18 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             const dA_x = (init.anchorX ?? init.width / 2) - newAnchorX;
             const dA_y = (init.anchorY ?? init.height / 2) - newAnchorY;
             
-            const newX = init.x + (1 - cosT) * dA_x + sinT * dA_y;
-            const newY = init.y - sinT * dA_x + (1 - cosT) * dA_y;
+            const newX = init.x - init.scaleX * dA_x * cosT + init.scaleY * dA_y * sinT;
+            const newY = init.y - init.scaleX * dA_x * sinT - init.scaleY * dA_y * cosT;
             
             if (selectionOverlayRef.current) {
                 selectionOverlayRef.current.style.left = `${newX}px`;
                 selectionOverlayRef.current.style.top = `${newY}px`;
                 selectionOverlayRef.current.style.transformOrigin = `${newAnchorX}px ${newAnchorY}px`;
+            }
+            
+            if (anchorPointRef.current) {
+                anchorPointRef.current.style.left = `${newAnchorX}px`;
+                anchorPointRef.current.style.top = `${newAnchorY}px`;
             }
             
             latestSelectionState.current = { 
@@ -1276,26 +1341,43 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     {/* Interactive Rotation Handle */}
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none" style={{ transform: 'translateY(-100%)' }}>
                         <div className="w-0.5 h-10 bg-[#007AFF]"></div>
-                        <div 
+                        <motion.div 
                             onPointerDown={handleRotatePointerDown}
-                            className="w-8 h-8 rounded-full bg-white border-2 border-[#007AFF] flex items-center justify-center text-[#007AFF] shadow-xl cursor-grab active:cursor-grabbing pointer-events-auto"
+                            whileHover={{ scale: 1.1, backgroundColor: "#f0f7ff" }}
+                            whileTap={{ scale: 0.95 }}
+                            className="w-8 h-8 rounded-full bg-white border-2 border-[#007AFF] flex items-center justify-center text-[#007AFF] shadow-xl cursor-grab active:cursor-grabbing pointer-events-auto transition-colors"
                         >
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
-                        </div>
+                        </motion.div>
                     </div>
 
                     {/* Anchor Point */}
-                    <div 
+                    <motion.div 
+                        ref={anchorPointRef}
                         onPointerDown={handleAnchorPointerDown}
-                        className="absolute w-6 h-6 rounded-full bg-white border-2 border-[#FF3B30] flex items-center justify-center text-[#FF3B30] shadow-xl z-50 pointer-events-auto cursor-crosshair"
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        whileHover={{ scale: 1.2, boxShadow: "0 0 15px rgba(255, 59, 48, 0.4)" }}
+                        whileTap={{ scale: 0.9 }}
+                        className="absolute w-6 h-6 rounded-full bg-white border-2 border-[#FF3B30] flex items-center justify-center text-[#FF3B30] shadow-xl z-50 pointer-events-auto cursor-crosshair transition-colors hover:bg-red-50"
                         style={{
                             left: selection.anchorX ?? selection.width / 2,
                             top: selection.anchorY ?? selection.height / 2,
                             transform: 'translate(-50%, -50%)'
                         }}
                     >
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#FF3B30]" />
-                    </div>
+                        <motion.div 
+                            animate={{ 
+                                scale: [1, 1.2, 1],
+                            }}
+                            transition={{ 
+                                duration: 2, 
+                                repeat: Infinity,
+                                ease: "easeInOut"
+                            }}
+                            className="w-1.5 h-1.5 rounded-full bg-[#FF3B30]" 
+                        />
+                    </motion.div>
                 </div>
             )}
             
