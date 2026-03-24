@@ -1374,18 +1374,59 @@ export default function App() {
         onSelectItem={(item) => {
           const img = new window.Image();
           img.onload = () => {
-            setSelection({
-              x: canvasSize.width / 2 - img.width / 2,
-              y: canvasSize.height / 2 - img.height / 2,
-              width: img.width,
-              height: img.height,
-              dataUrl: item.dataUrl,
-              rotation: 0,
-              scaleX: 1,
-              scaleY: 1,
-              anchorX: img.width / 2,
-              anchorY: img.height / 2
-            });
+            if (selection) {
+              const oldWidth = selection.width;
+              const oldHeight = selection.height;
+              const newAspect = img.width / img.height;
+              const oldAspect = oldWidth / oldHeight;
+
+              let newWidth = oldWidth;
+              let newHeight = oldHeight;
+
+              if (newAspect > oldAspect) {
+                newWidth = oldWidth;
+                newHeight = oldWidth / newAspect;
+              } else {
+                newHeight = oldHeight;
+                newWidth = oldHeight * newAspect;
+              }
+
+              const oldAnchorX = selection.anchorX ?? oldWidth / 2;
+              const oldAnchorY = selection.anchorY ?? oldHeight / 2;
+              
+              const relAnchorX = oldAnchorX / oldWidth;
+              const relAnchorY = oldAnchorY / oldHeight;
+              
+              const newAnchorX = newWidth * relAnchorX;
+              const newAnchorY = newHeight * relAnchorY;
+
+              const newX = selection.x + oldAnchorX - newAnchorX;
+              const newY = selection.y + oldAnchorY - newAnchorY;
+
+              setSelection({
+                ...selection,
+                x: newX,
+                y: newY,
+                width: newWidth,
+                height: newHeight,
+                dataUrl: item.dataUrl,
+                anchorX: newAnchorX,
+                anchorY: newAnchorY
+              });
+            } else {
+              setSelection({
+                x: canvasSize.width / 2 - img.width / 2,
+                y: canvasSize.height / 2 - img.height / 2,
+                width: img.width,
+                height: img.height,
+                dataUrl: item.dataUrl,
+                rotation: 0,
+                scaleX: 1,
+                scaleY: 1,
+                anchorX: img.width / 2,
+                anchorY: img.height / 2
+              });
+            }
             setTool('select');
             setIsBackpackOpen(false);
           };
