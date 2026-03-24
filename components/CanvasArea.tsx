@@ -58,12 +58,16 @@ const getResizeCursor = (handle: string, rotation: number, scaleX: number, scale
     else if (handle === 'resize-tr') baseAngle = 45;
     else if (handle === 'resize-br') baseAngle = 135;
     else if (handle === 'resize-bl') baseAngle = 225;
+    else if (handle === 'resize-l') baseAngle = 270;
+    else if (handle === 'resize-r') baseAngle = 90;
 
     if (scaleX < 0) {
         if (baseAngle === 315) baseAngle = 45;
         else if (baseAngle === 45) baseAngle = 315;
         else if (baseAngle === 135) baseAngle = 225;
         else if (baseAngle === 225) baseAngle = 135;
+        else if (baseAngle === 270) baseAngle = 90;
+        else if (baseAngle === 90) baseAngle = 270;
     }
     if (scaleY < 0) {
         if (baseAngle === 315) baseAngle = 225;
@@ -148,7 +152,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
 
   const dragStart = useRef<{x: number, y: number} | null>(null);
   const initialSelection = useRef<SelectionState | null>(null);
-  const selectionMode = useRef<'create' | 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | 'rotate' | null>(null);
+  const selectionMode = useRef<'create' | 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | 'resize-l' | 'resize-r' | 'rotate' | null>(null);
   const [isCreatingSelection, setIsCreatingSelection] = useState(false);
 
   const [textInput, setTextInput] = useState<{x: number, y: number, value: string, font?: string, color?: string, fontSize?: number} | null>(null);
@@ -525,7 +529,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
       latestSelectionState.current = selection ? { ...selection } : null;
   };
 
-  const handleResizePointerDown = (e: React.PointerEvent, type: 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br') => {
+  const handleResizePointerDown = (e: React.PointerEvent, type: 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | 'resize-l' | 'resize-r') => {
       if (tool !== 'select') return;
       e.stopPropagation();
       if (e.button === 2) return;
@@ -657,6 +661,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     else if (handle === 'resize-tr') handle = 'resize-tl';
                     else if (handle === 'resize-bl') handle = 'resize-br';
                     else if (handle === 'resize-br') handle = 'resize-bl';
+                    else if (handle === 'resize-l') handle = 'resize-r';
+                    else if (handle === 'resize-r') handle = 'resize-l';
                  }
                  if (init.scaleY < 0) {
                     if (handle === 'resize-tl') handle = 'resize-bl';
@@ -671,6 +677,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                  else if (handle === 'resize-bl') { deltaLeft = ldx; deltaBottom = ldy; }
                  else if (handle === 'resize-tr') { deltaRight = ldx; deltaTop = ldy; }
                  else if (handle === 'resize-tl') { deltaLeft = ldx; deltaTop = ldy; }
+                 else if (handle === 'resize-l') { deltaLeft = ldx; }
+                 else if (handle === 'resize-r') { deltaRight = ldx; }
 
                  newW = init.width - deltaLeft + deltaRight;
                  newH = init.height - deltaTop + deltaBottom;
@@ -1170,6 +1178,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tr')} className="absolute -top-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-tr', selection.rotation, selection.scaleX, selection.scaleY) }} />
                     <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-bl')} className="absolute -bottom-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-bl', selection.rotation, selection.scaleX, selection.scaleY) }} />
                     <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-br')} className="absolute -bottom-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-br', selection.rotation, selection.scaleX, selection.scaleY) }} />
+
+                    {/* Middle Edge Handles */}
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-l')} className="absolute top-1/2 -translate-y-1/2 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-l', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-r')} className="absolute top-1/2 -translate-y-1/2 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-r', selection.rotation, selection.scaleX, selection.scaleY) }} />
 
                     {/* Interactive Rotation Handle */}
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none" style={{ transform: 'translateY(-100%)' }}>
