@@ -1372,49 +1372,51 @@ export default function App() {
       ) : (
         <div key={projectId} className="flex flex-col h-full overflow-hidden relative">
       {!isFocusMode && (
-        <header className="h-14 bg-[#1e1e1e] flex items-center px-4 justify-between border-b border-gray-700 shrink-0 z-30">
-            <div className="flex items-center space-x-2">
-                <button onClick={handleGoHome} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white relative"><Icons.Home size={24} />{hasUnsavedChanges && <span className="absolute top-2 right-2 w-2 h-2 bg-[var(--accent-color)] rounded-full ring-2 ring-[#1e1e1e]" />}</button>
-                <h1 className="font-bold text-lg hidden sm:block truncate max-w-[150px]">{projectName}</h1>
-            </div>
-            <div className="flex items-center space-x-2">
-                <button onClick={undo} disabled={historyIndex <= 0} className={`p-2 rounded-full ${historyIndex > 0 ? 'text-white' : 'text-gray-600'}`}> <Icons.Undo size={20} /> </button>
-                <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-2 rounded-full ${historyIndex < history.length - 1 ? 'text-gray-600' : 'text-white'}`}> <Icons.Redo size={20} /> </button>
-                <button 
-                  onClick={() => canvasRef.current?.zoomOut()} 
-                  disabled={deviceType === 'mobile'}
-                  className={`p-2 rounded-full ${deviceType === 'mobile' ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`} 
-                  title={deviceType === 'mobile' ? "Disabled on Mobile" : "Zoom Out"}
-                >
-                  <Icons.ZoomOut size={20} />
-                </button>
-                <button 
-                  onClick={() => canvasRef.current?.resetView()} 
-                  disabled={deviceType === 'mobile'}
-                  className={`p-2 rounded-full ${deviceType === 'mobile' ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`} 
-                  title={deviceType === 'mobile' ? "Disabled on Mobile" : "Reset View"}
-                >
-                  <Icons.RotateCcw size={20} />
-                </button>
-                <button 
-                  onClick={() => canvasRef.current?.zoomIn()} 
-                  disabled={deviceType === 'mobile'}
-                  className={`p-2 rounded-full ${deviceType === 'mobile' ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`} 
-                  title={deviceType === 'mobile' ? "Disabled on Mobile" : "Zoom In"}
-                >
-                  <Icons.ZoomIn size={20} />
-                </button>
-                <button onClick={() => importIntoSelectionRef.current?.click()} disabled={!selection} className={`p-2 rounded-full ${selection ? 'text-gray-400 hover:text-white' : 'text-gray-600'}`} title="Import into Selection"><Icons.Image size={20} /></button>
-                <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white"><Icons.Copy size={20} /></button>
-                <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white"><Icons.Clipboard size={20} /></button>
-            </div>
-            <div className="flex items-center space-x-2">
-                <button onClick={() => setIsBackpackOpen(true)} className={`p-2 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title="Backpack"><Icons.Briefcase size={20} /></button>
-                <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className="p-2 text-gray-400 hover:text-white" title="Layers"><Icons.Layers size={20} /></button>
-                <button onClick={saveProject} className="p-2 text-gray-400 hover:text-white" title="Save Project"><Icons.Save size={20} /></button>
-                <button onClick={() => setIsExportModalOpen(true)} className="p-2 text-gray-400 hover:text-white" title="Export"><Icons.Download size={20} /></button>
-                <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white" title="Project Settings"><Icons.LayoutGrid size={20} /></button>
-                <button onClick={() => setIsGlobalSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white" title="Global Settings"><Icons.Settings size={20} /></button>
+        <header className="h-14 bg-[#1e1e1e] border-b border-gray-700 shrink-0 z-30 overflow-x-auto overflow-y-hidden">
+            <div className="flex items-center justify-between px-4 h-full min-w-max space-x-8">
+                <div className="flex items-center space-x-2">
+                    <button onClick={handleGoHome} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white relative"><Icons.Home size={24} />{hasUnsavedChanges && <span className="absolute top-2 right-2 w-2 h-2 bg-[var(--accent-color)] rounded-full ring-2 ring-[#1e1e1e]" />}</button>
+                    <h1 className="font-bold text-lg hidden sm:block truncate max-w-[150px]">{projectName}</h1>
+                </div>
+                <div className="flex items-center space-x-2">
+                    <button onClick={undo} disabled={historyIndex <= 0} className={`p-2 rounded-full ${historyIndex > 0 ? 'text-white' : 'text-gray-600'}`}> <Icons.Undo size={20} /> </button>
+                    <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-2 rounded-full ${historyIndex < history.length - 1 ? 'text-gray-600' : 'text-white'}`}> <Icons.Redo size={20} /> </button>
+                    <button 
+                      onClick={() => canvasRef.current?.zoomOut()} 
+                      disabled={deviceType === 'mobile'}
+                      className={`p-2 rounded-full ${deviceType === 'mobile' ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`} 
+                      title={deviceType === 'mobile' ? "Disabled on Mobile" : "Zoom Out"}
+                    >
+                      <Icons.ZoomOut size={20} />
+                    </button>
+                    <button 
+                      onClick={() => canvasRef.current?.resetView()} 
+                      disabled={deviceType === 'mobile'}
+                      className={`p-2 rounded-full ${deviceType === 'mobile' ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`} 
+                      title={deviceType === 'mobile' ? "Disabled on Mobile" : "Reset View"}
+                    >
+                      <Icons.RotateCcw size={20} />
+                    </button>
+                    <button 
+                      onClick={() => canvasRef.current?.zoomIn()} 
+                      disabled={deviceType === 'mobile'}
+                      className={`p-2 rounded-full ${deviceType === 'mobile' ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`} 
+                      title={deviceType === 'mobile' ? "Disabled on Mobile" : "Zoom In"}
+                    >
+                      <Icons.ZoomIn size={20} />
+                    </button>
+                    <button onClick={() => importIntoSelectionRef.current?.click()} disabled={!selection} className={`p-2 rounded-full ${selection ? 'text-gray-400 hover:text-white' : 'text-gray-600'}`} title="Import into Selection"><Icons.Image size={20} /></button>
+                    <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white"><Icons.Copy size={20} /></button>
+                    <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white"><Icons.Clipboard size={20} /></button>
+                </div>
+                <div className="flex items-center space-x-2">
+                    <button onClick={() => setIsBackpackOpen(true)} className={`p-2 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title="Backpack"><Icons.Briefcase size={20} /></button>
+                    <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className="p-2 text-gray-400 hover:text-white" title="Layers"><Icons.Layers size={20} /></button>
+                    <button onClick={saveProject} className="p-2 text-gray-400 hover:text-white" title="Save Project"><Icons.Save size={20} /></button>
+                    <button onClick={() => setIsExportModalOpen(true)} className="p-2 text-gray-400 hover:text-white" title="Export"><Icons.Download size={20} /></button>
+                    <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white" title="Project Settings"><Icons.LayoutGrid size={20} /></button>
+                    <button onClick={() => setIsGlobalSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white" title="Global Settings"><Icons.Settings size={20} /></button>
+                </div>
             </div>
         </header>
       )}
