@@ -64,7 +64,10 @@ import {
   Heart,
   ArrowRight,
   MessageCircle,
-  Briefcase
+  Briefcase,
+  ZoomIn,
+  ZoomOut,
+  Smartphone
 } from 'lucide-react';
 
 export const Icons = {
@@ -128,10 +131,15 @@ export const Icons = {
   Pixel: Grid2X2,
   Reset: Monitor,
   FrameGrid: LayoutGrid,
+  Monitor,
+  LayoutGrid,
   Check,
   Mic,
   GripVertical,
   Wand2,
   Share2,
-  Briefcase
+  Briefcase,
+  ZoomIn,
+  ZoomOut,
+  Smartphone
 };

@@ -11,6 +11,8 @@ interface GlobalSettingsModalProps {
   setUiFont: (font: string) => void;
   shortcuts: Shortcuts;
   setShortcuts: (shortcuts: Shortcuts) => void;
+  deviceType: 'mobile' | 'pc' | null;
+  setDeviceType: (type: 'mobile' | 'pc') => void;
 }
 
 export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
@@ -21,7 +23,9 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
   uiFont,
   setUiFont,
   shortcuts,
-  setShortcuts
+  setShortcuts,
+  deviceType,
+  setDeviceType
 }) => {
   const [recordingKey, setRecordingKey] = useState<keyof Shortcuts | null>(null);
 
@@ -120,6 +124,32 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="w-full h-px bg-gray-700" />
+
+          {/* Device Type */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Device Optimization</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setDeviceType('mobile')}
+                className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${deviceType === 'mobile' ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+              >
+                <Icons.Smartphone size={20} />
+                <span className="text-sm font-medium">Mobile</span>
+                {deviceType === 'mobile' && <Icons.Check size={16} className="ml-auto" />}
+              </button>
+              <button
+                onClick={() => setDeviceType('pc')}
+                className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${deviceType === 'pc' ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+              >
+                <Icons.Monitor size={20} />
+                <span className="text-sm font-medium">PC / Desktop</span>
+                {deviceType === 'pc' && <Icons.Check size={16} className="ml-auto" />}
+              </button>
+            </div>
+            <p className="mt-2 text-[10px] text-gray-500 italic">Mobile mode disables on-screen zoom buttons and pan sliders to save space.</p>
           </div>
 
           <div className="w-full h-px bg-gray-700" />

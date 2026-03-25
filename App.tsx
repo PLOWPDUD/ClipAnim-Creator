@@ -51,6 +51,17 @@ export default function App() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  const [deviceType, setDeviceType] = useState<'mobile' | 'pc' | null>(() => {
+    const saved = localStorage.getItem('clipanim_device_type');
+    return (saved as 'mobile' | 'pc' | null) || null;
+  });
+
+  useEffect(() => {
+    if (deviceType) {
+      localStorage.setItem('clipanim_device_type', deviceType);
+    }
+  }, [deviceType]);
+
   // Global Settings
   const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
   const [accentColor, setAccentColor] = useState('#FF3B30');
@@ -170,6 +181,7 @@ export default function App() {
   const isExportCancelledRef = useRef(false);
 
   const importFileRef = useRef<HTMLInputElement>(null);
+  const importIntoSelectionRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef<number | undefined>(undefined);
   const startTimeRef = useRef<number>(0);
   const canvasRef = useRef<CanvasAreaHandle>(null);
@@ -985,6 +997,47 @@ export default function App() {
     }
   };
 
+  const handleImportIntoSelection = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selection) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const maskCanvas = document.createElement('canvas');
+        maskCanvas.width = selection.width;
+        maskCanvas.height = selection.height;
+        const maskCtx = maskCanvas.getContext('2d');
+        if (!maskCtx) return;
+
+        const selectionImg = new Image();
+        selectionImg.onload = () => {
+          maskCtx.drawImage(selectionImg, 0, 0);
+          maskCtx.globalCompositeOperation = 'source-in';
+          
+          const scale = Math.max(selection.width / img.width, selection.height / img.height);
+          const drawWidth = img.width * scale;
+          const drawHeight = img.height * scale;
+          const offsetX = (selection.width - drawWidth) / 2;
+          const offsetY = (selection.height - drawHeight) / 2;
+
+          maskCtx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+
+          setSelection({
+            ...selection,
+            dataUrl: maskCanvas.toDataURL()
+          });
+          setHasUnsavedChanges(true);
+        };
+        selectionImg.src = selection.dataUrl;
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+    if (importIntoSelectionRef.current) importIntoSelectionRef.current.value = '';
+  };
+
   const animate = (timestamp: number) => {
     if (!isPlaying) return;
     
@@ -1238,19 +1291,39 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [shortcuts, view, frames.length, currentFrameIndex, isPlaying, tool, history, historyIndex, selection]);
 
-  if (view === 'menu') {
-      return (
-        <div className="flex flex-col h-screen bg-[#121212] text-white p-6 overflow-hidden">
-             <GlobalSettingsModal 
-                isOpen={isGlobalSettingsOpen} 
-                onClose={() => setIsGlobalSettingsOpen(false)} 
-                accentColor={accentColor}
-                setAccentColor={setAccentColor}
-                uiFont={uiFont}
-                setUiFont={setUiFont}
-                shortcuts={shortcuts}
-                setShortcuts={setShortcuts}
-             />
+  return (
+    <div className="flex flex-col h-screen bg-[#121212] text-white overflow-hidden font-sans" style={{ '--accent-color': accentColor, fontFamily: uiFont } as any}>
+      {deviceType === null && (
+        <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4">
+          <div className="bg-[#1e1e1e] rounded-3xl p-10 max-w-lg w-full border border-gray-700 shadow-2xl text-center">
+            <h2 className="text-3xl font-bold mb-4">Welcome to ClipAnim!</h2>
+            <p className="text-gray-400 mb-8">Choose your device type to optimize your experience. This can be changed later in settings.</p>
+            <div className="grid grid-cols-2 gap-6">
+              <button 
+                onClick={() => setDeviceType('mobile')}
+                className="flex flex-col items-center gap-4 p-8 bg-gray-800 hover:bg-gray-700 rounded-3xl border border-gray-700 transition-all group"
+              >
+                <div className="w-16 h-16 bg-blue-500/20 rounded-2xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
+                  <Icons.Smartphone size={32} />
+                </div>
+                <span className="text-xl font-bold">Mobile</span>
+              </button>
+              <button 
+                onClick={() => setDeviceType('pc')}
+                className="flex flex-col items-center gap-4 p-8 bg-gray-800 hover:bg-gray-700 rounded-3xl border border-gray-700 transition-all group"
+              >
+                <div className="w-16 h-16 bg-green-500/20 rounded-2xl flex items-center justify-center text-green-500 group-hover:scale-110 transition-transform">
+                  <Icons.Monitor size={32} />
+                </div>
+                <span className="text-xl font-bold">PC</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view === 'menu' ? (
+        <div className="flex flex-col h-full p-6 overflow-hidden">
              <div className="mb-8 flex justify-between items-end">
                  <div>
                     <h1 className="text-3xl font-bold mb-2">My Animations</h1>
@@ -1296,12 +1369,151 @@ export default function App() {
              </div>
              {isLoading && <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center backdrop-blur-sm"><Icons.Loader2 className="w-12 h-12 text-[var(--accent-color)] animate-spin" /></div>}
         </div>
-      );
-  }
+      ) : (
+        <div key={projectId} className="flex flex-col h-full overflow-hidden relative">
+      {!isFocusMode && (
+        <header className="h-14 bg-[#1e1e1e] flex items-center px-4 justify-between border-b border-gray-700 shrink-0 z-30">
+            <div className="flex items-center space-x-2">
+                <button onClick={handleGoHome} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white relative"><Icons.Home size={24} />{hasUnsavedChanges && <span className="absolute top-2 right-2 w-2 h-2 bg-[var(--accent-color)] rounded-full ring-2 ring-[#1e1e1e]" />}</button>
+                <h1 className="font-bold text-lg hidden sm:block truncate max-w-[150px]">{projectName}</h1>
+            </div>
+            <div className="flex items-center space-x-2">
+                <button onClick={undo} disabled={historyIndex <= 0} className={`p-2 rounded-full ${historyIndex > 0 ? 'text-white' : 'text-gray-600'}`}> <Icons.Undo size={20} /> </button>
+                <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-2 rounded-full ${historyIndex < history.length - 1 ? 'text-gray-600' : 'text-white'}`}> <Icons.Redo size={20} /> </button>
+                <button 
+                  onClick={() => canvasRef.current?.zoomOut()} 
+                  disabled={deviceType === 'mobile'}
+                  className={`p-2 rounded-full ${deviceType === 'mobile' ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`} 
+                  title={deviceType === 'mobile' ? "Disabled on Mobile" : "Zoom Out"}
+                >
+                  <Icons.ZoomOut size={20} />
+                </button>
+                <button 
+                  onClick={() => canvasRef.current?.resetView()} 
+                  disabled={deviceType === 'mobile'}
+                  className={`p-2 rounded-full ${deviceType === 'mobile' ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`} 
+                  title={deviceType === 'mobile' ? "Disabled on Mobile" : "Reset View"}
+                >
+                  <Icons.RotateCcw size={20} />
+                </button>
+                <button 
+                  onClick={() => canvasRef.current?.zoomIn()} 
+                  disabled={deviceType === 'mobile'}
+                  className={`p-2 rounded-full ${deviceType === 'mobile' ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`} 
+                  title={deviceType === 'mobile' ? "Disabled on Mobile" : "Zoom In"}
+                >
+                  <Icons.ZoomIn size={20} />
+                </button>
+                <button onClick={() => importIntoSelectionRef.current?.click()} disabled={!selection} className={`p-2 rounded-full ${selection ? 'text-gray-400 hover:text-white' : 'text-gray-600'}`} title="Import into Selection"><Icons.Image size={20} /></button>
+                <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white"><Icons.Copy size={20} /></button>
+                <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white"><Icons.Clipboard size={20} /></button>
+            </div>
+            <div className="flex items-center space-x-2">
+                <button onClick={() => setIsBackpackOpen(true)} className={`p-2 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title="Backpack"><Icons.Briefcase size={20} /></button>
+                <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className="p-2 text-gray-400 hover:text-white" title="Layers"><Icons.Layers size={20} /></button>
+                <button onClick={saveProject} className="p-2 text-gray-400 hover:text-white" title="Save Project"><Icons.Save size={20} /></button>
+                <button onClick={() => setIsExportModalOpen(true)} className="p-2 text-gray-400 hover:text-white" title="Export"><Icons.Download size={20} /></button>
+                <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white" title="Project Settings"><Icons.LayoutGrid size={20} /></button>
+                <button onClick={() => setIsGlobalSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white" title="Global Settings"><Icons.Settings size={20} /></button>
+            </div>
+        </header>
+      )}
+      <main className="flex-1 relative flex flex-row overflow-hidden min-h-0">
+        <Toolbar 
+            currentTool={tool} 
+            onSelectTool={setTool} 
+            currentBrushType={brushType} 
+            onSelectBrushType={setBrushType} 
+            currentColor={color} 
+            onChangeColor={setColor} 
+            strokeWidth={currentStrokeWidth} 
+            onChangeStrokeWidth={handleStrokeWidthChange} 
+            onionSkin={onionSkin} 
+            onToggleOnionSkin={() => setOnionSkin(!onionSkin)} 
+            showGrid={showGrid} 
+            onToggleGrid={() => setShowGrid(!showGrid)} 
+            isFocusMode={isFocusMode} 
+            onToggleFocusMode={() => setIsFocusMode(!isFocusMode)} 
+            onImportImage={handleImportImage} 
+            hasSelection={!!selection} 
+            onFlipHorizontal={() => setSelection(selection ? {...selection, scaleX: selection.scaleX * -1} : null)} 
+            onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)} 
+            onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)} 
+            shapeType={shapeType} 
+            onSelectShapeType={setShapeType} 
+            onOpenHelp={() => setIsHelpOpen(true)} 
+            textToolFont={textToolFont}
+            onSelectTextToolFont={setTextToolFont}
+            fillOpacity={fillOpacity}
+            onChangeFillOpacity={setFillOpacity}
+            fillTolerance={fillTolerance}
+            onChangeFillTolerance={setFillTolerance}
+            smoothing={smoothing}
+            onChangeSmoothing={setSmoothing}
+        />
+        <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
+            <CanvasArea 
+                ref={canvasRef} 
+                currentFrame={frames[currentFrameIndex]} 
+                layers={layers} 
+                activeLayerId={activeLayerId} 
+                onUpdateLayer={handleUpdateLayer} 
+                tool={tool} 
+                brushType={brushType} 
+                shapeType={shapeType} 
+                color={color} 
+                strokeWidth={currentStrokeWidth} 
+                beforeFrames={frames.slice(Math.max(0, currentFrameIndex - onionSkinSettings.numBefore), currentFrameIndex).reverse()} 
+                afterFrames={frames.slice(currentFrameIndex + 1, currentFrameIndex + 1 + onionSkinSettings.numAfter)} 
+                onionSkin={onionSkin} 
+                onionSkinSettings={onionSkinSettings} 
+                showGrid={showGrid} 
+                isPlaying={isPlaying} 
+                selection={selection} 
+                onSelectionCreate={handleSelectionCreate} 
+                onSelectionUpdate={setSelection} 
+                onSelectionCommit={handleSelectionCommit} 
+                onSelectionDelete={() => setSelection(null)}
+                canvasWidth={canvasSize.width} 
+                canvasHeight={canvasSize.height} 
+                backgroundColor={backgroundColor}
+                backgroundImage={backgroundImage} 
+                textToolFont={textToolFont} 
+                fillOpacity={fillOpacity}
+                fillTolerance={fillTolerance}
+                smoothing={smoothing}
+                deviceType={deviceType}
+            />
+            <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
+                <Timeline 
+                  frames={frames} 
+                  currentFrameIndex={currentFrameIndex} 
+                  onSelectFrame={handleSelectFrame} 
+                  onAddFrame={addFrame} 
+                  onDeleteFrame={deleteFrame} 
+                  onCopyFrame={copyFrame} 
+                  isPlaying={isPlaying} 
+                  onTogglePlay={() => setIsPlaying(!isPlaying)} 
+                  isLooping={isLooping}
+                  onToggleLoop={() => setIsLooping(!isLooping)}
+                  audioTracks={audioTracks} 
+                  onAddAudioTrack={handleAddAudioTrack} 
+                  onRemoveAudioTrack={handleRemoveAudioTrack} 
+                  onUpdateAudioTrack={handleUpdateAudioTrack}
+                  onCutAudioTrack={handleCutAudioTrack}
+                  fps={fps}
+                  isFocusMode={isFocusMode} 
+                  onOpenFrameManager={() => setIsFrameManagerOpen(true)} 
+                  onOpenRecorder={() => setIsAudioRecorderOpen(true)} 
+                  backgroundColor={backgroundColor}
+                />
+            </div>
+        </div>
+      </main>
+        </div>
+      )}
 
-  return (
-    <div key={projectId} className="flex flex-col h-screen bg-[#121212] text-white overflow-hidden relative">
-      {showExitConfirm && (
+      {showExitConfirm && view === 'editor' && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-[#1e1e1e] rounded-3xl p-8 max-w-sm w-full border border-gray-700 shadow-2xl text-center">
                 <div className="w-16 h-16 bg-[var(--accent-color)]/20 rounded-full flex items-center justify-center text-[var(--accent-color)] mx-auto mb-6"> <Icons.Save size={32} /> </div>
@@ -1314,7 +1526,7 @@ export default function App() {
             </div>
         </div>
       )}
-      {isExportModalOpen && (
+      {isExportModalOpen && view === 'editor' && (
         <ExportModal 
           isOpen={isExportModalOpen} 
           onClose={() => {
@@ -1339,6 +1551,8 @@ export default function App() {
       )}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
       
+      {isLayerPanelOpen && view === 'editor' && <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onDuplicateLayer={duplicateLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onRenameLayer={renameLayer} onReorderLayers={reorderLayers} onClose={() => setIsLayerPanelOpen(false)} />}
+
       {projectToDelete && (
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-[#1e1e1e] rounded-3xl p-8 max-w-sm w-full border border-gray-700 shadow-2xl text-center">
@@ -1445,120 +1659,6 @@ export default function App() {
         }}
       />
 
-      {isLayerPanelOpen && <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onDuplicateLayer={duplicateLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onRenameLayer={renameLayer} onReorderLayers={reorderLayers} onClose={() => setIsLayerPanelOpen(false)} />}
-      {!isFocusMode && (
-        <header className="h-14 bg-[#1e1e1e] flex items-center px-4 justify-between border-b border-gray-700 shrink-0 z-30">
-            <div className="flex items-center space-x-2">
-                <button onClick={handleGoHome} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white relative"><Icons.Home size={24} />{hasUnsavedChanges && <span className="absolute top-2 right-2 w-2 h-2 bg-[var(--accent-color)] rounded-full ring-2 ring-[#1e1e1e]" />}</button>
-                <h1 className="font-bold text-lg hidden sm:block truncate max-w-[150px]">{projectName}</h1>
-            </div>
-            <div className="flex items-center space-x-2">
-                <button onClick={undo} disabled={historyIndex <= 0} className={`p-2 rounded-full ${historyIndex > 0 ? 'text-white' : 'text-gray-600'}`}> <Icons.Undo size={20} /> </button>
-                <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-2 rounded-full ${historyIndex < history.length - 1 ? 'text-gray-600' : 'text-white'}`}> <Icons.Redo size={20} /> </button>
-                <button onClick={() => canvasRef.current?.resetView()} className="p-2 text-gray-400 hover:text-white rounded-full" title="Reset View"><Icons.RotateCcw size={20} /></button>
-                <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white"><Icons.Copy size={20} /></button>
-                <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white"><Icons.Clipboard size={20} /></button>
-            </div>
-            <div className="flex items-center space-x-2">
-                <button onClick={() => setIsBackpackOpen(true)} className={`p-2 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title="Backpack"><Icons.Briefcase size={20} /></button>
-                <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className="p-2 text-gray-400 hover:text-white"><Icons.Layers size={20} /></button>
-                <button onClick={saveProject} className="p-2 text-gray-400 hover:text-white"><Icons.Save size={20} /></button>
-                <button onClick={() => setIsExportModalOpen(true)} className="p-2 text-gray-400 hover:text-white"><Icons.Download size={20} /></button>
-                <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white"><Icons.Settings size={20} /></button>
-            </div>
-        </header>
-      )}
-      <main className="flex-1 relative flex flex-row overflow-hidden min-h-0">
-        <Toolbar 
-            currentTool={tool} 
-            onSelectTool={setTool} 
-            currentBrushType={brushType} 
-            onSelectBrushType={setBrushType} 
-            currentColor={color} 
-            onChangeColor={setColor} 
-            strokeWidth={currentStrokeWidth} 
-            onChangeStrokeWidth={handleStrokeWidthChange} 
-            onionSkin={onionSkin} 
-            onToggleOnionSkin={() => setOnionSkin(!onionSkin)} 
-            showGrid={showGrid} 
-            onToggleGrid={() => setShowGrid(!showGrid)} 
-            isFocusMode={isFocusMode} 
-            onToggleFocusMode={() => setIsFocusMode(!isFocusMode)} 
-            onImportImage={handleImportImage} 
-            hasSelection={!!selection} 
-            onFlipHorizontal={() => setSelection(selection ? {...selection, scaleX: selection.scaleX * -1} : null)} 
-            onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)} 
-            onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)} 
-            shapeType={shapeType} 
-            onSelectShapeType={setShapeType} 
-            onOpenHelp={() => setIsHelpOpen(true)} 
-            textToolFont={textToolFont}
-            onSelectTextToolFont={setTextToolFont}
-            fillOpacity={fillOpacity}
-            onChangeFillOpacity={setFillOpacity}
-            fillTolerance={fillTolerance}
-            onChangeFillTolerance={setFillTolerance}
-            smoothing={smoothing}
-            onChangeSmoothing={setSmoothing}
-        />
-        <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
-            <CanvasArea 
-                ref={canvasRef} 
-                currentFrame={frames[currentFrameIndex]} 
-                layers={layers} 
-                activeLayerId={activeLayerId} 
-                onUpdateLayer={handleUpdateLayer} 
-                tool={tool} 
-                brushType={brushType} 
-                shapeType={shapeType} 
-                color={color} 
-                strokeWidth={currentStrokeWidth} 
-                beforeFrames={frames.slice(Math.max(0, currentFrameIndex - onionSkinSettings.numBefore), currentFrameIndex).reverse()} 
-                afterFrames={frames.slice(currentFrameIndex + 1, currentFrameIndex + 1 + onionSkinSettings.numAfter)} 
-                onionSkin={onionSkin} 
-                onionSkinSettings={onionSkinSettings} 
-                showGrid={showGrid} 
-                isPlaying={isPlaying} 
-                selection={selection} 
-                onSelectionCreate={handleSelectionCreate} 
-                onSelectionUpdate={setSelection} 
-                onSelectionCommit={handleSelectionCommit} 
-                onSelectionDelete={() => setSelection(null)}
-                canvasWidth={canvasSize.width} 
-                canvasHeight={canvasSize.height} 
-                backgroundColor={backgroundColor}
-                backgroundImage={backgroundImage} 
-                textToolFont={textToolFont} 
-                fillOpacity={fillOpacity}
-                fillTolerance={fillTolerance}
-                smoothing={smoothing}
-            />
-            <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <Timeline 
-                  frames={frames} 
-                  currentFrameIndex={currentFrameIndex} 
-                  onSelectFrame={handleSelectFrame} 
-                  onAddFrame={addFrame} 
-                  onDeleteFrame={deleteFrame} 
-                  onCopyFrame={copyFrame} 
-                  isPlaying={isPlaying} 
-                  onTogglePlay={() => setIsPlaying(!isPlaying)} 
-                  isLooping={isLooping}
-                  onToggleLoop={() => setIsLooping(!isLooping)}
-                  audioTracks={audioTracks} 
-                  onAddAudioTrack={handleAddAudioTrack} 
-                  onRemoveAudioTrack={handleRemoveAudioTrack} 
-                  onUpdateAudioTrack={handleUpdateAudioTrack}
-                  onCutAudioTrack={handleCutAudioTrack}
-                  fps={fps}
-                  isFocusMode={isFocusMode} 
-                  onOpenFrameManager={() => setIsFrameManagerOpen(true)} 
-                  onOpenRecorder={() => setIsAudioRecorderOpen(true)} 
-                  backgroundColor={backgroundColor}
-                />
-            </div>
-        </div>
-      </main>
       <SettingsModal 
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
@@ -1575,6 +1675,25 @@ export default function App() {
         onBackupProject={handleBackupProject} 
         onionSkinSettings={onionSkinSettings} 
         setOnionSkinSettings={setOnionSkinSettings} 
+      />
+      <GlobalSettingsModal 
+        isOpen={isGlobalSettingsOpen} 
+        onClose={() => setIsGlobalSettingsOpen(false)} 
+        accentColor={accentColor}
+        setAccentColor={setAccentColor}
+        uiFont={uiFont}
+        setUiFont={setUiFont}
+        shortcuts={shortcuts}
+        setShortcuts={setShortcuts}
+        deviceType={deviceType}
+        setDeviceType={setDeviceType}
+      />
+      <input 
+        ref={importIntoSelectionRef}
+        type="file" 
+        accept="image/*" 
+        className="hidden" 
+        onChange={handleImportIntoSelection}
       />
     </div>
   );

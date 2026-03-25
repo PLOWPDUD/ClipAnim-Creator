@@ -5,6 +5,10 @@ import { floodFill, magicWandSelect } from '../utils/drawingUtils';
 
 export interface CanvasAreaHandle {
   resetView: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  setPanX: (x: number) => void;
+  setPanY: (y: number) => void;
 }
 
 interface CanvasAreaProps {
@@ -44,6 +48,7 @@ interface CanvasAreaProps {
   fillOpacity: number;
   fillTolerance: number;
   smoothing: number;
+  deviceType: 'mobile' | 'pc' | null;
 }
 
 const getMixBlendMode = (mode: GlobalCompositeOperation): any => {
@@ -122,7 +127,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   textToolFont,
   fillOpacity,
   fillTolerance,
-  smoothing
+  smoothing,
+  deviceType
 }, ref) => {
   console.log('CanvasArea render', { layers, activeLayerId });
   const activeCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -164,6 +170,22 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   useImperativeHandle(ref, () => ({
       resetView: () => {
           transform.current = { scale: 1, x: 0, y: 0, rotation: 0 };
+          updateTransformStyle();
+      },
+      zoomIn: () => {
+          transform.current.scale = Math.min(transform.current.scale * 1.2, 10);
+          updateTransformStyle();
+      },
+      zoomOut: () => {
+          transform.current.scale = Math.max(transform.current.scale / 1.2, 0.1);
+          updateTransformStyle();
+      },
+      setPanX: (x: number) => {
+          transform.current.x = x;
+          updateTransformStyle();
+      },
+      setPanY: (y: number) => {
+          transform.current.y = y;
           updateTransformStyle();
       }
   }));
@@ -230,6 +252,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     }
   }, [currentFrame?.id, activeLayerId, currentFrame?.layers, canvasWidth, canvasHeight, brushType, layers]);
 
+  const [, forceUpdate] = useState({});
   const updateTransformStyle = () => {
     if (transformRef.current) {
       const { scale, x, y, rotation } = transform.current;
@@ -239,6 +262,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
       if (transformRef.current.style.imageRendering !== undefined) {
          transformRef.current.style.imageRendering = scale > 2 ? 'pixelated' : 'auto';
       }
+      forceUpdate({});
     }
   };
 
@@ -1408,13 +1432,50 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             )}
         </div>
         
-        <div className="absolute top-4 right-4 bg-black/50 text-white text-xs px-2 py-1 rounded pointer-events-none flex gap-2">
+        <div className="absolute top-4 right-4 bg-black/50 text-white text-xs px-2 py-1 rounded pointer-events-none flex gap-2 z-[120]">
             <span>{Math.round(transform.current.scale * 100)}%</span>
             <span>{Math.round(transform.current.rotation)}°</span>
             {tool === 'select' && <span>Select Mode</span>}
             {tool === 'wand' && <span>Wand Mode</span>}
             {tool === 'text' && <span>Text Mode</span>}
         </div>
+
+        {/* Pan Sliders */}
+        {deviceType !== 'mobile' && (
+          <>
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 flex items-center gap-2 bg-black/30 backdrop-blur-sm p-2 rounded-full z-[120]">
+                <span className="text-[10px] text-white/50 font-bold uppercase tracking-wider">X</span>
+                <input 
+                    type="range" 
+                    min="-2000" 
+                    max="2000" 
+                    step="1"
+                    value={transform.current.x}
+                    onChange={(e) => {
+                        transform.current.x = parseInt(e.target.value);
+                        updateTransformStyle();
+                    }}
+                    className="flex-1 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-[var(--accent-color)]"
+                />
+            </div>
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 h-1/2 flex flex-col items-center gap-2 bg-black/30 backdrop-blur-sm p-2 rounded-full z-[120]">
+                <span className="text-[10px] text-white/50 font-bold uppercase tracking-wider">Y</span>
+                <input 
+                    type="range" 
+                    min="-2000" 
+                    max="2000" 
+                    step="1"
+                    value={transform.current.y}
+                    onChange={(e) => {
+                        transform.current.y = parseInt(e.target.value);
+                        updateTransformStyle();
+                    }}
+                    className="h-full w-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-[var(--accent-color)] [writing-mode:vertical-lr] direction-rtl"
+                    style={{ WebkitAppearance: 'slider-vertical' } as any}
+                />
+            </div>
+          </>
+        )}
     </div>
   );
 });
