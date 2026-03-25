@@ -1416,6 +1416,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     value={textInput.value}
                     onChange={(e) => setTextInput({ ...textInput, value: e.target.value })}
                     onKeyDown={(e) => { if(e.key === 'Enter') commitText(); }}
+                    onPointerDown={(e) => e.stopPropagation()}
                     className="absolute z-[100] bg-transparent border-none outline-none p-0 m-0"
                     style={{ 
                         left: textInput.x, 
@@ -1443,7 +1444,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         {/* Pan Sliders */}
         {deviceType !== 'mobile' && (
           <>
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 flex items-center gap-2 bg-black/30 backdrop-blur-sm p-2 rounded-full z-[120]">
+            <div 
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 flex items-center gap-2 bg-black/30 backdrop-blur-sm p-2 rounded-full z-[120]"
+                onPointerDown={(e) => e.stopPropagation()}
+            >
                 <span className="text-[10px] text-white/50 font-bold uppercase tracking-wider">X</span>
                 <input 
                     type="range" 
@@ -1458,7 +1462,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     className="flex-1 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-[var(--accent-color)]"
                 />
             </div>
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 h-1/2 flex flex-col items-center gap-2 bg-black/30 backdrop-blur-sm p-2 rounded-full z-[120]">
+            <div 
+                className="absolute right-4 top-1/2 -translate-y-1/2 h-1/2 flex flex-col items-center gap-2 bg-black/30 backdrop-blur-sm p-2 rounded-full z-[120]"
+                onPointerDown={(e) => e.stopPropagation()}
+            >
                 <span className="text-[10px] text-white/50 font-bold uppercase tracking-wider">Y</span>
                 <input 
                     type="range" 
