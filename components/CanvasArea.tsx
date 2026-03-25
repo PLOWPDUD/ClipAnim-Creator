@@ -420,6 +420,15 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isPlaying || !currentFrame) return;
     
+    // Prevent default browser behavior for touch to ensure multi-touch works correctly in WebViews
+    if (e.pointerType === 'touch') {
+        // Only prevent default if we're not interacting with UI elements
+        const target = e.target as HTMLElement;
+        if (target === activeCanvasRef.current || target === containerRef.current) {
+            e.preventDefault(); 
+        }
+    }
+    
     e.currentTarget.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -648,6 +657,28 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const handlePointerMove = (e: React.PointerEvent) => {
     if (isPlaying) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (e.pointerType === 'touch' && pointers.current.size >= 2) {
+        e.preventDefault();
+    }
+
+    // Safety net for multi-touch gestures that might have missed pointerdown or are in buggy WebViews
+    if (pointers.current.size >= 2 && !isGesture.current) {
+        isGesture.current = true;
+        isDrawing.current = false;
+        const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
+        initialPinchDistance.current = getDistance(points[0], points[1]);
+        initialAngle.current = getAngle(points[0], points[1]);
+        startRotation.current = transform.current.rotation;
+        lastPanPoint.current = getCenter(points[0], points[1]);
+        
+        // If we were drawing, we should probably clear the current path to avoid a "dot" or "line" from the start of the pinch
+        const ctx = isDrawingOnSelectionRef.current ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
+        if (ctx && !hasMoved.current) {
+            // Re-render the frame to clear any accidental marks
+            forceUpdate({});
+        }
+    }
 
     if (isGesture.current) {
         if (e.pointerType === 'mouse' && e.buttons === 2) {
