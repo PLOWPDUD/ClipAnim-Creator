@@ -1657,6 +1657,7 @@ export default function App() {
           setTool('select');
           setIsSelectingForBackpack(true);
         }}
+        onImportItems={setBackpackItems}
       />
 
       <SettingsModal 

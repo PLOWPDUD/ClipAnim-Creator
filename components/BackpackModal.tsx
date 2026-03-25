@@ -10,6 +10,7 @@ interface BackpackModalProps {
   onDeleteItem: (id: string) => void;
   onUpdateItem: (id: string, name: string) => void;
   onStartSelecting: () => void;
+  onImportItems: (items: BackpackItem[]) => void;
 }
 
 export const BackpackModal: React.FC<BackpackModalProps> = ({
@@ -19,11 +20,13 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
   onSelectItem,
   onDeleteItem,
   onUpdateItem,
-  onStartSelecting
+  onStartSelecting,
+  onImportItems
 }) => {
   const [isDeleteMode, setIsDeleteMode] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
@@ -38,6 +41,49 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
     setEditingItemId(null);
   };
 
+  const handleExport = () => {
+    const dataStr = JSON.stringify(items, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `clipanim-backpack-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const importedItems = JSON.parse(event.target?.result as string);
+        if (Array.isArray(importedItems)) {
+          // Basic validation: check if items have required properties
+          const validItems = importedItems.filter(item => item.id && item.dataUrl);
+          if (validItems.length > 0) {
+            if (confirm(`Import ${validItems.length} items? This will add them to your current backpack.`)) {
+              onImportItems([...items, ...validItems]);
+            }
+          } else {
+            alert('No valid items found in the JSON file.');
+          }
+        } else {
+          alert('Invalid JSON format. Expected an array of items.');
+        }
+      } catch (error) {
+        console.error('Import error:', error);
+        alert('Failed to parse JSON file.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-[#1e1e1e] rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[80vh] border border-gray-700 animate-in fade-in zoom-in-95">
@@ -47,6 +93,29 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
             Backpack
           </h2>
           <div className="flex items-center gap-2">
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleImport} 
+              accept=".json" 
+              className="hidden" 
+            />
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg transition-colors"
+              title="Import JSON"
+            >
+              <Icons.Upload size={18} />
+            </button>
+            <button 
+              onClick={handleExport}
+              disabled={items.length === 0}
+              className={`p-2 rounded-lg transition-colors ${items.length === 0 ? 'bg-gray-800/50 text-gray-600 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white'}`}
+              title="Export JSON"
+            >
+              <Icons.Download size={18} />
+            </button>
+            <div className="w-px h-6 bg-gray-700 mx-1" />
             {items.length > 0 && (
               <button 
                 onClick={() => setIsDeleteMode(!isDeleteMode)} 
