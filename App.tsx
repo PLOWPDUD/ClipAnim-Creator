@@ -1406,8 +1406,21 @@ export default function App() {
                       <Icons.ZoomIn size={20} />
                     </button>
                     <button onClick={() => importIntoSelectionRef.current?.click()} disabled={!selection} className={`p-2 rounded-full ${selection ? 'text-gray-400 hover:text-white' : 'text-gray-600'}`} title="Import into Selection"><Icons.Image size={20} /></button>
-                    <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white"><Icons.Copy size={20} /></button>
-                    <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white"><Icons.Clipboard size={20} /></button>
+                    <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white" title="Copy"><Icons.Copy size={20} /></button>
+                    <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white" title="Paste"><Icons.Clipboard size={20} /></button>
+                    <button 
+                      onClick={() => {
+                        if (selection) {
+                          setSelection(null);
+                          setHasUnsavedChanges(true);
+                        }
+                      }} 
+                      disabled={!selection} 
+                      className={`p-2 rounded-full ${selection ? 'text-red-400 hover:text-red-300' : 'text-gray-600'}`} 
+                      title="Delete Selection"
+                    >
+                      <Icons.Trash2 size={20} />
+                    </button>
                 </div>
                 <div className="flex items-center space-x-2">
                     <button onClick={() => setIsBackpackOpen(true)} className={`p-2 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title="Backpack"><Icons.Briefcase size={20} /></button>
