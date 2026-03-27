@@ -237,15 +237,13 @@ export const magicWandSelect = (
   const data = imageData.data;
   
   const targetColor = getPixel(data, startX, startY, width);
-  
-  // If clicking on transparent pixel, do nothing
-  if (targetColor.a === 0) return null;
 
   const queue: [number, number][] = [[startX, startY]];
   const visited = new Uint8Array(width * height);
   const selectedPixels: [number, number][] = [];
   
   let minX = width, minY = height, maxX = 0, maxY = 0;
+  let touchesEdge = false;
 
   visited[startY * width + startX] = 1;
 
@@ -257,6 +255,10 @@ export const magicWandSelect = (
     if (x > maxX) maxX = x;
     if (y < minY) minY = y;
     if (y > maxY) maxY = y;
+
+    if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
+      touchesEdge = true;
+    }
 
     // Check neighbors
     const neighbors = [
@@ -275,6 +277,12 @@ export const magicWandSelect = (
         }
       }
     }
+  }
+
+  // If selecting transparent/empty space and it touches the canvas edge, 
+  // it means it's not fully enclosed by an outline.
+  if (targetColor.a === 0 && touchesEdge) {
+    return null;
   }
 
   if (selectedPixels.length === 0) return null;
@@ -371,6 +379,8 @@ function setPixel(data: Uint8ClampedArray, x: number, y: number, width: number, 
 }
 
 function colorsMatch(c1: { r: number, g: number, b: number, a: number }, c2: { r: number, g: number, b: number, a: number }, tolerance: number = 0) {
+  if (c1.a === 0 && c2.a === 0) return true;
+
   if (tolerance === 0) {
     return c1.r === c2.r && c1.g === c2.g && c1.b === c2.b && c1.a === c2.a;
   }

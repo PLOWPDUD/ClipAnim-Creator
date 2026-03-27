@@ -43,19 +43,60 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const handleShare = async () => {
     if (!exportedFile) return;
+
+    // 1. Try Median.co / GoNative Bridge (for Android/iOS native apps)
+    const median = (window as any).median || (window as any).gonative;
+    if (median?.share?.file) {
+      try {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64data = reader.result as string;
+          // Median expects base64 string without the data:mime;base64, prefix
+          const base64 = base64data.split(',')[1];
+          median.share.file({
+            base64: base64,
+            filename: exportedFile.name
+          });
+        };
+        reader.readAsDataURL(exportedFile.blob);
+        return;
+      } catch (e) {
+        console.error("Median share failed:", e);
+      }
+    }
+
+    // 2. Try Web Share API
     try {
       if (navigator.share) {
         const file = new File([exportedFile.blob], exportedFile.name, { type: exportedFile.blob.type });
-        await navigator.share({
-          title: projectName,
-          text: 'Check out my animation created with ClipAnim!',
-          files: [file]
-        });
+        
+        // Check if sharing files is supported specifically
+        const canShareFiles = (navigator as any).canShare && (navigator as any).canShare({ files: [file] });
+        
+        if (canShareFiles) {
+          await navigator.share({
+            title: projectName,
+            text: 'Check out my animation created with ClipAnim!',
+            files: [file]
+          });
+        } else {
+          // Fallback to sharing just text/url if files aren't supported but share API exists
+          await navigator.share({
+            title: projectName,
+            text: `Check out my animation "${projectName}" created with ClipAnim!`,
+            url: window.location.href
+          });
+        }
       } else {
         alert("Sharing is not supported on this browser. Please download the file instead.");
       }
     } catch (e) {
+      // Don't alert on user cancellation
+      if ((e as Error).name === 'AbortError' || (e as Error).name === 'NotAllowedError') {
+        return;
+      }
       console.error("Share failed:", e);
+      alert("Sharing failed. Please download the file instead.");
     }
   };
 

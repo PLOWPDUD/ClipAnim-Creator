@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Frame } from '../types';
 import { Icons } from '../Icons';
+import JSZip from 'jszip';
 
 interface FrameManagerModalProps {
   isOpen: boolean;
@@ -19,6 +20,7 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
 }) => {
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -55,7 +57,56 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
     if (selectedIndices.size === 0) return;
     onDuplicateFrames(Array.from(selectedIndices));
     setSelectedIndices(new Set());
-    onClose(); // Optional: close after action or stay open? Let's stay open usually, but for duplication usually you want to go back to edit. Let's keep it open for now to see result.
+    onClose(); 
+  };
+
+  const handleExport = async () => {
+    if (selectedIndices.size === 0) return;
+    setIsExporting(true);
+
+    try {
+      const indices = Array.from(selectedIndices).sort((a, b) => a - b);
+      
+      if (indices.length === 1) {
+        // Single frame export
+        const index = indices[0];
+        const frame = frames[index];
+        const dataUrl = frame.thumbnailUrl;
+        if (!dataUrl) throw new Error("Frame data not found");
+
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = `frame_${index + 1}.png`;
+        link.click();
+      } else {
+        // Multi frame export (ZIP)
+        const zip = new JSZip();
+        const folder = zip.folder("frames");
+        
+        for (let i = 0; i < indices.length; i++) {
+          const index = indices[i];
+          const frame = frames[index];
+          const dataUrl = frame.thumbnailUrl;
+          if (dataUrl) {
+            const base64Data = dataUrl.split(',')[1];
+            folder?.file(`frame_${index + 1}.png`, base64Data, { base64: true });
+          }
+        }
+
+        const content = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(content);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = "frames_export.zip";
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error("Export failed:", error);
+      alert("Failed to export frames. Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -86,6 +137,14 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
              </button>
 
              <div className="flex gap-2">
+                 <button 
+                    onClick={handleExport}
+                    disabled={selectedIndices.size === 0 || isExporting}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors ${selectedIndices.size > 0 && !isExporting ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-gray-800 text-gray-600 cursor-not-allowed'}`}
+                 >
+                    {isExporting ? <Icons.Loader2 size={16} className="animate-spin" /> : <Icons.Download size={16} />}
+                    Export ({selectedIndices.size})
+                 </button>
                  <button 
                     onClick={handleDuplicate}
                     disabled={selectedIndices.size === 0}
