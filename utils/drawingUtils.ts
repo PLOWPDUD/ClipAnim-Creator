@@ -53,7 +53,8 @@ export const compositeLayers = async (
   width: number = 800, 
   height: number = 600,
   backgroundColor: string = '#ffffff',
-  backgroundImage?: string | null
+  backgroundImage?: string | null,
+  includeBackground: boolean = true
 ): Promise<string> => {
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -62,25 +63,29 @@ export const compositeLayers = async (
   if (!ctx) return '';
 
   // 1. Draw Background Image (if exists) or Color
-  if (backgroundImage) {
-     // If we have a background image, draw it to fill the canvas
-     await new Promise<void>((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-             ctx.drawImage(img, 0, 0, width, height);
-             resolve();
-        };
-        img.onerror = () => resolve();
-        img.src = backgroundImage;
-     });
+  if (includeBackground) {
+    if (backgroundImage) {
+       // If we have a background image, draw it to fill the canvas
+       await new Promise<void>((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+               ctx.drawImage(img, 0, 0, width, height);
+               resolve();
+          };
+          img.onerror = () => resolve();
+          img.src = backgroundImage;
+       });
+    } else {
+        // Fallback to background color
+        if (backgroundColor === 'transparent') {
+          ctx.clearRect(0, 0, width, height);
+        } else {
+          ctx.fillStyle = backgroundColor;
+          ctx.fillRect(0, 0, width, height);
+        }
+    }
   } else {
-      // Fallback to background color
-      if (backgroundColor === 'transparent') {
-        ctx.clearRect(0, 0, width, height);
-      } else {
-        ctx.fillStyle = backgroundColor;
-        ctx.fillRect(0, 0, width, height);
-      }
+    ctx.clearRect(0, 0, width, height);
   }
 
   // Draw layers in order
@@ -331,6 +336,72 @@ export const magicWandSelect = (
     scaleY: 1,
     anchorX: selWidth / 2,
     anchorY: selHeight / 2
+  };
+};
+
+export const lassoSelect = (
+  ctx: CanvasRenderingContext2D,
+  points: { x: number; y: number }[]
+): SelectionState | null => {
+  if (points.length < 3) return null;
+
+  let minX = points[0].x;
+  let minY = points[0].y;
+  let maxX = points[0].x;
+  let maxY = points[0].y;
+
+  for (const p of points) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+
+  const width = Math.ceil(maxX - minX);
+  const height = Math.ceil(maxY - minY);
+
+  if (width <= 0 || height <= 0) return null;
+
+  const selectionCanvas = document.createElement('canvas');
+  selectionCanvas.width = width;
+  selectionCanvas.height = height;
+  const sCtx = selectionCanvas.getContext('2d');
+  if (!sCtx) return null;
+
+  sCtx.beginPath();
+  sCtx.moveTo(points[0].x - minX, points[0].y - minY);
+  for (let i = 1; i < points.length; i++) {
+    sCtx.lineTo(points[i].x - minX, points[i].y - minY);
+  }
+  sCtx.closePath();
+  sCtx.clip();
+
+  sCtx.drawImage(ctx.canvas, minX, minY, width, height, 0, 0, width, height);
+
+  const dataUrl = selectionCanvas.toDataURL();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  ctx.closePath();
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fill();
+  ctx.restore();
+
+  return {
+    x: minX,
+    y: minY,
+    width,
+    height,
+    dataUrl,
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+    anchorX: width / 2,
+    anchorY: height / 2,
   };
 };
 

@@ -51,6 +51,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
 
   const shortcutLabels: Record<keyof Shortcuts, string> = {
     selectTool: 'Select Tool',
+    lassoTool: 'Lasso Tool',
     wandTool: 'Wand Tool',
     penTool: 'Pen Tool',
     eraserTool: 'Eraser Tool',

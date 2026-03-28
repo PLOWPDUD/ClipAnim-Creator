@@ -1,5 +1,5 @@
 
-export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'wand' | 'shape' | 'text';
+export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'lasso' | 'wand' | 'shape' | 'text';
 
 export type BrushType = 'pen' | 'marker' | 'highlighter' | 'spray' | 'pixel';
 
@@ -75,6 +75,7 @@ export interface OnionSkinSettings {
 
 export interface Shortcuts {
   selectTool: string;
+  lassoTool: string;
   wandTool: string;
   penTool: string;
   eraserTool: string;

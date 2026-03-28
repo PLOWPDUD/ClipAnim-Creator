@@ -67,7 +67,8 @@ import {
   Briefcase,
   ZoomIn,
   ZoomOut,
-  Smartphone
+  Smartphone,
+  Lasso
 } from 'lucide-react';
 
 export const Icons = {
@@ -141,5 +142,6 @@ export const Icons = {
   Briefcase,
   ZoomIn,
   ZoomOut,
-  Smartphone
+  Smartphone,
+  Lasso
 };

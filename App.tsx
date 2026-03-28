@@ -69,6 +69,7 @@ export default function App() {
   const [shortcuts, setShortcuts] = useState<Shortcuts>(() => {
     const defaultShortcuts: Shortcuts = {
       selectTool: 'v',
+      lassoTool: 'l',
       wandTool: 'w',
       penTool: 'b',
       eraserTool: 'e',
@@ -372,7 +373,7 @@ export default function App() {
                         thumbnailUrl: '' // Will be set below
                     };
                     
-                    frameObj.thumbnailUrl = await compositeLayers(frameObj, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage);
+                    frameObj.thumbnailUrl = await compositeLayers(frameObj, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage, false);
                     return frameObj;
                 }));
 
@@ -645,8 +646,12 @@ export default function App() {
                  const img = new Image();
                  await new Promise<void>((resolve) => { img.onload = () => resolve(); img.src = compositeFrames[i]; });
                  
-                 ctx.fillStyle = '#ffffff';
-                 ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+                 if (backgroundColor !== 'transparent') {
+                    ctx.fillStyle = backgroundColor;
+                    ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+                 } else {
+                    ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
+                 }
                  ctx.drawImage(img, 0, 0);
 
                  const frame = new VideoFrame(canvas, { timestamp: i * 1000000 / fps });
@@ -879,7 +884,7 @@ export default function App() {
       }
   };
 
-  const createNewProject = () => {
+  const createNewProject = async () => {
       clearAudio();
       const pid = crypto.randomUUID();
       setProjectId(pid);
@@ -890,6 +895,7 @@ export default function App() {
       setLayers(defaultL);
       setActiveLayerId(defaultL[0].id);
       const initialFrame = createBlankFrame(defaultL, 800, 600);
+      initialFrame.thumbnailUrl = await compositeLayers(initialFrame, defaultL, 800, 600, '#ffffff', null, false);
       setFrames([initialFrame]);
       setHistory([[initialFrame]]);
       setHistoryIndex(0);
@@ -961,9 +967,17 @@ export default function App() {
             const newId = crypto.randomUUID();
             let thumb = data.thumbnailUrl;
             if (!thumb && data.frames.length > 0) {
-                 thumb = await compositeLayers(data.frames[0], data.layers, data.canvasSize.width, data.canvasSize.height, data.backgroundColor || '#ffffff', data.backgroundImage);
+                 thumb = await compositeLayers(data.frames[0], data.layers, data.canvasSize.width, data.canvasSize.height, data.backgroundColor || '#ffffff', data.backgroundImage, true);
             }
-            const fullData: ProjectData = { ...data, id: newId, lastModified: Date.now(), thumbnailUrl: thumb || '' };
+            // Also ensure all frames have transparent thumbnails if they don't have any
+            const updatedFrames = await Promise.all(data.frames.map(async f => {
+                if (!f.thumbnailUrl) {
+                    return { ...f, thumbnailUrl: await compositeLayers(f, data.layers, data.canvasSize.width, data.canvasSize.height, data.backgroundColor || '#ffffff', data.backgroundImage, false) };
+                }
+                return f;
+            }));
+
+            const fullData: ProjectData = { ...data, id: newId, lastModified: Date.now(), thumbnailUrl: thumb || '', frames: updatedFrames };
             await saveProjectToDB(fullData);
             const updatedList = await getProjectList();
             setSavedProjects(updatedList);
@@ -1135,7 +1149,7 @@ export default function App() {
     const newFrames = [...frames];
     const currentFrame = { ...newFrames[currentFrameIndex] };
     currentFrame.layers = { ...currentFrame.layers, [layerId]: dataUrl };
-    currentFrame.thumbnailUrl = await compositeLayers(currentFrame, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage);
+    currentFrame.thumbnailUrl = await compositeLayers(currentFrame, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage, false);
     newFrames[currentFrameIndex] = currentFrame;
     updateFramesWithHistory(newFrames);
     setHasUnsavedChanges(true);
@@ -1173,7 +1187,7 @@ export default function App() {
 
   const addFrame = async () => {
     const newFrame = createBlankFrame(layers, canvasSize.width, canvasSize.height);
-    newFrame.thumbnailUrl = await compositeLayers(newFrame, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage);
+    newFrame.thumbnailUrl = await compositeLayers(newFrame, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage, false);
     const newFrames = [...frames];
     newFrames.splice(currentFrameIndex + 1, 0, newFrame);
     updateFramesWithHistory(newFrames);
@@ -1252,6 +1266,7 @@ export default function App() {
 
       switch (finalKey) {
         case shortcuts.selectTool: setTool('select'); handled = true; break;
+        case shortcuts.lassoTool: setTool('lasso'); handled = true; break;
         case shortcuts.wandTool: setTool('wand'); handled = true; break;
         case shortcuts.penTool: setTool('pen'); handled = true; break;
         case shortcuts.eraserTool: setTool('eraser'); handled = true; break;

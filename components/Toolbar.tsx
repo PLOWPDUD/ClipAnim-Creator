@@ -163,6 +163,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   const tools: { id: ToolType; icon: React.ElementType; label: string }[] = [
     { id: 'select', icon: Icons.MousePointer2, label: 'Select' },
+    { id: 'lasso', icon: Icons.Lasso, label: 'Lasso' },
     { id: 'wand', icon: Icons.Wand2, label: 'Wand' },
     { id: 'pen', icon: Icons.Pencil, label: 'Brush' },
     { id: 'eraser', icon: Icons.Eraser, label: 'Eraser' },

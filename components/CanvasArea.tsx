@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { motion } from 'motion/react';
 import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings } from '../types';
-import { floodFill, magicWandSelect } from '../utils/drawingUtils';
+import { floodFill, magicWandSelect, lassoSelect } from '../utils/drawingUtils';
 
 export interface CanvasAreaHandle {
   resetView: () => void;
@@ -139,6 +139,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
   const anchorPointRef = useRef<HTMLDivElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
+  const lassoPoints = useRef<{x: number, y: number}[]>([]);
   const latestSelectionState = useRef<SelectionState | null>(null);
 
   const transform = useRef({ scale: 1, x: 0, y: 0, rotation: 0 });
@@ -476,10 +477,13 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         return;
     }
 
-    if (tool === 'select') {
+    if (tool === 'select' || tool === 'lasso') {
         if (selection) onSelectionCommit();
         selectionMode.current = 'create';
         dragStart.current = { x, y };
+        if (tool === 'lasso') {
+            lassoPoints.current = [{ x, y }];
+        }
         setIsCreatingSelection(true);
         isDrawing.current = false;
         return;
@@ -730,10 +734,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         if (dist > 2) hasMoved.current = true;
     }
 
-    if ((tool === 'select' || tool === 'wand') && selectionMode.current) {
+    if ((tool === 'select' || tool === 'lasso' || tool === 'wand') && selectionMode.current) {
         const init = initialSelection.current;
         if (selectionMode.current === 'create' && dragStart.current) {
-            if (marqueeRef.current) {
+            if (tool === 'select' && marqueeRef.current) {
                 const startX = dragStart.current.x;
                 const startY = dragStart.current.y;
                 const width = Math.abs(x - startX);
@@ -745,6 +749,9 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 s.top = `${top}px`;
                 s.width = `${width}px`;
                 s.height = `${height}px`;
+            } else if (tool === 'lasso') {
+                lassoPoints.current = [...lassoPoints.current, { x, y }];
+                forceUpdate({});
             }
         } else if (selectionMode.current === 'rotate' && init) {
             const anchorX = init.x + (init.anchorX ?? init.width / 2);
@@ -1127,7 +1134,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         lastPanPoint.current = null;
     }
 
-    if (tool === 'select' || tool === 'wand') {
+    if (tool === 'select' || tool === 'lasso' || tool === 'wand') {
         if (tool === 'select' && selectionMode.current === 'create' && dragStart.current) {
             const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
             const startX = dragStart.current.x;
@@ -1152,6 +1159,19 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 }
             }
             setIsCreatingSelection(false);
+        } else if (tool === 'lasso' && selectionMode.current === 'create') {
+            if (lassoPoints.current.length > 2) {
+                const ctx = activeCanvasRef.current?.getContext('2d');
+                if (ctx) {
+                    const newSelection = lassoSelect(ctx, lassoPoints.current);
+                    if (newSelection) {
+                        saveCanvas();
+                        onSelectionCreate(newSelection);
+                    }
+                }
+            }
+            setIsCreatingSelection(false);
+            lassoPoints.current = [];
         } else if (selectionMode.current && latestSelectionState.current) {
             onSelectionUpdate(latestSelectionState.current);
         }
@@ -1438,6 +1458,18 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             
             {tool === 'select' && isCreatingSelection && (
                  <div ref={marqueeRef} className="absolute border-2 border-dashed border-red-500 bg-red-500/20 pointer-events-none z-[110]" />
+            )}
+
+            {tool === 'lasso' && isCreatingSelection && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-[110]">
+                    <polyline
+                        points={lassoPoints.current.map(p => `${p.x},${p.y}`).join(' ')}
+                        fill="rgba(255, 59, 48, 0.2)"
+                        stroke="#FF3B30"
+                        strokeWidth="2"
+                        strokeDasharray="4 4"
+                    />
+                </svg>
             )}
 
             {textInput && (
