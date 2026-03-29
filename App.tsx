@@ -14,6 +14,7 @@ import { parseGIF, decompressFrames } from 'gifuct-js';
 import { FrameManagerModal } from './components/FrameManagerModal';
 import { AudioRecorderModal } from './components/AudioRecorderModal';
 import { GlobalSettingsModal } from './components/GlobalSettingsModal';
+import { ChangelogModal } from './components/ChangelogModal';
 import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
 import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB } from './utils/db';
 
@@ -64,6 +65,7 @@ export default function App() {
 
   // Global Settings
   const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
+  const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [accentColor, setAccentColor] = useState('#FF3B30');
   const [uiFont, setUiFont] = useState('ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif');
   const [shortcuts, setShortcuts] = useState<Shortcuts>(() => {
@@ -96,6 +98,16 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('clipanim_shortcuts', JSON.stringify(shortcuts));
   }, [shortcuts]);
+
+  useEffect(() => {
+    const CURRENT_VERSION = '1.0.5';
+    const lastSeenVersion = localStorage.getItem('clipanim_last_seen_version');
+    
+    if (lastSeenVersion !== CURRENT_VERSION) {
+      setIsChangelogOpen(true);
+      localStorage.setItem('clipanim_last_seen_version', CURRENT_VERSION);
+    }
+  }, []);
 
   const [projectId, setProjectId] = useState<string>(crypto.randomUUID());
   const [projectName, setProjectName] = useState('My Animation');
@@ -1381,6 +1393,11 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <ChangelogModal 
+        isOpen={isChangelogOpen} 
+        onClose={() => setIsChangelogOpen(false)} 
+      />
 
       {view === 'menu' ? (
         <div className="flex flex-col h-full p-6 overflow-hidden">
