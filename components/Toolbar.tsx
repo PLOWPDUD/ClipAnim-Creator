@@ -19,6 +19,7 @@ interface ToolbarProps {
   isFocusMode: boolean;
   onToggleFocusMode: () => void;
   onImportImage: (file: File) => void;
+  onImportVideo: (file: File) => void;
   hasSelection: boolean;
   onFlipHorizontal: () => void;
   onFlipVertical: () => void;
@@ -52,6 +53,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   isFocusMode,
   onToggleFocusMode,
   onImportImage,
+  onImportVideo,
   hasSelection,
   onFlipHorizontal,
   onFlipVertical,
@@ -69,6 +71,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onChangeSmoothing
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const [activePopover, setActivePopover] = useState<ToolType | 'color' | null>(null);
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
   const [colorTab, setColorTab] = useState<'wheel' | 'sliders' | 'palette'>('wheel');
@@ -211,6 +214,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             accept="image/*" 
             className="hidden" 
             onChange={(e) => { if(e.target.files?.[0]) onImportImage(e.target.files[0]); if(fileInputRef.current) fileInputRef.current.value=''; }} 
+            />
+
+            {/* Video Import */}
+            <button 
+            onClick={() => videoInputRef.current?.click()}
+            className="p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all shrink-0"
+            title="Import Video"
+            >
+            <Icons.FileVideo size={24} />
+            </button>
+            <input 
+            ref={videoInputRef} 
+            type="file" 
+            accept="video/mp4" 
+            className="hidden" 
+            onChange={(e) => { if(e.target.files?.[0]) onImportVideo(e.target.files[0]); if(videoInputRef.current) videoInputRef.current.value=''; }} 
             />
 
             <div className="w-8 h-px bg-gray-700 my-2 shrink-0" />

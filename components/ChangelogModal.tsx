@@ -11,6 +11,27 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.7',
+    date: '2026-03-29',
+    type: 'major',
+    changes: [
+      'Added Video Import functionality (MP4)',
+      'Trim and cut videos before importing them into your animation',
+      'Automatically extracts frames from the video and adds them to your project'
+    ]
+  },
+  {
+    version: '1.0.6',
+    date: '2026-03-29',
+    type: 'patch',
+    changes: [
+      'Fixed copy-paste bug where original objects would disappear',
+      'Added Cut functionality (Ctrl+X)',
+      'Added keyboard shortcuts for Copy (Ctrl+C) and Paste (Ctrl+V)',
+      'Added Cut/Copy/Paste buttons to the top toolbar'
+    ]
+  },
+  {
     version: '1.0.5',
     date: '2026-03-29',
     type: 'patch',
@@ -41,6 +62,48 @@ const CHANGELOG: ChangelogEntry[] = [
       'Added Frame Manager for bulk frame operations',
       'Improved timeline performance with many frames',
       'Added onion skinning customization'
+    ]
+  },
+  {
+    version: '1.0.2',
+    date: '2026-03-20',
+    type: 'patch',
+    changes: [
+      'Added audio track support for animations',
+      'Implemented MP4 video export functionality',
+      'Improved brush smoothing and pressure sensitivity'
+    ]
+  },
+  {
+    version: '1.0.1',
+    date: '2026-03-15',
+    type: 'patch',
+    changes: [
+      'Added shape tools (Rectangle, Circle, Line)',
+      'Added text tool for adding captions',
+      'Fixed layer opacity rendering bugs'
+    ]
+  },
+  {
+    version: '1.0.0',
+    date: '2026-03-01',
+    type: 'major',
+    changes: [
+      'Initial stable release of ClipAnim Creator',
+      'Added GIF export functionality',
+      'Implemented full layer management system',
+      'Added custom color palettes'
+    ]
+  },
+  {
+    version: 'beta 0.0.1',
+    date: '2026-01-15',
+    type: 'major',
+    changes: [
+      'Initial prototype release',
+      'Basic drawing tools (Pencil, Eraser, Fill)',
+      'Basic timeline and frame management',
+      'Project saving and loading'
     ]
   }
 ];
@@ -96,7 +159,7 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose 
                     <div className={`mt-1 w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 ${
                       index === 0 ? 'bg-blue-500 text-white ring-4 ring-blue-50' : 'bg-gray-100 text-gray-400'
                     }`}>
-                      <span className="text-[10px] font-bold">v{entry.version.split('.')[2]}</span>
+                      <span className="text-[10px] font-bold">v{entry.version.split('.').pop()}</span>
                     </div>
                     <div className="space-y-3 pb-2">
                       <div className="flex items-center gap-2">

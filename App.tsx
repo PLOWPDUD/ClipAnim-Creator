@@ -15,6 +15,7 @@ import { FrameManagerModal } from './components/FrameManagerModal';
 import { AudioRecorderModal } from './components/AudioRecorderModal';
 import { GlobalSettingsModal } from './components/GlobalSettingsModal';
 import { ChangelogModal } from './components/ChangelogModal';
+import { VideoImportModal } from './components/VideoImportModal';
 import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
 import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB } from './utils/db';
 
@@ -66,6 +67,8 @@ export default function App() {
   // Global Settings
   const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
+  const [isVideoImportOpen, setIsVideoImportOpen] = useState(false);
+  const [importingVideoFile, setImportingVideoFile] = useState<File | null>(null);
   const [accentColor, setAccentColor] = useState('#FF3B30');
   const [uiFont, setUiFont] = useState('ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif');
   const [shortcuts, setShortcuts] = useState<Shortcuts>(() => {
@@ -100,7 +103,7 @@ export default function App() {
   }, [shortcuts]);
 
   useEffect(() => {
-    const CURRENT_VERSION = '1.0.5';
+    const CURRENT_VERSION = '1.0.7';
     const lastSeenVersion = localStorage.getItem('clipanim_last_seen_version');
     
     if (lastSeenVersion !== CURRENT_VERSION) {
@@ -439,6 +442,69 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
+  const handleImportVideo = async (extractedFrames: string[], importAudio: boolean, trimStart: number, trimEnd: number) => {
+    const file = importingVideoFile;
+    setIsVideoImportOpen(false);
+    setImportingVideoFile(null);
+    if (extractedFrames.length === 0) return;
+
+    const newFrames = [...frames];
+    const insertedFrames: Frame[] = [];
+
+    for (const frameDataUrl of extractedFrames) {
+      const newFrame = createBlankFrame(layers, canvasSize.width, canvasSize.height);
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasSize.width;
+      canvas.height = canvasSize.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const img = new Image();
+        await new Promise((resolve) => {
+          img.onload = resolve;
+          img.src = frameDataUrl;
+        });
+        
+        const scale = Math.min(canvasSize.width / img.width, canvasSize.height / img.height);
+        const drawWidth = img.width * scale;
+        const drawHeight = img.height * scale;
+        const offsetX = (canvasSize.width - drawWidth) / 2;
+        const offsetY = (canvasSize.height - drawHeight) / 2;
+        
+        ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+        newFrame.layers[activeLayerId] = canvas.toDataURL('image/png');
+      }
+      
+      newFrame.thumbnailUrl = await compositeLayers(newFrame, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage, false);
+      insertedFrames.push(newFrame);
+    }
+
+    newFrames.splice(currentFrameIndex + 1, 0, ...insertedFrames);
+    updateFramesWithHistory(newFrames);
+    setCurrentFrameIndex(currentFrameIndex + 1);
+    setHasUnsavedChanges(true);
+
+    if (importAudio && file) {
+      const url = URL.createObjectURL(file);
+      const id = crypto.randomUUID();
+      const audio = new Audio(url);
+      audio.onloadedmetadata = () => {
+          const newTrack: AudioTrack = {
+              id,
+              url,
+              name: file.name + ' (Audio)',
+              color: COLORS[audioTracks.length % COLORS.length],
+              volume: 1,
+              startTime: (currentFrameIndex + 1) / fps,
+              duration: trimEnd - trimStart,
+              offset: trimStart
+          };
+          audioElementsRef.current.set(id, audio);
+          setAudioTracks(prev => [...prev, newTrack]);
+      };
+    }
+  };
+
   const handleAddAudioTrack = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -587,7 +653,7 @@ export default function App() {
       await drawSelectionOntoCanvas(ctx, selection);
       
       const newDataUrl = canvas.toDataURL();
-      handleUpdateLayer(activeLayerId, newDataUrl);
+      await handleUpdateLayer(activeLayerId, newDataUrl);
       setSelection(null);
   };
 
@@ -1013,8 +1079,18 @@ export default function App() {
   };
 
   const handleCopy = () => { if (selection) setClipboard(selection); };
-  const handlePaste = () => {
+  const handleCut = () => {
+    if (selection) {
+      setClipboard(selection);
+      setSelection(null);
+      setHasUnsavedChanges(true);
+    }
+  };
+  const handlePaste = async () => {
     if (clipboard) {
+      if (selection) {
+        await handleSelectionCommit();
+      }
       const newX = (canvasSize.width - clipboard.width) / 2;
       const newY = (canvasSize.height - clipboard.height) / 2;
       setSelection({ ...clipboard, x: newX, y: newY });
@@ -1352,6 +1428,9 @@ export default function App() {
           break;
         case shortcuts.undo: undo(); handled = true; break;
         case shortcuts.redo: redo(); handled = true; break;
+        case 'Ctrl+c': handleCopy(); handled = true; break;
+        case 'Ctrl+v': handlePaste(); handled = true; break;
+        case 'Ctrl+x': handleCut(); handled = true; break;
       }
 
       if (handled) {
@@ -1399,6 +1478,14 @@ export default function App() {
         onClose={() => setIsChangelogOpen(false)} 
       />
 
+      <VideoImportModal
+        isOpen={isVideoImportOpen}
+        videoFile={importingVideoFile}
+        onClose={() => { setIsVideoImportOpen(false); setImportingVideoFile(null); }}
+        onImport={handleImportVideo}
+        targetFps={fps}
+      />
+
       {view === 'menu' ? (
         <div className="flex flex-col h-full p-6 overflow-hidden">
              <div className="mb-8 flex justify-between items-end">
@@ -1412,6 +1499,13 @@ export default function App() {
                         >
                             <Icons.Settings size={16} />
                             Settings
+                        </button>
+                        <button 
+                            onClick={() => setIsChangelogOpen(true)}
+                            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full transition-colors font-bold text-sm"
+                        >
+                            <Icons.FileJson size={16} />
+                            Changelog
                         </button>
                         <a href="https://github.com/PLOWPDUD/ClipAnim-Creator" target="_blank" rel="noopener noreferrer" className="inline-block text-xs font-bold text-[var(--accent-color)] hover:opacity-80 transition-opacity bg-white/5 px-3 py-1.5 rounded-full border border-[var(--accent-color)]/20">Visit The Open Source Here</a>
                     </div>
@@ -1484,6 +1578,7 @@ export default function App() {
                     </button>
                     <div className="h-6 w-px bg-gray-700 mx-1" />
                     <button onClick={() => importIntoSelectionRef.current?.click()} disabled={!selection} className={`p-2 rounded-full ${selection ? 'text-gray-400 hover:text-white' : 'text-gray-600'}`} title="Import into Selection"><Icons.Image size={20} /></button>
+                    <button onClick={handleCut} disabled={!selection} className="p-2 text-gray-400 hover:text-white" title="Cut"><Icons.Scissors size={20} /></button>
                     <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white" title="Copy"><Icons.Copy size={20} /></button>
                     <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white" title="Paste"><Icons.Clipboard size={20} /></button>
                     <button 
@@ -1528,6 +1623,7 @@ export default function App() {
             isFocusMode={isFocusMode} 
             onToggleFocusMode={() => setIsFocusMode(!isFocusMode)} 
             onImportImage={handleImportImage} 
+            onImportVideo={(file) => { setImportingVideoFile(file); setIsVideoImportOpen(true); }}
             hasSelection={!!selection} 
             onFlipHorizontal={() => setSelection(selection ? {...selection, scaleX: selection.scaleX * -1} : null)} 
             onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)} 
