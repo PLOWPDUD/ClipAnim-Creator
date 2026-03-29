@@ -526,25 +526,20 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     let my = mappedCoords.y;
 
     let didCommit = false;
-    // Auto-commit if clicking outside selection with a drawing tool
-    if (selection && (mx < 0 || mx > selection.width || my < 0 || my > selection.height)) {
-        onSelectionCommit();
-        mx = x;
-        my = y;
-        didCommit = true;
-    }
-
-    isDrawing.current = true;
-    drawStart.current = { x: mx, y: my };
-    lastPoint.current = { x: mx, y: my };
-    points.current = [{ x: mx, y: my }];
     
-    // Re-check selection because it might have been committed above
-    // However, since state updates are async, we need to check if we just committed
-    const isActuallyDrawingOnSelection = selection && !didCommit;
+    const isActuallyDrawingOnSelection = selection && !didCommit && (mx >= 0 && mx <= selection.width && my >= 0 && my <= selection.height);
     isDrawingOnSelectionRef.current = !!isActuallyDrawingOnSelection;
+    
+    const drawX = isActuallyDrawingOnSelection ? mx : x;
+    const drawY = isActuallyDrawingOnSelection ? my : y;
+
     const ctx = isActuallyDrawingOnSelection ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
     if (!ctx) return;
+
+    isDrawing.current = true;
+    drawStart.current = { x: drawX, y: drawY };
+    lastPoint.current = { x: drawX, y: drawY };
+    points.current = [{ x: drawX, y: drawY }];
 
     if (tool === 'fill') {
         floodFill(ctx, Math.floor(mx), Math.floor(my), color, fillOpacity, fillTolerance);
@@ -965,6 +960,9 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         const mx = mappedCoords.x;
         const my = mappedCoords.y;
 
+        const drawX = isDrawingOnSelectionRef.current ? mx : x;
+        const drawY = isDrawingOnSelectionRef.current ? my : y;
+
         const ctx = isDrawingOnSelectionRef.current ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
         if (!ctx) return;
 
@@ -972,8 +970,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             ctx.putImageData(canvasSnapshot.current, 0, 0);
             const startX = drawStart.current.x;
             const startY = drawStart.current.y;
-            const w = mx - startX;
-            const h = my - startY;
+            const w = drawX - startX;
+            const h = drawY - startY;
 
             ctx.beginPath();
             ctx.lineWidth = strokeWidth;
@@ -990,8 +988,9 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 ctx.ellipse(cx, cy, Math.abs(w / 2), Math.abs(h / 2), 0, 0, 2 * Math.PI);
             } else if (shapeType === 'line') {
                 ctx.moveTo(startX, startY);
-                ctx.lineTo(mx, my);
-            } else if (shapeType === 'triangle') {
+                ctx.lineTo(drawX, drawY);
+            }
+ else if (shapeType === 'triangle') {
                 ctx.moveTo(startX + w / 2, startY);
                 ctx.lineTo(startX + w, startY + h);
                 ctx.lineTo(startX, startY + h);
@@ -1053,13 +1052,13 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 const headlen = Math.min(Math.abs(w), Math.abs(h)) * 0.3;
                 const angle = Math.atan2(h, w);
                 ctx.moveTo(startX, startY);
-                ctx.lineTo(mx, my);
-                ctx.lineTo(mx - headlen * Math.cos(angle - Math.PI / 6), my - headlen * Math.sin(angle - Math.PI / 6));
-                ctx.moveTo(mx, my);
-                ctx.lineTo(mx - headlen * Math.cos(angle + Math.PI / 6), my - headlen * Math.sin(angle + Math.PI / 6));
+                ctx.lineTo(drawX, drawY);
+                ctx.lineTo(drawX - headlen * Math.cos(angle - Math.PI / 6), drawY - headlen * Math.sin(angle - Math.PI / 6));
+                ctx.moveTo(drawX, drawY);
+                ctx.lineTo(drawX - headlen * Math.cos(angle + Math.PI / 6), drawY - headlen * Math.sin(angle + Math.PI / 6));
             } else if (shapeType === 'speech-bubble') {
-                const minX = Math.min(startX, mx);
-                const minY = Math.min(startY, my);
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
                 const absW = Math.abs(w);
                 const absH = Math.abs(h);
                 const radius = Math.min(absW, absH) * 0.2;
@@ -1086,8 +1085,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             ctx.stroke();
         } else if (tool === 'pen' && brushType === 'pixel') {
              if (lastPoint.current) {
-                 drawPixelLine(ctx, lastPoint.current.x, lastPoint.current.y, mx, my);
-                 lastPoint.current = { x: mx, y: my };
+                 drawPixelLine(ctx, lastPoint.current.x, lastPoint.current.y, drawX, drawY);
+                 lastPoint.current = { x: drawX, y: drawY };
              }
         } else if (tool === 'pen' && brushType === 'spray') {
              const density = Math.max(1, strokeWidth * 2);
@@ -1095,26 +1094,26 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                  const offsetX = (Math.random() - 0.5) * strokeWidth * 2;
                  const offsetY = (Math.random() - 0.5) * strokeWidth * 2;
                  if (offsetX * offsetX + offsetY * offsetY <= strokeWidth * strokeWidth) {
-                     ctx.fillRect(mx + offsetX, my + offsetY, 1, 1);
+                     ctx.fillRect(drawX + offsetX, drawY + offsetY, 1, 1);
                  }
              }
         } else if (tool === 'pen' || tool === 'eraser') {
             if (smoothing > 0 && tool === 'pen') {
-                points.current.push({ x: mx, y: my });
+                points.current.push({ x: drawX, y: drawY });
                 if (points.current.length === 2) {
-                    ctx.lineTo(mx, my);
+                    ctx.lineTo(drawX, drawY);
                     ctx.stroke();
                 } else if (points.current.length > 2) {
                     const lastPoint = points.current[points.current.length - 2];
                     const midPoint = {
-                        x: (lastPoint.x + mx) / 2,
-                        y: (lastPoint.y + my) / 2
+                        x: (lastPoint.x + drawX) / 2,
+                        y: (lastPoint.y + drawY) / 2
                     };
                     ctx.quadraticCurveTo(lastPoint.x, lastPoint.y, midPoint.x, midPoint.y);
                     ctx.stroke();
                 }
             } else {
-                ctx.lineTo(mx, my);
+                ctx.lineTo(drawX, drawY);
                 ctx.stroke();
             }
         }
@@ -1155,7 +1154,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     tempCtx?.putImageData(imageData, 0, 0);
                     ctx.clearRect(left, top, width, height);
                     saveCanvas(); 
-                    onSelectionCreate({ x: left, y: top, width, height, dataUrl: tempCanvas.toDataURL(), rotation: 0, scaleX: 1, scaleY: 1, anchorX: width / 2, anchorY: height / 2 });
+                    onSelectionCreate({ x: left, y: top, width, height, dataUrl: tempCanvas.toDataURL(), rotation: 0, scaleX: 1, scaleY: 1, anchorX: width / 2, anchorY: height / 2, selectionType: 'rectangle' });
                 }
             }
             setIsCreatingSelection(false);

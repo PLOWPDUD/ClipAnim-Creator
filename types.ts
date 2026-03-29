@@ -56,6 +56,8 @@ export interface SelectionState {
   anchorX?: number; // relative to selection x
   anchorY?: number; // relative to selection y
   type?: 'text' | 'image';
+  selectionType?: 'rectangle' | 'lasso' | 'wand';
+  maskUrl?: string;
   textData?: {
     text: string;
     font: string;

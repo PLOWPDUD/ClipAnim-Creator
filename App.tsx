@@ -1016,37 +1016,78 @@ export default function App() {
     if (!file || !selection) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const maskCanvas = document.createElement('canvas');
-        maskCanvas.width = selection.width;
-        maskCanvas.height = selection.height;
-        const maskCtx = maskCanvas.getContext('2d');
-        if (!maskCtx) return;
-
-        const selectionImg = new Image();
-        selectionImg.onload = () => {
-          maskCtx.drawImage(selectionImg, 0, 0);
-          maskCtx.globalCompositeOperation = 'source-in';
-          
-          const scale = Math.max(selection.width / img.width, selection.height / img.height);
-          const drawWidth = img.width * scale;
-          const drawHeight = img.height * scale;
-          const offsetX = (selection.width - drawWidth) / 2;
-          const offsetY = (selection.height - drawHeight) / 2;
-
-          maskCtx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-
-          setSelection({
-            ...selection,
-            dataUrl: maskCanvas.toDataURL()
-          });
-          setHasUnsavedChanges(true);
-        };
-        selectionImg.src = selection.dataUrl;
+    reader.onload = async (event) => {
+      const result = event.target?.result as string;
+      
+      const loadImage = (src: string): Promise<HTMLImageElement> => {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = (err) => {
+            console.error("Failed to load image:", src.substring(0, 50) + "...");
+            reject(err);
+          };
+          img.src = src;
+        });
       };
-      img.src = event.target?.result as string;
+
+      try {
+        const [importedImg, maskImg] = await Promise.all([
+          loadImage(result),
+          loadImage(selection.dataUrl)
+        ]);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = selection.width;
+        canvas.height = selection.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // 1. Draw the imported image first (scaled to cover)
+        const scale = Math.max(selection.width / importedImg.width, selection.height / importedImg.height);
+        const drawWidth = importedImg.width * scale;
+        const drawHeight = importedImg.height * scale;
+        const offsetX = (selection.width - drawWidth) / 2;
+        const offsetY = (selection.height - drawHeight) / 2;
+
+        ctx.drawImage(importedImg, offsetX, offsetY, drawWidth, drawHeight);
+
+        // 2. Load the mask image
+        let maskImgToUse: HTMLImageElement | HTMLCanvasElement = maskImg;
+        
+        if (selection.selectionType === 'rectangle') {
+          const maskCanvas = document.createElement('canvas');
+          maskCanvas.width = selection.width;
+          maskCanvas.height = selection.height;
+          const maskCtx = maskCanvas.getContext('2d');
+          if (maskCtx) {
+            maskCtx.fillStyle = '#000';
+            maskCtx.fillRect(0, 0, selection.width, selection.height);
+          }
+          maskImgToUse = maskCanvas;
+        } else if (selection.maskUrl) {
+          try {
+            maskImgToUse = await loadImage(selection.maskUrl);
+          } catch (e) {
+            console.warn("Failed to load maskUrl, falling back to dataUrl", e);
+          }
+        }
+
+        // 3. Apply the mask using destination-in
+        // This keeps the imported image only where the mask is opaque
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.drawImage(maskImgToUse, 0, 0, selection.width, selection.height);
+
+        const newDataUrl = canvas.toDataURL();
+
+        setSelection({
+          ...selection,
+          dataUrl: newDataUrl
+        });
+        setHasUnsavedChanges(true);
+      } catch (err) {
+        console.error("Error importing into selection:", err);
+      }
     };
     reader.readAsDataURL(file);
     if (importIntoSelectionRef.current) importIntoSelectionRef.current.value = '';
@@ -1420,6 +1461,7 @@ export default function App() {
                     >
                       <Icons.ZoomIn size={20} />
                     </button>
+                    <div className="h-6 w-px bg-gray-700 mx-1" />
                     <button onClick={() => importIntoSelectionRef.current?.click()} disabled={!selection} className={`p-2 rounded-full ${selection ? 'text-gray-400 hover:text-white' : 'text-gray-600'}`} title="Import into Selection"><Icons.Image size={20} /></button>
                     <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white" title="Copy"><Icons.Copy size={20} /></button>
                     <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white" title="Paste"><Icons.Clipboard size={20} /></button>

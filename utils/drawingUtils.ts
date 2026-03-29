@@ -325,17 +325,30 @@ export const magicWandSelect = (
   ctx.putImageData(imageData, 0, 0);
   tempCtx.putImageData(selImageData, 0, 0);
 
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = selWidth;
+  maskCanvas.height = selHeight;
+  const maskCtx = maskCanvas.getContext('2d');
+  if (maskCtx) {
+    maskCtx.fillStyle = '#000';
+    for (const [x, y] of selectedPixels) {
+      maskCtx.fillRect(x - minX, y - minY, 1, 1);
+    }
+  }
+
   return {
     x: minX,
     y: minY,
     width: selWidth,
     height: selHeight,
     dataUrl: tempCanvas.toDataURL(),
+    maskUrl: maskCanvas.toDataURL(),
     rotation: 0,
     scaleX: 1,
     scaleY: 1,
     anchorX: selWidth / 2,
-    anchorY: selHeight / 2
+    anchorY: selHeight / 2,
+    selectionType: 'wand'
   };
 };
 
@@ -380,6 +393,21 @@ export const lassoSelect = (
 
   const dataUrl = selectionCanvas.toDataURL();
 
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = width;
+  maskCanvas.height = height;
+  const maskCtx = maskCanvas.getContext('2d');
+  if (maskCtx) {
+    maskCtx.beginPath();
+    maskCtx.moveTo(points[0].x - minX, points[0].y - minY);
+    for (let i = 1; i < points.length; i++) {
+      maskCtx.lineTo(points[i].x - minX, points[i].y - minY);
+    }
+    maskCtx.closePath();
+    maskCtx.fillStyle = '#000';
+    maskCtx.fill();
+  }
+
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
@@ -402,6 +430,8 @@ export const lassoSelect = (
     scaleY: 1,
     anchorX: width / 2,
     anchorY: height / 2,
+    selectionType: 'lasso',
+    maskUrl: maskCanvas.toDataURL(),
   };
 };
 
