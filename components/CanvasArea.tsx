@@ -137,6 +137,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   
   const selectionOverlayRef = useRef<HTMLDivElement>(null);
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
+  const maskImageRef = useRef<HTMLImageElement | null>(null);
   const anchorPointRef = useRef<HTMLDivElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
   const lassoPoints = useRef<{x: number, y: number}[]>([]);
@@ -212,9 +213,27 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                       ctx.drawImage(img, 0, 0, selection.width, selection.height);
                       ctx.restore();
                   };
+                  img.onerror = (e) => {
+                      console.error("Error loading selection image:", e);
+                  };
                   img.src = selection.dataUrl;
               }
           }
+
+          if (selection.maskUrl) {
+              const mImg = new Image();
+              mImg.onload = () => {
+                  maskImageRef.current = mImg;
+              };
+              mImg.onerror = (e) => {
+                  console.error("Error loading selection mask:", e);
+              };
+              mImg.src = selection.maskUrl;
+          } else {
+              maskImageRef.current = null;
+          }
+      } else {
+          maskImageRef.current = null;
       }
   }, [selection]);
 
@@ -558,7 +577,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         if (tool === 'eraser' && isDrawingOnSelectionRef.current) {
             ctx.globalCompositeOperation = 'destination-out';
         } else if (isDrawingOnSelectionRef.current) {
-            ctx.globalCompositeOperation = 'source-atop';
+            ctx.globalCompositeOperation = 'source-over';
         }
         
         if (brushType === 'pixel' && tool === 'pen') {
@@ -977,7 +996,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             ctx.lineWidth = strokeWidth;
             ctx.strokeStyle = color;
             if (selection) {
-                ctx.globalCompositeOperation = 'source-atop';
+                ctx.globalCompositeOperation = 'source-over';
             } else {
                 ctx.globalCompositeOperation = 'source-over';
             }
@@ -1116,6 +1135,13 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 ctx.lineTo(drawX, drawY);
                 ctx.stroke();
             }
+        }
+
+        if (isDrawingOnSelectionRef.current && maskImageRef.current) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-in';
+            ctx.drawImage(maskImageRef.current, 0, 0, ctx.canvas.width, ctx.canvas.height);
+            ctx.restore();
         }
     }
   };

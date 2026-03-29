@@ -1078,7 +1078,11 @@ export default function App() {
         ctx.globalCompositeOperation = 'destination-in';
         ctx.drawImage(maskImgToUse, 0, 0, selection.width, selection.height);
 
-        const newDataUrl = canvas.toDataURL();
+        // 4. Force a small delay to ensure canvas is updated before toDataURL
+        // This can help on some mobile browsers
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        const newDataUrl = canvas.toDataURL('image/png');
 
         setSelection({
           ...selection,
