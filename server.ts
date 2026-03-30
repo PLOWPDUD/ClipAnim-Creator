@@ -1,7 +1,6 @@
 import express, { Request, Response } from 'express';
-import { createServer as createViteServer } from 'vite';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,7 +27,11 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
   try {
     const freesoundUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(query as string)}&token=${apiKey}&fields=id,name,previews,description&page_size=30`;
     
-    const response = await fetch(freesoundUrl);
+    const response = await fetch(freesoundUrl, {
+      headers: {
+        'User-Agent': 'ClipAnimCreator/1.1.0 (https://github.com/your-username/your-repo)'
+      }
+    });
     const data = await response.json();
 
     if (!response.ok) {
@@ -45,19 +48,25 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
 async function startServer() {
   const PORT = parseInt(process.env.PORT || '3000', 10);
 
-  // Vite middleware for development
+  // Vite middleware for development - ONLY load if not on Vercel and in dev mode
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
+    try {
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.error('Failed to load Vite server:', e);
+    }
   } else {
     // In production or on Vercel, serve static files
     const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));
     // For SPA routing
     app.get('*', (_req, res) => {
+      // Check if index.html exists in dist, otherwise it might be a Vercel routing issue
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
