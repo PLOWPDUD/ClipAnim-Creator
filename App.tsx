@@ -167,9 +167,27 @@ export default function App() {
   const [isFrameManagerOpen, setIsFrameManagerOpen] = useState(false);
   const [isAudioRecorderOpen, setIsAudioRecorderOpen] = useState(false);
   const [isSoundLibraryOpen, setIsSoundLibraryOpen] = useState(false);
+  const [savedSounds, setSavedSounds] = useState<{ name: string; url: string }[]>(() => {
+    const saved = localStorage.getItem('clipanim_saved_sounds');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   
+  useEffect(() => {
+    localStorage.setItem('clipanim_saved_sounds', JSON.stringify(savedSounds));
+  }, [savedSounds]);
+
+  const handleToggleSaveSound = (sound: { name: string; url: string }) => {
+    setSavedSounds(prev => {
+      const exists = prev.find(s => s.url === sound.url);
+      if (exists) {
+        return prev.filter(s => s.url !== sound.url);
+      }
+      return [...prev, sound];
+    });
+  };
+
   const frameTimings = useMemo(() => {
     let currentTime = 0;
     return frames.map(f => {
@@ -1914,6 +1932,8 @@ export default function App() {
         isOpen={isSoundLibraryOpen}
         onClose={() => setIsSoundLibraryOpen(false)}
         onSelectSound={handleAddSoundLibraryTrack}
+        savedSounds={savedSounds}
+        onToggleSaveSound={handleToggleSaveSound}
       />
         </div>
       )}

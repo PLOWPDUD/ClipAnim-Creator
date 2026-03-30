@@ -1,9 +1,5 @@
 import express, { Request, Response } from 'express';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -79,7 +75,7 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/test-freesound', async (req, res) => {
+app.get('/api/test-freesound', async (_req, res) => {
   const apiKey = process.env.FREESOUND_API_KEY || process.env.VITE_FREESOUND_API_KEY;
   
   let freesoundPing = 'Not attempted';

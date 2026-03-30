@@ -5,6 +5,8 @@ interface SoundLibraryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectSound: (url: string, name: string) => void;
+  savedSounds: { name: string; url: string }[];
+  onToggleSaveSound: (sound: { name: string; url: string }) => void;
 }
 
 const DEFAULT_SOUNDS = [
@@ -18,11 +20,18 @@ const DEFAULT_SOUNDS = [
   { name: 'Robot Code', url: 'https://actions.google.com/sounds/v1/science_fiction/robot_code.ogg' },
 ];
 
-export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, onClose, onSelectSound }) => {
+export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  onSelectSound,
+  savedSounds,
+  onToggleSaveSound
+}) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ name: string; url: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'search' | 'saved'>('search');
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -30,6 +39,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, on
       setSearchQuery('');
       setSearchResults([]);
       setError(null);
+      setActiveTab('search');
     }
   }, [isOpen]);
 
@@ -135,8 +145,6 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, on
 
   if (!isOpen) return null;
 
-  const soundsToDisplay = searchResults.length > 0 ? searchResults : (searchQuery ? [] : DEFAULT_SOUNDS);
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-[#1e1e1e] rounded-2xl w-full max-w-md shadow-2xl border border-white/10 flex flex-col max-h-[80vh]">
@@ -150,66 +158,142 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, on
           </button>
         </div>
 
-        <div className="p-4 border-b border-white/10">
-          <form onSubmit={handleSearch} className="relative">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search sounds (e.g. cartoon, pop, magic)..."
-              className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-[var(--accent-color)] transition-colors"
-            />
-            <Icons.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <button 
-              type="submit"
-              className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-[var(--accent-color)] text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity"
-            >
-              Search
-            </button>
-          </form>
+        <div className="flex border-b border-white/10">
+          <button 
+            onClick={() => setActiveTab('search')}
+            className={`flex-1 py-3 text-xs font-bold transition-colors ${activeTab === 'search' ? 'text-[var(--accent-color)] border-b-2 border-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`}
+          >
+            Search
+          </button>
+          <button 
+            onClick={() => setActiveTab('saved')}
+            className={`flex-1 py-3 text-xs font-bold transition-colors ${activeTab === 'saved' ? 'text-[var(--accent-color)] border-b-2 border-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`}
+          >
+            Saved ({savedSounds.length})
+          </button>
         </div>
+
+        {activeTab === 'search' && (
+          <div className="p-4 border-b border-white/10">
+            <form onSubmit={handleSearch} className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search sounds (e.g. cartoon, pop, magic)..."
+                className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-[var(--accent-color)] transition-colors"
+              />
+              <Icons.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <button 
+                type="submit"
+                className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-[var(--accent-color)] text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity"
+              >
+                Search
+              </button>
+            </form>
+          </div>
+        )}
         
         <div className="p-4 overflow-y-auto grid grid-cols-2 gap-3 flex-1">
-          {isLoading ? (
-            <div className="col-span-2 py-10 flex flex-col items-center justify-center gap-3 text-gray-400">
-              <div className="w-6 h-6 border-2 border-[var(--accent-color)] border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm">Searching Freesound...</span>
-            </div>
-          ) : error ? (
-            <div className="col-span-2 py-10 text-center text-red-400 text-sm px-4">
-              {error}
-            </div>
-          ) : soundsToDisplay.length === 0 ? (
-            <div className="col-span-2 py-10 text-center text-gray-400 text-sm">
-              No sounds found for "{searchQuery}"
-            </div>
+          {activeTab === 'search' ? (
+            isLoading ? (
+              <div className="col-span-2 py-10 flex flex-col items-center justify-center gap-3 text-gray-400">
+                <div className="w-6 h-6 border-2 border-[var(--accent-color)] border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm">Searching Freesound...</span>
+              </div>
+            ) : error ? (
+              <div className="col-span-2 py-10 text-center text-red-400 text-sm px-4">
+                {error}
+              </div>
+            ) : (searchResults.length > 0 ? searchResults : (searchQuery ? [] : DEFAULT_SOUNDS)).length === 0 ? (
+              <div className="col-span-2 py-10 text-center text-gray-400 text-sm">
+                No sounds found for "{searchQuery}"
+              </div>
+            ) : (
+              (searchResults.length > 0 ? searchResults : (searchQuery ? [] : DEFAULT_SOUNDS)).map((sound, idx) => {
+                const isSaved = savedSounds.some(s => s.url === sound.url);
+                return (
+                  <div key={`${sound.name}-${idx}`} className="bg-black/40 border border-white/5 rounded-xl p-3 flex flex-col gap-3 hover:bg-white/5 transition-colors group">
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="text-xs font-medium text-gray-200 line-clamp-2 leading-tight">{sound.name}</span>
+                      <div className="flex flex-col gap-2 shrink-0">
+                        <button 
+                          onClick={() => playPreview(sound.url)}
+                          className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-[var(--accent-color)] transition-colors"
+                        >
+                          <Icons.Play size={12} className="ml-0.5" />
+                        </button>
+                        <button 
+                          onClick={() => onToggleSaveSound(sound)}
+                          className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${isSaved ? 'bg-[var(--accent-color)] text-white' : 'bg-white/10 text-gray-400 hover:text-white hover:bg-white/20'}`}
+                          title={isSaved ? "Remove from Saved" : "Save to Library"}
+                        >
+                          <Icons.Star size={12} fill={isSaved ? "currentColor" : "none"} />
+                        </button>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        onSelectSound(sound.url, sound.name);
+                        onClose();
+                      }}
+                      className="w-full py-1.5 bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold rounded-lg transition-colors mt-auto"
+                    >
+                      Add to Timeline
+                    </button>
+                  </div>
+                );
+              })
+            )
           ) : (
-            soundsToDisplay.map((sound, idx) => (
-              <div key={`${sound.name}-${idx}`} className="bg-black/40 border border-white/5 rounded-xl p-3 flex flex-col gap-3 hover:bg-white/5 transition-colors group">
-                <div className="flex justify-between items-start gap-2">
-                  <span className="text-xs font-medium text-gray-200 line-clamp-2 leading-tight">{sound.name}</span>
-                  <button 
-                    onClick={() => playPreview(sound.url)}
-                    className="shrink-0 w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-[var(--accent-color)] transition-colors"
-                  >
-                    <Icons.Play size={12} className="ml-0.5" />
-                  </button>
-                </div>
+            savedSounds.length === 0 ? (
+              <div className="col-span-2 py-10 text-center text-gray-400 text-sm flex flex-col items-center gap-2">
+                <Icons.Star size={32} className="opacity-20" />
+                <span>No saved sounds yet.</span>
                 <button 
-                  onClick={() => {
-                    onSelectSound(sound.url, sound.name);
-                    onClose();
-                  }}
-                  className="w-full py-1.5 bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold rounded-lg transition-colors mt-auto"
+                  onClick={() => setActiveTab('search')}
+                  className="text-[var(--accent-color)] hover:underline mt-2"
                 >
-                  Add to Timeline
+                  Go to Search
                 </button>
               </div>
-            ))
+            ) : (
+              savedSounds.map((sound, idx) => (
+                <div key={`saved-${sound.name}-${idx}`} className="bg-black/40 border border-white/5 rounded-xl p-3 flex flex-col gap-3 hover:bg-white/5 transition-colors group">
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="text-xs font-medium text-gray-200 line-clamp-2 leading-tight">{sound.name}</span>
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <button 
+                        onClick={() => playPreview(sound.url)}
+                        className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-[var(--accent-color)] transition-colors"
+                      >
+                        <Icons.Play size={12} className="ml-0.5" />
+                      </button>
+                      <button 
+                        onClick={() => onToggleSaveSound(sound)}
+                        className="w-7 h-7 rounded-full bg-[var(--accent-color)] text-white flex items-center justify-center transition-colors"
+                        title="Remove from Saved"
+                      >
+                        <Icons.Star size={12} fill="currentColor" />
+                      </button>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      onSelectSound(sound.url, sound.name);
+                      onClose();
+                    }}
+                    className="w-full py-1.5 bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold rounded-lg transition-colors mt-auto"
+                  >
+                    Add to Timeline
+                  </button>
+                </div>
+              ))
+            )
           )}
         </div>
 
-        {searchQuery && !isLoading && !error && searchResults.length > 0 && (
+        {activeTab === 'search' && searchQuery && !isLoading && !error && searchResults.length > 0 && (
           <div className="p-2 text-center border-t border-white/10">
             <p className="text-[10px] text-gray-500">
               Results from <a href="https://freesound.org" target="_blank" rel="noopener noreferrer" className="hover:text-white underline">freesound.org</a>
