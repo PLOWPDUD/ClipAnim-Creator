@@ -29,11 +29,14 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
   try {
     const freesoundUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(query as string)}&token=${apiKey}&fields=id,name,previews,description&page_size=30`;
     
-    console.log(`[SoundSearch] Fetching from Freesound...`);
+    console.log(`[SoundSearch] Fetching from Freesound: ${freesoundUrl.replace(apiKey as string, '***')}`);
     
     // Add a timeout to the fetch request
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+    const timeoutId = setTimeout(() => {
+      console.log('[SoundSearch] Server-side timeout triggered');
+      controller.abort();
+    }, 8000); // 8 second timeout
 
     const response = await fetch(freesoundUrl, {
       signal: controller.signal,
@@ -45,7 +48,16 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
     clearTimeout(timeoutId);
     console.log(`[SoundSearch] Freesound responded with status: ${response.status}`);
     
-    const data = await response.json();
+    const text = await response.text();
+    console.log(`[SoundSearch] Raw response length: ${text.length}`);
+    
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error('[SoundSearch] Failed to parse JSON:', text.substring(0, 100));
+      return res.status(500).json({ error: 'Freesound returned invalid JSON' });
+    }
 
     if (!response.ok) {
       return res.status(response.status).json(data);
@@ -55,12 +67,22 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600');
     res.json(data);
   } catch (error: any) {
+    console.error('[SoundSearch] Proxy Error:', error);
     if (error.name === 'AbortError') {
       return res.status(504).json({ error: 'Freesound API timed out' });
     }
-    console.error('Proxy Error:', error);
-    res.status(500).json({ error: 'Failed to fetch from Freesound' });
+    res.status(500).json({ error: `Failed to fetch from Freesound: ${error.message}` });
   }
+});
+
+app.get('/api/test-freesound', (req, res) => {
+  const apiKey = process.env.VITE_FREESOUND_API_KEY || process.env.FREESOUND_API_KEY;
+  res.json({ 
+    hasKey: !!apiKey, 
+    keyLength: apiKey?.length || 0,
+    nodeEnv: process.env.NODE_ENV,
+    isVercel: !!process.env.VERCEL
+  });
 });
 
 async function startServer() {

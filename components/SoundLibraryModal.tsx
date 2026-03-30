@@ -40,17 +40,23 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, on
       return;
     }
 
+    console.log('[SoundLibrary] Starting search for:', searchQuery);
     setIsLoading(true);
     setError(null);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second frontend timeout
+    const timeoutId = setTimeout(() => {
+      console.log('[SoundLibrary] Frontend timeout triggered');
+      controller.abort();
+    }, 15000); // 15 second frontend timeout
 
     try {
       // Call our own server-side proxy instead of Freesound directly to avoid CORS issues
       const url = `/api/search-sounds?query=${encodeURIComponent(searchQuery)}`;
+      console.log('[SoundLibrary] Fetching from:', url);
       
       const response = await fetch(url, { signal: controller.signal });
+      console.log('[SoundLibrary] Response received, status:', response.status);
 
       if (!response.ok) {
         let errorMsg = `Error ${response.status}`;
@@ -64,6 +70,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, on
       }
 
       const data = await response.json();
+      console.log('[SoundLibrary] Data parsed, results count:', data.results?.length || 0);
       clearTimeout(timeoutId);
       
       if (!data.results || data.results.length === 0) {
@@ -89,13 +96,28 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, on
       setSearchResults(results);
     } catch (err: any) {
       clearTimeout(timeoutId);
-      console.error('Search error:', err);
+      console.error('[SoundLibrary] Search error:', err);
+      
+      // Check if API key is missing by calling our test route
+      try {
+        const testRes = await fetch('/api/test-freesound');
+        const testData = await testRes.json();
+        if (!testData.hasKey) {
+          setError('Freesound API key is missing. Please add VITE_FREESOUND_API_KEY to your environment variables in Settings.');
+          setIsLoading(false);
+          return;
+        }
+      } catch (e) {
+        // Ignore test route errors
+      }
+
       if (err.name === 'AbortError') {
-        setError('Search timed out. Please try again or check your internet connection.');
+        setError('Search timed out. The server or Freesound might be slow. Please try again.');
       } else {
-        setError(`Search failed: ${err.message}. Please ensure the API key is set in Settings.`);
+        setError(`Search failed: ${err.message}. Please check your API key in Settings.`);
       }
     } finally {
+      console.log('[SoundLibrary] Search operation complete');
       setIsLoading(false);
     }
   };
