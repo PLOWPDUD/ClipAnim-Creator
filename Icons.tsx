@@ -69,7 +69,8 @@ import {
   ZoomOut,
   Smartphone,
   Lasso,
-  Scissors
+  Scissors,
+  Search
 } from 'lucide-react';
 
 export const Icons = {
@@ -145,5 +146,6 @@ export const Icons = {
   ZoomOut,
   Smartphone,
   Lasso,
-  Scissors
+  Scissors,
+  Search
 };

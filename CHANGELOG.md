@@ -1,0 +1,21 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+## [1.1.0] - 2026-03-30
+
+### Added
+- **Freesound Integration:** Users can now search and add thousands of high-quality sound effects directly from Freesound.org.
+- **Server-Side Proxy:** Implemented a backend proxy server (`server.ts`) to handle API requests securely and bypass browser CORS restrictions.
+- **Vercel Support:** Added `vercel.json` and refactored the server to support seamless deployment on Vercel as a full-stack application.
+- **Sound Library UI:** New modal for searching sounds with real-time previews and "Add to Timeline" functionality.
+
+### Fixed
+- **CORS Errors:** Resolved "Failed to fetch" issues by routing API calls through the backend.
+- **API Key Security:** Moved sensitive API keys to the server-side environment.
+- **Sound Previews:** Improved preview detection to support multiple audio formats (MP3, OGG).
+- **Error Handling:** Added detailed error reporting for API connection and authentication issues.
+
+### Changed
+- Converted project from a client-side SPA to a Full-Stack Express + Vite application.
+- Updated build and dev scripts to support the new server-side architecture.

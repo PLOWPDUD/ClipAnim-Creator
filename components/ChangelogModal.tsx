@@ -11,6 +11,17 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.1.0',
+    date: '2026-03-30',
+    type: 'major',
+    changes: [
+      'Added Freesound Integration: Search and add thousands of high-quality sounds directly from Freesound.org',
+      'Added Server-Side Proxy: Securely handle API requests and bypass browser CORS restrictions',
+      'Added Vercel Support: Seamlessly deploy as a full-stack application with vercel.json configuration',
+      'Improved Sound Previews: Support for multiple audio formats (MP3, OGG) with real-time playback'
+    ]
+  },
+  {
     version: '1.0.9',
     date: '2026-03-30',
     type: 'major',
