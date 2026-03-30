@@ -10,86 +10,107 @@ const app = express();
 // API Route: Freesound Proxy
 app.get('/api/search-sounds', async (req: Request, res: Response) => {
   const { query } = req.query;
-  console.log(`[SoundSearch] Received request for: "${query}"`);
+  console.log(`[SoundSearch] Request for: "${query}"`);
   
-  // Use the Freesound-specific environment variables, NOT the Gemini key
-  const apiKey = process.env.VITE_FREESOUND_API_KEY || process.env.FREESOUND_API_KEY;
+  const apiKey = process.env.FREESOUND_API_KEY || process.env.VITE_FREESOUND_API_KEY;
 
   if (!query) {
     return res.status(400).json({ error: 'Query parameter is required' });
   }
 
   if (!apiKey) {
-    console.error('[SoundSearch] Freesound API Key is missing from environment variables.');
+    console.error('[SoundSearch] API Key missing');
     return res.status(500).json({ 
-      error: 'Freesound API key not configured. Please add VITE_FREESOUND_API_KEY to your environment variables.' 
+      error: 'Freesound API key not configured. Please add FREESOUND_API_KEY to your environment variables.' 
     });
   }
 
   try {
-    const freesoundUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(query as string)}&token=${apiKey}&fields=id,name,previews,description&page_size=30`;
+    // Use Authorization header instead of query param for better security/compatibility
+    const freesoundUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(query as string)}&fields=id,name,previews,description&page_size=30`;
     
-    console.log(`[SoundSearch] Fetching from Freesound: ${freesoundUrl.replace(apiKey as string, '***')}`);
+    console.log(`[SoundSearch] Fetching from Freesound...`);
     
-    // Add a timeout to the fetch request
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      console.log('[SoundSearch] Server-side timeout triggered');
+      console.log('[SoundSearch] Timeout triggered');
       controller.abort();
-    }, 8000); // 8 second timeout
+    }, 9000);
 
-    const response = await fetch(freesoundUrl, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'ClipAnimCreator/1.1.0 (https://github.com/your-username/your-repo)'
-      }
-    });
-    
-    clearTimeout(timeoutId);
-    console.log(`[SoundSearch] Freesound responded with status: ${response.status}`);
-    
-    const text = await response.text();
-    console.log(`[SoundSearch] Raw response length: ${text.length}`);
-    
-    let data;
     try {
-      data = JSON.parse(text);
-    } catch (e) {
-      console.error('[SoundSearch] Failed to parse JSON:', text.substring(0, 100));
-      return res.status(500).json({ error: 'Freesound returned invalid JSON' });
-    }
+      const response = await fetch(freesoundUrl, {
+        signal: controller.signal,
+        headers: {
+          'Authorization': `Token ${apiKey}`,
+          'User-Agent': 'ClipAnimCreator/1.1.0 (https://github.com/your-username/your-repo)'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      console.log(`[SoundSearch] Status: ${response.status}`);
+      
+      const text = await response.text();
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error('[SoundSearch] JSON Parse Error');
+        return res.status(500).json({ error: 'Invalid response from Freesound' });
+      }
 
-    if (!response.ok) {
-      return res.status(response.status).json(data);
-    }
+      if (!response.ok) {
+        console.error('[SoundSearch] Freesound Error:', data);
+        return res.status(response.status).json(data);
+      }
 
-    // Cache the response for 1 hour to improve performance
-    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600');
-    res.json(data);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.json(data);
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      throw fetchError;
+    }
   } catch (error: any) {
-    console.error('[SoundSearch] Proxy Error:', error);
+    console.error('[SoundSearch] Global Error:', error.message);
     if (error.name === 'AbortError') {
       return res.status(504).json({ error: 'Freesound API timed out' });
     }
-    res.status(500).json({ error: `Failed to fetch from Freesound: ${error.message}` });
+    res.status(500).json({ error: `Server Error: ${error.message}` });
   }
 });
 
-app.get('/api/test-freesound', (req, res) => {
-  const apiKey = process.env.VITE_FREESOUND_API_KEY || process.env.FREESOUND_API_KEY;
+app.get('/api/test-freesound', async (req, res) => {
+  const apiKey = process.env.FREESOUND_API_KEY || process.env.VITE_FREESOUND_API_KEY;
+  
+  let freesoundPing = 'Not attempted';
+  if (apiKey) {
+    try {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 3000);
+      const resp = await fetch('https://freesound.org/apiv2/me/', {
+        signal: controller.signal,
+        headers: { 'Authorization': `Token ${apiKey}` }
+      });
+      freesoundPing = `Status ${resp.status}`;
+    } catch (e: any) {
+      freesoundPing = `Error: ${e.message}`;
+    }
+  }
+
   res.json({ 
     hasKey: !!apiKey, 
-    keyLength: apiKey?.length || 0,
-    nodeEnv: process.env.NODE_ENV,
-    isVercel: !!process.env.VERCEL
+    keyPrefix: apiKey ? apiKey.substring(0, 4) + '...' : 'none',
+    freesoundPing,
+    nodeVersion: process.version,
+    env: process.env.NODE_ENV
   });
 });
 
 async function startServer() {
   const PORT = parseInt(process.env.PORT || '3000', 10);
 
-  // Vite middleware for development - ONLY load if not on Vercel and in dev mode
-  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== 'production') {
     try {
       const { createServer: createViteServer } = await import('vite');
       const vite = await createViteServer({
@@ -101,18 +122,18 @@ async function startServer() {
       console.error('Failed to load Vite server:', e);
     }
   } else {
-    // In production or on Vercel, serve static files
-    const distPath = path.join(__dirname, 'dist');
+    // In production, serve static files
+    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     // For SPA routing
-    app.get('*', (_req, res) => {
-      // Check if index.html exists in dist, otherwise it might be a Vercel routing issue
+    app.get('*all', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  // Only listen if not running on Vercel (Vercel handles the serverless execution)
-  if (!process.env.VERCEL) {
+  // Only listen if not in a serverless environment (like Vercel)
+  // Vercel handles the listening part themselves
+  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running at http://localhost:${PORT}`);
     });
