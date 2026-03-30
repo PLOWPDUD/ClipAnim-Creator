@@ -30,10 +30,12 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             <section>
                 <h3 className="text-[#FF3B30] font-bold uppercase tracking-wider text-sm mb-4 border-b border-gray-700 pb-2">Tools</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    <ShortcutItem icon={Icons.Pencil} label="Pen" k="B" />
+                    <ShortcutItem icon={Icons.Pencil} label="Brush" k="B" />
                     <ShortcutItem icon={Icons.Eraser} label="Eraser" k="E" />
-                    <ShortcutItem icon={Icons.PaintBucket} label="Fill" k="F" />
-                    <ShortcutItem icon={Icons.MousePointer2} label="Select" k="S" />
+                    <ShortcutItem icon={Icons.PaintBucket} label="Fill" k="G" />
+                    <ShortcutItem icon={Icons.MousePointer2} label="Select" k="V" />
+                    <ShortcutItem icon={Icons.Lasso} label="Lasso" k="L" />
+                    <ShortcutItem icon={Icons.Wand2} label="Wand" k="W" />
                     <ShortcutItem icon={Icons.Square} label="Shapes" k="U" />
                     <ShortcutItem icon={Icons.Type} label="Text" k="T" />
                 </div>
@@ -72,8 +74,11 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                     <div className="flex gap-3">
                         <div className="p-2 bg-gray-800 rounded-lg h-fit"><Icons.Wand2 size={20} /></div>
                         <div>
-                            <p className="font-bold text-white">Tween Frames</p>
-                            <p className="text-gray-400">Click the magic wand icon (<Icons.Wand2 size={12} className="inline"/>) on a frame in the timeline to automatically generate 3 crossfaded transition frames between it and the next frame.</p>
+                            <p className="font-bold text-white">Magic Wand vs. Tweening</p>
+                            <p className="text-gray-400">
+                                <span className="text-white font-semibold">Toolbar Wand:</span> Used for color-based selection on the canvas. <br/>
+                                <span className="text-white font-semibold">Timeline Wand:</span> Used to automatically generate transition frames (tweening) between keyframes.
+                            </p>
                         </div>
                     </div>
                     <div className="flex gap-3">
@@ -95,6 +100,20 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                         <div>
                             <p className="font-bold text-white">Import/Export Project</p>
                             <p className="text-gray-400">Go to Settings to backup your project as a .JSON file. Use the "Import Project" button on the home screen to restore it.</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-3">
+                        <div className="p-2 bg-gray-800 rounded-lg h-fit"><Icons.FileVideo size={20} /></div>
+                        <div>
+                            <p className="font-bold text-white">Import Video</p>
+                            <p className="text-gray-400">Click the Video icon in the toolbar to import MP4/MOV files. You can extract frames to use as a background or reference for your animation.</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-3">
+                        <div className="p-2 bg-gray-800 rounded-lg h-fit"><Icons.Music size={20} /></div>
+                        <div>
+                            <p className="font-bold text-white">Sound Library</p>
+                            <p className="text-gray-400">Search thousands of free sound effects from Freesound in the "Library" tab. Save your favorites to the "Saved" tab for quick access.</p>
                         </div>
                     </div>
                 </div>
