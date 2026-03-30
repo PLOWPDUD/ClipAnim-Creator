@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType, OnionSkinSettings, Shortcuts, BackpackItem } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
@@ -13,9 +13,11 @@ import gifshot from 'gifshot';
 import { parseGIF, decompressFrames } from 'gifuct-js';
 import { FrameManagerModal } from './components/FrameManagerModal';
 import { AudioRecorderModal } from './components/AudioRecorderModal';
+import { SoundLibraryModal } from './components/SoundLibraryModal';
 import { GlobalSettingsModal } from './components/GlobalSettingsModal';
 import { ChangelogModal } from './components/ChangelogModal';
 import { VideoImportModal } from './components/VideoImportModal';
+import { TweenModal } from './components/TweenModal';
 import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
 import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB } from './utils/db';
 
@@ -103,7 +105,7 @@ export default function App() {
   }, [shortcuts]);
 
   useEffect(() => {
-    const CURRENT_VERSION = '1.0.8';
+    const CURRENT_VERSION = '1.0.9';
     const lastSeenVersion = localStorage.getItem('clipanim_last_seen_version');
     
     if (lastSeenVersion !== CURRENT_VERSION) {
@@ -164,9 +166,20 @@ export default function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isFrameManagerOpen, setIsFrameManagerOpen] = useState(false);
   const [isAudioRecorderOpen, setIsAudioRecorderOpen] = useState(false);
+  const [isSoundLibraryOpen, setIsSoundLibraryOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   
+  const frameTimings = useMemo(() => {
+    let currentTime = 0;
+    return frames.map(f => {
+      const duration = (f.durationMultiplier || 1) / fps;
+      const start = currentTime;
+      currentTime += duration;
+      return { start, duration, end: currentTime };
+    });
+  }, [frames, fps]);
+
   const updateAllThumbnails = async (newBgColor?: string, newBgImage?: string | null) => {
     const bgColor = newBgColor !== undefined ? newBgColor : backgroundColor;
     const bgImage = newBgImage !== undefined ? newBgImage : backgroundImage;
@@ -194,6 +207,7 @@ export default function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportedFile, setExportedFile] = useState<{ url: string, name: string, blob: Blob } | null>(null);
+  const [tweenTargetIndex, setTweenTargetIndex] = useState<number | null>(null);
   const isExportCancelledRef = useRef(false);
 
   const importFileRef = useRef<HTMLInputElement>(null);
@@ -592,6 +606,33 @@ export default function App() {
         setAudioTracks(prev => prev.flatMap(t => t.id === id ? [firstPart, secondPart] : [t]));
         setHasUnsavedChanges(true);
     };
+  };
+
+  const handleAddSoundLibraryTrack = async (url: string, name: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      
+      const audio = new Audio(objectUrl);
+      audio.onloadedmetadata = () => {
+        const newTrack: AudioTrack = {
+          id: crypto.randomUUID(),
+          url: objectUrl,
+          name: name,
+          color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+          volume: 1,
+          startTime: currentFrameIndex / fps,
+          duration: audio.duration,
+          offset: 0
+        };
+        setAudioTracks(prev => [...prev, newTrack]);
+        audioElementsRef.current.set(newTrack.id, audio);
+        setHasUnsavedChanges(true);
+      };
+    } catch (error) {
+      console.error("Error adding sound library track:", error);
+    }
   };
 
   const handleRemoveAudioTrack = (id: string) => {
@@ -1190,21 +1231,23 @@ export default function App() {
     
     if (startTimeRef.current === 0) startTimeRef.current = timestamp;
     let elapsed = (timestamp - startTimeRef.current) / 1000;
-    let targetFrame = Math.floor(elapsed * fps);
-    const totalFrames = frames.length;
+    const totalDuration = frameTimings.length > 0 ? frameTimings[frameTimings.length - 1].end : 0;
 
-    if (targetFrame >= totalFrames) { 
+    if (elapsed >= totalDuration) { 
       if (isLooping) {
         startTimeRef.current = timestamp;
         elapsed = 0;
-        targetFrame = 0;
         setCurrentFrameIndex(0);
       } else {
         setIsPlaying(false); 
         return; 
       }
     }
-    if (targetFrame !== currentFrameIndex) setCurrentFrameIndex(targetFrame);
+
+    const targetFrame = frameTimings.findIndex((t: { start: number, end: number }) => elapsed >= t.start && elapsed < t.end);
+    if (targetFrame !== -1 && targetFrame !== currentFrameIndex) {
+      setCurrentFrameIndex(targetFrame);
+    }
 
     // Audio Sync
     audioTracks.forEach(track => {
@@ -1214,7 +1257,9 @@ export default function App() {
             if (elapsed >= track.startTime && elapsed < trackEndTime) {
                 if (audio.paused) {
                     audio.currentTime = track.offset + (elapsed - track.startTime);
-                    audio.play().catch(console.error);
+                    audio.play().catch(e => {
+                        if (e.name !== 'AbortError') console.error(e);
+                    });
                 } else {
                     const expectedTime = track.offset + (elapsed - track.startTime);
                     if (Math.abs(audio.currentTime - expectedTime) > 0.15) {
@@ -1232,14 +1277,16 @@ export default function App() {
 
   useEffect(() => {
     if (isPlaying) {
-      const startTime = currentFrameIndex / fps;
+      const startTime = frameTimings[currentFrameIndex]?.start || 0;
       audioTracks.forEach(track => {
           const audio = audioElementsRef.current.get(track.id);
           if (audio) { 
               const trackEndTime = track.startTime + track.duration;
               if (startTime >= track.startTime && startTime < trackEndTime) {
                   audio.currentTime = track.offset + (startTime - track.startTime);
-                  audio.play().catch(console.error);
+                  audio.play().catch(e => {
+                      if (e.name !== 'AbortError') console.error(e);
+                  });
               } else {
                   audio.pause();
               }
@@ -1268,7 +1315,9 @@ export default function App() {
                 if (time >= track.startTime && time < trackEndTime) {
                     audio.currentTime = track.offset + (time - track.startTime);
                     if (isPlaying && audio.paused) {
-                        audio.play().catch(console.error);
+                        audio.play().catch(e => {
+                            if (e.name !== 'AbortError') console.error(e);
+                        });
                     }
                 } else {
                     if (!audio.paused) audio.pause();
@@ -1344,6 +1393,143 @@ export default function App() {
     setHasUnsavedChanges(true);
   };
 
+  const tweenFrame = (index: number) => {
+    if (index >= frames.length - 1) return; // Cannot tween the last frame
+    setTweenTargetIndex(index);
+  };
+
+  const executeTween = async (index: number, numTweens: number, easing: string = 'linear') => {
+    if (index >= frames.length - 1) return; // Cannot tween the last frame
+    
+    const frameA = frames[index];
+    const frameB = frames[index + 1];
+    
+    const newFrames = [...frames];
+    const generatedFrames: Frame[] = [];
+
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasSize.width;
+    canvas.height = canvasSize.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const getEasingProgress = (t: number, type: string) => {
+      switch (type) {
+        case 'ease-in': return t * t;
+        case 'ease-out': return t * (2 - t);
+        case 'ease-in-out': return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        default: return t; // linear
+      }
+    };
+
+    const getBoundingBox = (img: HTMLImageElement, width: number, height: number) => {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+      if (!tempCtx) return null;
+      tempCtx.drawImage(img, 0, 0);
+      const imageData = tempCtx.getImageData(0, 0, width, height);
+      const data = imageData.data;
+      let minX = width, minY = height, maxX = -1, maxY = -1;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const alpha = data[(y * width + x) * 4 + 3];
+          if (alpha > 0) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      if (minX > maxX || minY > maxY) return null;
+      return { x: minX, y: minY, w: Math.max(1, maxX - minX + 1), h: Math.max(1, maxY - minY + 1) };
+    };
+
+    const layerData: Record<string, { imgA: HTMLImageElement | null, imgB: HTMLImageElement | null, boxA: any, boxB: any }> = {};
+
+    for (const layer of layers) {
+      let imgA: HTMLImageElement | null = null;
+      let imgB: HTMLImageElement | null = null;
+      let boxA = null;
+      let boxB = null;
+
+      if (frameA.layers[layer.id]) {
+        imgA = new Image();
+        imgA.src = frameA.layers[layer.id];
+        await new Promise(resolve => { imgA!.onload = resolve; });
+        boxA = getBoundingBox(imgA, canvasSize.width, canvasSize.height);
+      }
+
+      if (frameB.layers[layer.id]) {
+        imgB = new Image();
+        imgB.src = frameB.layers[layer.id];
+        await new Promise(resolve => { imgB!.onload = resolve; });
+        boxB = getBoundingBox(imgB, canvasSize.width, canvasSize.height);
+      }
+
+      layerData[layer.id] = { imgA, imgB, boxA, boxB };
+    }
+
+    for (let i = 1; i <= numTweens; i++) {
+      const t = i / (numTweens + 1);
+      const progress = getEasingProgress(t, easing);
+      const newLayers: Record<string, string> = {};
+
+      for (const layer of layers) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const { imgA, imgB, boxA, boxB } = layerData[layer.id];
+
+        if (imgA && imgB && boxA && boxB) {
+          const boxI = {
+            x: boxA.x + (boxB.x - boxA.x) * progress,
+            y: boxA.y + (boxB.y - boxA.y) * progress,
+            w: boxA.w + (boxB.w - boxA.w) * progress,
+            h: boxA.h + (boxB.h - boxA.h) * progress,
+          };
+
+          ctx.globalAlpha = 1.0;
+          if (progress < 0.5) {
+            const scaleXA = boxI.w / boxA.w;
+            const scaleYA = boxI.h / boxA.h;
+            ctx.setTransform(scaleXA, 0, 0, scaleYA, boxI.x - boxA.x * scaleXA, boxI.y - boxA.y * scaleYA);
+            ctx.drawImage(imgA, 0, 0);
+          } else {
+            const scaleXB = boxI.w / boxB.w;
+            const scaleYB = boxI.h / boxB.h;
+            ctx.setTransform(scaleXB, 0, 0, scaleYB, boxI.x - boxB.x * scaleXB, boxI.y - boxB.y * scaleYB);
+            ctx.drawImage(imgB, 0, 0);
+          }
+
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+        } else {
+          ctx.globalAlpha = 1.0;
+          if (progress < 0.5 && imgA) {
+            ctx.drawImage(imgA, 0, 0);
+          } else if (progress >= 0.5 && imgB) {
+            ctx.drawImage(imgB, 0, 0);
+          }
+        }
+
+        ctx.globalAlpha = 1.0;
+        newLayers[layer.id] = canvas.toDataURL();
+      }
+
+      generatedFrames.push({
+        id: crypto.randomUUID(),
+        layers: newLayers,
+        durationMultiplier: 1
+      });
+    }
+
+    newFrames.splice(index + 1, 0, ...generatedFrames);
+    updateFramesWithHistory(newFrames);
+    setCurrentFrameIndex(index + numTweens + 1);
+    setHasUnsavedChanges(true);
+  };
+
   // Bulk operations
   const handleBulkDeleteFrames = (indices: number[]) => {
       // If deleting all, keep one blank frame
@@ -1379,6 +1565,13 @@ export default function App() {
   const handleReorderFrames = (newFrames: Frame[]) => {
       updateFramesWithHistory(newFrames);
       setHasUnsavedChanges(true);
+  };
+
+  const handleUpdateFrameDuration = (index: number, multiplier: number) => {
+    const newFrames = [...frames];
+    newFrames[index] = { ...newFrames[index], durationMultiplier: multiplier };
+    updateFramesWithHistory(newFrames);
+    setHasUnsavedChanges(true);
   };
 
   useEffect(() => {
@@ -1678,6 +1871,15 @@ export default function App() {
                 smoothing={smoothing}
                 deviceType={deviceType}
             />
+            <TweenModal
+                isOpen={tweenTargetIndex !== null}
+                onClose={() => setTweenTargetIndex(null)}
+                onGenerate={(numTweens, easing) => {
+                    if (tweenTargetIndex !== null) {
+                        executeTween(tweenTargetIndex, numTweens, easing);
+                    }
+                }}
+            />
             <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
                 <Timeline 
                   frames={frames} 
@@ -1686,6 +1888,7 @@ export default function App() {
                   onAddFrame={addFrame} 
                   onDeleteFrame={deleteFrame} 
                   onCopyFrame={copyFrame} 
+                  onTweenFrame={tweenFrame}
                   isPlaying={isPlaying} 
                   onTogglePlay={() => setIsPlaying(!isPlaying)} 
                   isLooping={isLooping}
@@ -1695,15 +1898,23 @@ export default function App() {
                   onRemoveAudioTrack={handleRemoveAudioTrack} 
                   onUpdateAudioTrack={handleUpdateAudioTrack}
                   onCutAudioTrack={handleCutAudioTrack}
+                  onUpdateFrameDuration={handleUpdateFrameDuration}
                   fps={fps}
                   isFocusMode={isFocusMode} 
                   onOpenFrameManager={() => setIsFrameManagerOpen(true)} 
                   onOpenRecorder={() => setIsAudioRecorderOpen(true)} 
+                  onOpenSoundLibrary={() => setIsSoundLibraryOpen(true)}
                   backgroundColor={backgroundColor}
                 />
             </div>
         </div>
       </main>
+
+      <SoundLibraryModal
+        isOpen={isSoundLibraryOpen}
+        onClose={() => setIsSoundLibraryOpen(false)}
+        onSelectSound={handleAddSoundLibraryTrack}
+      />
         </div>
       )}
 

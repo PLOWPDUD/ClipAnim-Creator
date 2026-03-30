@@ -11,6 +11,17 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.9',
+    date: '2026-03-30',
+    type: 'major',
+    changes: [
+      'Added Frame-Specific Timing: Adjust the "Hold" value to make a frame last longer',
+      'Added Tween Engine: Click the magic wand in the timeline to auto-generate crossfaded inbetweens',
+      'Added Timeline Waveforms: Audio tracks now display visual waveforms',
+      'Added Sound Library: Access a built-in library of sound effects directly from the timeline'
+    ]
+  },
+  {
     version: '1.0.8',
     date: '2026-03-30',
     type: 'minor',

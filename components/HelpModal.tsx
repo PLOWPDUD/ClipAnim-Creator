@@ -70,6 +70,13 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 <h3 className="text-[#FF3B30] font-bold uppercase tracking-wider text-sm mb-4 border-b border-gray-700 pb-2">How To...</h3>
                 <div className="space-y-4 text-sm text-gray-300">
                     <div className="flex gap-3">
+                        <div className="p-2 bg-gray-800 rounded-lg h-fit"><Icons.Wand2 size={20} /></div>
+                        <div>
+                            <p className="font-bold text-white">Tween Frames</p>
+                            <p className="text-gray-400">Click the magic wand icon (<Icons.Wand2 size={12} className="inline"/>) on a frame in the timeline to automatically generate 3 crossfaded transition frames between it and the next frame.</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-3">
                         <div className="p-2 bg-gray-800 rounded-lg h-fit"><Icons.Image size={20} /></div>
                         <div>
                             <p className="font-bold text-white">Import Image</p>

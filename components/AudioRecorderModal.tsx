@@ -139,14 +139,18 @@ export const AudioRecorderModal: React.FC<AudioRecorderModalProps> = ({ isOpen, 
               setIsPlaying(false);
           } else {
               audioPreviewRef.current.src = URL.createObjectURL(audioBlob);
-              audioPreviewRef.current.play();
+              audioPreviewRef.current.play().catch(e => {
+                  if (e.name !== 'AbortError') console.error(e);
+              });
               setIsPlaying(true);
               audioPreviewRef.current.onended = () => setIsPlaying(false);
           }
       } else {
           const audio = new Audio(URL.createObjectURL(audioBlob));
           audioPreviewRef.current = audio;
-          audio.play();
+          audio.play().catch(e => {
+              if (e.name !== 'AbortError') console.error(e);
+          });
           setIsPlaying(true);
           audio.onended = () => setIsPlaying(false);
       }

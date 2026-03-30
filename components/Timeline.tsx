@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Frame, AudioTrack } from '../types';
 import { Icons } from '../Icons';
+import { Waveform } from './Waveform';
 
 interface TimelineProps {
   frames: Frame[];
@@ -9,6 +10,7 @@ interface TimelineProps {
   onAddFrame: () => void;
   onDeleteFrame: (index: number) => void;
   onCopyFrame: (index: number) => void;
+  onTweenFrame: (index: number) => void;
   isPlaying: boolean;
   onTogglePlay: () => void;
   isLooping: boolean;
@@ -18,10 +20,12 @@ interface TimelineProps {
   onRemoveAudioTrack: (id: string) => void;
   onUpdateAudioTrack: (id: string, updates: Partial<AudioTrack>) => void;
   onCutAudioTrack: (id: string, cutTime: number) => void;
+  onUpdateFrameDuration: (index: number, multiplier: number) => void;
   fps: number;
   isFocusMode?: boolean;
   onOpenFrameManager: () => void;
   onOpenRecorder: () => void;
+  onOpenSoundLibrary: () => void;
   backgroundColor: string;
 }
 
@@ -32,6 +36,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   onAddFrame,
   onDeleteFrame,
   onCopyFrame,
+  onTweenFrame,
   isPlaying,
   onTogglePlay,
   isLooping,
@@ -41,10 +46,12 @@ export const Timeline: React.FC<TimelineProps> = ({
   onRemoveAudioTrack,
   onUpdateAudioTrack,
   onCutAudioTrack,
+  onUpdateFrameDuration,
   fps,
   isFocusMode = false,
   onOpenFrameManager,
   onOpenRecorder,
+  onOpenSoundLibrary,
   backgroundColor
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -134,11 +141,26 @@ export const Timeline: React.FC<TimelineProps> = ({
           </button>
 
           <div className="flex items-center space-x-1 bg-black/40 rounded-lg p-1 backdrop-blur-sm">
+                <div className="flex items-center space-x-1 px-2 border-r border-white/10 mr-1">
+                    <span className="text-[10px] text-gray-400 font-bold uppercase">Hold</span>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      max="100" 
+                      value={frames[currentFrameIndex]?.durationMultiplier || 1}
+                      onChange={(e) => onUpdateFrameDuration(currentFrameIndex, parseInt(e.target.value) || 1)}
+                      className="w-10 bg-black/50 text-white text-xs rounded px-1 py-0.5 border border-white/10 text-center"
+                      title="Frame Duration Multiplier (Hold for X frames)"
+                    />
+                </div>
                <button onClick={() => onDeleteFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-gray-300 hover:text-white" disabled={frames.length <= 1}>
                   <Icons.Trash2 size={16} />
                </button>
-               <button onClick={() => onCopyFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-gray-300 hover:text-white">
+               <button onClick={() => onCopyFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-gray-300 hover:text-white" title="Duplicate Frame">
                   <Icons.Copy size={16} />
+               </button>
+               <button onClick={() => onTweenFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-purple-400 hover:text-purple-300" title="Tween to Next Frame">
+                  <Icons.Wand2 size={16} />
                </button>
           </div>
         </div>
@@ -166,6 +188,13 @@ export const Timeline: React.FC<TimelineProps> = ({
             <div className="flex justify-between items-center bg-black/60 backdrop-blur-md p-1 rounded text-xs">
                 <span className="text-gray-200 font-bold uppercase tracking-wider px-2">Audio Layers</span>
                 <div className="flex gap-2">
+                    <button 
+                        onClick={onOpenSoundLibrary}
+                        className="flex items-center space-x-1 text-purple-400 hover:text-purple-300 px-2 border-r border-white/10 pr-3"
+                    >
+                        <Icons.Music size={12} />
+                        <span>Library</span>
+                    </button>
                     <button 
                         onClick={onOpenRecorder}
                         className="flex items-center space-x-1 text-red-400 hover:text-red-300 px-2 border-r border-white/10 pr-3"
@@ -230,12 +259,10 @@ export const Timeline: React.FC<TimelineProps> = ({
                                     }}
                                     onPointerDown={(e) => handleAudioPointerDown(e, track)}
                                 >
-                                    <div className="absolute top-0 left-0 px-1 text-[8px] text-white/60 pointer-events-none">
+                                    <div className="absolute top-0 left-0 px-1 text-[8px] text-white/60 pointer-events-none z-10">
                                         {track.startTime.toFixed(1)}s
                                     </div>
-                                    {Array.from({ length: Math.ceil(track.duration * fps * 2) }).map((_, i) => (
-                                        <div key={i} className="w-1 rounded-full opacity-80" style={{ height: `${20 + Math.random() * 60}%`, backgroundColor: track.color }} />
-                                    ))}
+                                    <Waveform url={track.url} color={track.color} duration={track.duration} offset={track.offset} />
                                 </div>
                             </div>
                         </div>

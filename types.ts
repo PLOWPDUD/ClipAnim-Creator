@@ -30,6 +30,7 @@ export interface Frame {
   id: string;
   layers: Record<string, string>; // Maps layerId to dataUrl
   thumbnailUrl?: string; // Cached composite image for timeline
+  durationMultiplier?: number; // Multiplier for frame duration (default 1)
 }
 
 export interface AudioTrack {
