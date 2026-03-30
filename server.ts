@@ -27,19 +27,31 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
   try {
     const freesoundUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(query as string)}&token=${apiKey}&fields=id,name,previews,description&page_size=30`;
     
+    // Add a timeout to the fetch request
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
     const response = await fetch(freesoundUrl, {
+      signal: controller.signal,
       headers: {
         'User-Agent': 'ClipAnimCreator/1.1.0 (https://github.com/your-username/your-repo)'
       }
     });
+    
+    clearTimeout(timeoutId);
     const data = await response.json();
 
     if (!response.ok) {
       return res.status(response.status).json(data);
     }
 
+    // Cache the response for 1 hour to improve performance
+    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600');
     res.json(data);
-  } catch (error) {
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ error: 'Freesound API timed out' });
+    }
     console.error('Proxy Error:', error);
     res.status(500).json({ error: 'Failed to fetch from Freesound' });
   }

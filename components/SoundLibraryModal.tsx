@@ -18,10 +18,6 @@ const DEFAULT_SOUNDS = [
   { name: 'Robot Code', url: 'https://actions.google.com/sounds/v1/science_fiction/robot_code.ogg' },
 ];
 
-const FREESOUND_API_KEY = 
-  (import.meta as any).env.VITE_FREESOUND_API_KEY || 
-  (import.meta as any).env.FREESOUND_API_KEY;
-
 export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, onClose, onSelectSound }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ name: string; url: string }[]>([]);
@@ -44,21 +40,12 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, on
       return;
     }
 
-    if (!FREESOUND_API_KEY) {
-      setError('Freesound API key is missing. Please add VITE_FREESOUND_API_KEY to your environment variables in the Settings menu.');
-      console.error('Freesound API key is missing.');
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
 
     try {
       // Call our own server-side proxy instead of Freesound directly to avoid CORS issues
       const url = `/api/search-sounds?query=${encodeURIComponent(searchQuery)}`;
-      
-      console.log('--- Proxy Search Debug ---');
-      console.log('Query:', searchQuery);
       
       const response = await fetch(url);
 
@@ -149,11 +136,6 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, on
               Search
             </button>
           </form>
-          {!FREESOUND_API_KEY && (
-            <p className="mt-2 text-[10px] text-yellow-500/80 italic">
-              * Freesound API key required for search.
-            </p>
-          )}
         </div>
         
         <div className="p-4 overflow-y-auto grid grid-cols-2 gap-3 flex-1">
