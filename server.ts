@@ -10,6 +10,8 @@ const app = express();
 // API Route: Freesound Proxy
 app.get('/api/search-sounds', async (req: Request, res: Response) => {
   const { query } = req.query;
+  console.log(`[SoundSearch] Received request for: "${query}"`);
+  
   // Use the Freesound-specific environment variables, NOT the Gemini key
   const apiKey = process.env.VITE_FREESOUND_API_KEY || process.env.FREESOUND_API_KEY;
 
@@ -18,7 +20,7 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
   }
 
   if (!apiKey) {
-    console.error('Freesound API Key is missing from environment variables.');
+    console.error('[SoundSearch] Freesound API Key is missing from environment variables.');
     return res.status(500).json({ 
       error: 'Freesound API key not configured. Please add VITE_FREESOUND_API_KEY to your environment variables.' 
     });
@@ -26,6 +28,8 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
 
   try {
     const freesoundUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(query as string)}&token=${apiKey}&fields=id,name,previews,description&page_size=30`;
+    
+    console.log(`[SoundSearch] Fetching from Freesound...`);
     
     // Add a timeout to the fetch request
     const controller = new AbortController();
@@ -39,6 +43,8 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
     });
     
     clearTimeout(timeoutId);
+    console.log(`[SoundSearch] Freesound responded with status: ${response.status}`);
+    
     const data = await response.json();
 
     if (!response.ok) {

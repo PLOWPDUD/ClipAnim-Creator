@@ -43,11 +43,14 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, on
     setIsLoading(true);
     setError(null);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second frontend timeout
+
     try {
       // Call our own server-side proxy instead of Freesound directly to avoid CORS issues
       const url = `/api/search-sounds?query=${encodeURIComponent(searchQuery)}`;
       
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: controller.signal });
 
       if (!response.ok) {
         let errorMsg = `Error ${response.status}`;
@@ -61,6 +64,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, on
       }
 
       const data = await response.json();
+      clearTimeout(timeoutId);
       
       if (!data.results || data.results.length === 0) {
         setSearchResults([]);
@@ -84,8 +88,13 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({ isOpen, on
 
       setSearchResults(results);
     } catch (err: any) {
+      clearTimeout(timeoutId);
       console.error('Search error:', err);
-      setError(`Search failed: ${err.message}. Please ensure the API key is set in Settings.`);
+      if (err.name === 'AbortError') {
+        setError('Search timed out. Please try again or check your internet connection.');
+      } else {
+        setError(`Search failed: ${err.message}. Please ensure the API key is set in Settings.`);
+      }
     } finally {
       setIsLoading(false);
     }
