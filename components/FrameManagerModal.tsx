@@ -2,6 +2,24 @@ import React, { useState } from 'react';
 import { Frame } from '../types';
 import { Icons } from '../Icons';
 import JSZip from 'jszip';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  rectSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface FrameManagerModalProps {
   isOpen: boolean;
@@ -9,20 +27,96 @@ interface FrameManagerModalProps {
   frames: Frame[];
   onDeleteFrames: (indices: number[]) => void;
   onDuplicateFrames: (indices: number[]) => void;
+  onReorderFrames: (frames: Frame[]) => void;
 }
+
+const SortableFrameItem = ({ frame, index, isSelected, toggleSelection }: { frame: Frame, index: number, isSelected: boolean, toggleSelection: (index: number) => void }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: frame.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+  };
+
+  return (
+    <div 
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        onClick={() => toggleSelection(index)}
+        className={`relative aspect-[4/3] group cursor-pointer transition-all duration-200 rounded-lg overflow-hidden border-2 ${isSelected ? 'border-[#FF3B30] ring-2 ring-[#FF3B30]/30 transform scale-[1.02]' : 'border-gray-700 hover:border-gray-500 hover:bg-white/5'} ${isDragging ? 'opacity-50' : ''}`}
+    >
+        <div className="absolute top-2 left-2 z-10">
+            <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-[#FF3B30] border-[#FF3B30]' : 'bg-black/50 border-gray-400 group-hover:border-white'}`}>
+                {isSelected && <Icons.Check size={14} className="text-white" />}
+            </div>
+        </div>
+        
+        <div className="absolute inset-0 bg-white">
+            {frame.thumbnailUrl && (
+                <img src={frame.thumbnailUrl} alt={`Frame ${index + 1}`} className="w-full h-full object-contain pointer-events-none" />
+            )}
+        </div>
+
+        <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+            <span className="text-xs font-bold text-white shadow-black drop-shadow-md">Frame {index + 1}</span>
+        </div>
+    </div>
+  );
+};
 
 export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
   isOpen,
   onClose,
   frames,
   onDeleteFrames,
-  onDuplicateFrames
+  onDuplicateFrames,
+  onReorderFrames
 }) => {
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   if (!isOpen) return null;
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = frames.findIndex((f) => f.id === active.id);
+      const newIndex = frames.findIndex((f) => f.id === over.id);
+      
+      const newFrames = arrayMove(frames, oldIndex, newIndex);
+      onReorderFrames(newFrames);
+      setSelectedIndices(new Set()); // Clear selection on reorder to avoid index confusion
+    }
+  };
 
   const toggleSelection = (index: number) => {
     const newSelection = new Set(selectedIndices);
@@ -166,36 +260,31 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
 
         {/* Grid */}
         <div className="flex-1 overflow-y-auto p-6 bg-[#121212]">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {frames.map((frame, index) => {
-                    const isSelected = selectedIndices.has(index);
-                    return (
-                        <div 
-                            key={frame.id}
-                            onClick={() => toggleSelection(index)}
-                            className={`relative aspect-[4/3] group cursor-pointer transition-all duration-200 rounded-lg overflow-hidden border-2 ${isSelected ? 'border-[#FF3B30] ring-2 ring-[#FF3B30]/30 transform scale-[1.02]' : 'border-gray-700 hover:border-gray-500 hover:bg-white/5'}`}
-                        >
-                            <div className="absolute top-2 left-2 z-10">
-                                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-[#FF3B30] border-[#FF3B30]' : 'bg-black/50 border-gray-400 group-hover:border-white'}`}>
-                                    {isSelected && <Icons.Check size={14} className="text-white" />}
-                                </div>
-                            </div>
-                            
-                            <div className="absolute inset-0 bg-white">
-                                {frame.thumbnailUrl && (
-                                    <img src={frame.thumbnailUrl} alt={`Frame ${index + 1}`} className="w-full h-full object-contain" />
-                                )}
-                            </div>
-
-                            <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
-                                <span className="text-xs font-bold text-white shadow-black drop-shadow-md">Frame {index + 1}</span>
-                            </div>
-                        </div>
-                    );
-                })}
-                
-                {/* Add New Frame Button within Manager? Optional, but let's stick to management only for now to keep it clean */}
-            </div>
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext 
+                items={frames.map(f => f.id)}
+                strategy={rectSortingStrategy}
+              >
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {frames.map((frame, index) => {
+                        const isSelected = selectedIndices.has(index);
+                        return (
+                            <SortableFrameItem 
+                                key={frame.id}
+                                frame={frame}
+                                index={index}
+                                isSelected={isSelected}
+                                toggleSelection={toggleSelection}
+                            />
+                        );
+                    })}
+                </div>
+              </SortableContext>
+            </DndContext>
         </div>
 
         {showDeleteConfirm && (

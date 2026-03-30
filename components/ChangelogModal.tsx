@@ -11,6 +11,16 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.8',
+    date: '2026-03-30',
+    type: 'minor',
+    changes: [
+      'Added drag-and-drop frame reordering in the Frame Manager',
+      'Added touch support for dragging frames on mobile devices',
+      'Added ability to import audio tracks alongside video imports'
+    ]
+  },
+  {
     version: '1.0.7',
     date: '2026-03-29',
     type: 'major',

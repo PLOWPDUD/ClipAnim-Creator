@@ -103,7 +103,7 @@ export default function App() {
   }, [shortcuts]);
 
   useEffect(() => {
-    const CURRENT_VERSION = '1.0.7';
+    const CURRENT_VERSION = '1.0.8';
     const lastSeenVersion = localStorage.getItem('clipanim_last_seen_version');
     
     if (lastSeenVersion !== CURRENT_VERSION) {
@@ -1376,6 +1376,11 @@ export default function App() {
       setHasUnsavedChanges(true);
   };
 
+  const handleReorderFrames = (newFrames: Frame[]) => {
+      updateFramesWithHistory(newFrames);
+      setHasUnsavedChanges(true);
+  };
+
   useEffect(() => {
     if (view === 'menu') return;
 
@@ -1762,6 +1767,7 @@ export default function App() {
         frames={frames}
         onDeleteFrames={handleBulkDeleteFrames}
         onDuplicateFrames={handleBulkDuplicateFrames}
+        onReorderFrames={handleReorderFrames}
       />
 
       <AudioRecorderModal 
