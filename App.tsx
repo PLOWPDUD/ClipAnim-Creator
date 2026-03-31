@@ -1790,25 +1790,22 @@ export default function App() {
                     <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-2 rounded-full ${historyIndex < history.length - 1 ? 'text-gray-600' : 'text-white'}`}> <Icons.Redo size={20} /> </button>
                     <button 
                       onClick={() => canvasRef.current?.zoomOut()} 
-                      disabled={deviceType === 'mobile'}
-                      className={`p-2 rounded-full ${deviceType === 'mobile' ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`} 
-                      title={deviceType === 'mobile' ? "Disabled on Mobile" : "Zoom Out"}
+                      className="p-2 rounded-full text-gray-400 hover:text-white" 
+                      title="Zoom Out"
                     >
                       <Icons.ZoomOut size={20} />
                     </button>
                     <button 
                       onClick={() => canvasRef.current?.resetView()} 
-                      disabled={deviceType === 'mobile'}
-                      className={`p-2 rounded-full ${deviceType === 'mobile' ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`} 
-                      title={deviceType === 'mobile' ? "Disabled on Mobile" : "Reset View"}
+                      className="p-2 rounded-full text-gray-400 hover:text-white" 
+                      title="Reset View"
                     >
                       <Icons.RotateCcw size={20} />
                     </button>
                     <button 
                       onClick={() => canvasRef.current?.zoomIn()} 
-                      disabled={deviceType === 'mobile'}
-                      className={`p-2 rounded-full ${deviceType === 'mobile' ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`} 
-                      title={deviceType === 'mobile' ? "Disabled on Mobile" : "Zoom In"}
+                      className="p-2 rounded-full text-gray-400 hover:text-white" 
+                      title="Zoom In"
                     >
                       <Icons.ZoomIn size={20} />
                     </button>

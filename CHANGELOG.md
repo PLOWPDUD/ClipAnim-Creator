@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2026-03-31
+
+### Fixed
+- **Mobile Accessibility:** Enabled Zoom In, Zoom Out, and Reset View buttons for Android and other mobile devices.
+
 ## [1.1.1] - 2026-03-31
 
 ### Fixed

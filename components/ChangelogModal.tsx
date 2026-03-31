@@ -11,6 +11,15 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.1.2',
+    date: '2026-03-31',
+    type: 'patch',
+    changes: [
+      'Enabled Canvas Controls on Mobile: Zoom In, Zoom Out, and Reset View buttons are now available on Android and other mobile devices.',
+      'Improved Header Accessibility: Fixed an issue where canvas position controls were locked/disabled on mobile platforms.'
+    ]
+  },
+  {
     version: '1.1.1',
     date: '2026-03-31',
     type: 'patch',
