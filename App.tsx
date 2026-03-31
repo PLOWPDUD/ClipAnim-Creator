@@ -1905,6 +1905,7 @@ export default function App() {
                 fillTolerance={fillTolerance}
                 smoothing={smoothing}
                 deviceType={deviceType}
+                onColorPick={setColor}
             />
             <TweenModal
                 isOpen={tweenTargetIndex !== null}

@@ -11,6 +11,15 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.1.6',
+    date: '2026-03-31',
+    type: 'minor',
+    changes: [
+      'Added Eyedropper Tool: Select colors directly from the canvas by clicking or dragging.',
+      'Improved Color Picking: The eyedropper samples from the composite view of all layers and the background.'
+    ]
+  },
+  {
     version: '1.1.5',
     date: '2026-03-31',
     type: 'patch',

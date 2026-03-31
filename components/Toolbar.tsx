@@ -171,6 +171,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     { id: 'pen', icon: Icons.Pencil, label: 'Brush' },
     { id: 'eraser', icon: Icons.Eraser, label: 'Eraser' },
     { id: 'fill', icon: Icons.PaintBucket, label: 'Fill' },
+    { id: 'eyedropper', icon: Icons.Eyedropper, label: 'Eyedropper' },
     { id: 'shape', icon: getShapeIcon(), label: 'Shapes' },
     { id: 'text', icon: Icons.Type, label: 'Text' },
   ];

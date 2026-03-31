@@ -49,6 +49,7 @@ interface CanvasAreaProps {
   fillTolerance: number;
   smoothing: number;
   deviceType: 'mobile' | 'pc' | null;
+  onColorPick: (color: string) => void;
 }
 
 const getMixBlendMode = (mode: GlobalCompositeOperation): any => {
@@ -128,7 +129,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   fillOpacity,
   fillTolerance,
   smoothing,
-  deviceType
+  deviceType,
+  onColorPick
 }, ref) => {
   console.log('CanvasArea render', { layers, activeLayerId });
   const activeCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -449,6 +451,56 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
       }
   };
 
+  const pickColor = (x: number, y: number) => {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvasWidth;
+    tempCanvas.height = canvasHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) return;
+
+    // Draw background color/gradient
+    if (background.type === 'color' && background.color !== 'transparent') {
+      tempCtx.fillStyle = background.color;
+      tempCtx.fillRect(0, 0, canvasWidth, canvasHeight);
+    } else if (background.type === 'gradient3' && background.gradientColors) {
+      const grad = tempCtx.createLinearGradient(0, 0, canvasWidth, canvasHeight);
+      background.gradientColors.forEach((c, i) => grad.addColorStop(i / 2, c));
+      tempCtx.fillStyle = grad;
+      tempCtx.fillRect(0, 0, canvasWidth, canvasHeight);
+    }
+
+    // Draw layers and images from the DOM to get the composite view
+    if (transformRef.current) {
+      const children = Array.from(transformRef.current.children);
+      children.forEach(child => {
+        if (child instanceof HTMLImageElement && child.offsetParent !== null) {
+          try {
+            tempCtx.drawImage(child, 0, 0, canvasWidth, canvasHeight);
+          } catch (e) {
+            console.warn('Could not draw image to eyedropper canvas:', e);
+          }
+        } else if (child instanceof HTMLCanvasElement && child.offsetParent !== null) {
+          try {
+            tempCtx.drawImage(child, 0, 0);
+          } catch (e) {
+            console.warn('Could not draw canvas to eyedropper canvas:', e);
+          }
+        }
+      });
+    }
+
+    try {
+      const pixel = tempCtx.getImageData(Math.max(0, Math.min(canvasWidth - 1, Math.floor(x))), Math.max(0, Math.min(canvasHeight - 1, Math.floor(y))), 1, 1).data;
+      // Only pick if not fully transparent, or if it's the background
+      const r = pixel[0].toString(16).padStart(2, '0');
+      const g = pixel[1].toString(16).padStart(2, '0');
+      const b = pixel[2].toString(16).padStart(2, '0');
+      onColorPick(`#${r}${g}${b}`);
+    } catch (e) {
+      console.error('Eyedropper failed:', e);
+    }
+  };
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isPlaying || !currentFrame) return;
     
@@ -491,6 +543,12 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     hasMoved.current = false;
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
     const activeLayer = layers.find(l => l.id === activeLayerId);
+
+    if (tool === 'eyedropper') {
+        pickColor(x, y);
+        isDrawing.current = true;
+        return;
+    }
 
     if (activeLayer?.isLocked || !activeLayer?.isVisible) {
         isDrawing.current = false;
@@ -969,6 +1027,11 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     }
     
     if (isDrawing.current) {
+        if (tool === 'eyedropper') {
+            pickColor(x, y);
+            return;
+        }
+
         const mapToSelection = (px: number, py: number) => {
             if (!selection) return { x: px, y: py };
             const anchorX = selection.anchorX ?? selection.width / 2;

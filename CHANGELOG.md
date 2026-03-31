@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.6] - 2026-03-31
+
+### Added
+- **Eyedropper Tool:** A new tool that allows users to pick colors directly from any part of the canvas, including layers and the background.
+
 ## [1.1.5] - 2026-03-31
 
 ### Fixed

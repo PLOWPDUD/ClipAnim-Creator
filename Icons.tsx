@@ -69,6 +69,7 @@ import {
   ZoomOut,
   Smartphone,
   Lasso,
+  Pipette,
   Scissors,
   Search
 } from 'lucide-react';
@@ -77,6 +78,7 @@ export const Icons = {
   Pencil,
   Eraser,
   PaintBucket,
+  Eyedropper: Pipette,
   Play, 
   Pause, 
   Plus, 

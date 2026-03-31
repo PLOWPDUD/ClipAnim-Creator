@@ -1,5 +1,5 @@
 
-export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'lasso' | 'wand' | 'shape' | 'text';
+export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'lasso' | 'wand' | 'shape' | 'text' | 'eyedropper';
 
 export type BrushType = 'pen' | 'marker' | 'highlighter' | 'spray' | 'pixel' | 'watercolor' | 'oil' | 'calligraphy';
 
