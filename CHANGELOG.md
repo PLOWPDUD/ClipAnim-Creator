@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.7] - 2026-03-31
+
+### Added
+- **Backpack Export:** Added the ability to export backpack items as PNG images or ZIP archives.
+- **Multi-select Export:** Users can now select multiple items in the backpack and download them as a single ZIP file.
+
 ## [1.1.6] - 2026-03-31
 
 ### Added

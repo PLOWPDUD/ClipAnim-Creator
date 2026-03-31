@@ -11,6 +11,16 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.1.7',
+    date: '2026-03-31',
+    type: 'minor',
+    changes: [
+      'Added Backpack Export Options: You can now export backpack items as PNG or ZIP files.',
+      'Multi-select Export: Select multiple items in the backpack to download them all at once in a ZIP archive.',
+      'Single Item Export: Download individual backpack items directly as PNG images.'
+    ]
+  },
+  {
     version: '1.1.6',
     date: '2026-03-31',
     type: 'minor',
