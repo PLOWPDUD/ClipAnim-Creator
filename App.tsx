@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType, OnionSkinSettings, Shortcuts, BackpackItem } from './types';
+import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
@@ -117,7 +117,7 @@ export default function App() {
   const [projectId, setProjectId] = useState<string>(crypto.randomUUID());
   const [projectName, setProjectName] = useState('My Animation');
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
-  const [backgroundColor, setBackgroundColor] = useState('#ffffff');
+  const [background, setBackground] = useState<BackgroundSettings>({ type: 'color', color: '#ffffff' });
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
 
   const [layers, setLayers] = useState<Layer[]>([createDefaultLayer()]);
@@ -198,12 +198,12 @@ export default function App() {
     });
   }, [frames, fps]);
 
-  const updateAllThumbnails = async (newBgColor?: string, newBgImage?: string | null) => {
-    const bgColor = newBgColor !== undefined ? newBgColor : backgroundColor;
+  const updateAllThumbnails = async (newBackground?: BackgroundSettings, newBgImage?: string | null) => {
+    const bg = newBackground !== undefined ? newBackground : background;
     const bgImage = newBgImage !== undefined ? newBgImage : backgroundImage;
     
     const updatedFrames = await Promise.all(frames.map(async (f) => {
-        const thumb = await compositeLayers(f, layers, canvasSize.width, canvasSize.height, bgColor, bgImage);
+        const thumb = await compositeLayers(f, layers, canvasSize.width, canvasSize.height, bg, bgImage, false);
         return { ...f, thumbnailUrl: thumb };
     }));
     setFrames(updatedFrames);
@@ -420,7 +420,7 @@ export default function App() {
                         thumbnailUrl: '' // Will be set below
                     };
                     
-                    frameObj.thumbnailUrl = await compositeLayers(frameObj, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage, false);
+                    frameObj.thumbnailUrl = await compositeLayers(frameObj, layers, canvasSize.width, canvasSize.height, background, backgroundImage, false);
                     return frameObj;
                 }));
 
@@ -507,7 +507,7 @@ export default function App() {
         newFrame.layers[activeLayerId] = canvas.toDataURL('image/png');
       }
       
-      newFrame.thumbnailUrl = await compositeLayers(newFrame, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage, false);
+      newFrame.thumbnailUrl = await compositeLayers(newFrame, layers, canvasSize.width, canvasSize.height, background, backgroundImage, false);
       insertedFrames.push(newFrame);
     }
 
@@ -730,7 +730,7 @@ export default function App() {
           setIsExporting(false);
           return;
       }
-      const dataUrl = await compositeLayers(frames[i], layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage);
+      const dataUrl = await compositeLayers(frames[i], layers, canvasSize.width, canvasSize.height, background, backgroundImage);
       compositeFrames.push(dataUrl);
       setExportProgress(Math.round(((i + 1) / total) * 30));
     }
@@ -783,8 +783,15 @@ export default function App() {
                  const img = new Image();
                  await new Promise<void>((resolve) => { img.onload = () => resolve(); img.src = compositeFrames[i]; });
                  
-                 if (backgroundColor !== 'transparent') {
-                    ctx.fillStyle = backgroundColor;
+                 if (background.type === 'gradient3' && background.gradientColors) {
+                    const gradient = ctx.createLinearGradient(0, 0, canvasSize.width, canvasSize.height);
+                    gradient.addColorStop(0, background.gradientColors[0]);
+                    gradient.addColorStop(0.5, background.gradientColors[1]);
+                    gradient.addColorStop(1, background.gradientColors[2]);
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+                 } else if (background.color !== 'transparent') {
+                    ctx.fillStyle = background.color;
                     ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
                  } else {
                     ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
@@ -948,7 +955,7 @@ export default function App() {
   const saveProject = async () => {
       let thumb = '';
       if (frames.length > 0) {
-          thumb = await compositeLayers(frames[0], layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage);
+          thumb = await compositeLayers(frames[0], layers, canvasSize.width, canvasSize.height, background, backgroundImage);
       }
       const projectData: ProjectData = {
           id: projectId,
@@ -956,7 +963,7 @@ export default function App() {
           lastModified: Date.now(),
           thumbnailUrl: thumb,
           canvasSize,
-          backgroundColor,
+          background,
           backgroundImage,
           layers,
           frames,
@@ -998,7 +1005,7 @@ export default function App() {
         setProjectId(data.id);
         setProjectName(data.name);
         setCanvasSize(data.canvasSize);
-        setBackgroundColor(data.backgroundColor || '#ffffff');
+        setBackground(data.background || { type: 'color', color: '#ffffff' });
         setBackgroundImage(data.backgroundImage || null);
         setLayers(data.layers);
         setFrames(data.frames);
@@ -1027,12 +1034,12 @@ export default function App() {
       setProjectId(pid);
       setProjectName("New Animation");
       setCanvasSize({ width: 800, height: 600 });
-      setBackgroundColor('#ffffff');
+      setBackground({ type: 'color', color: '#ffffff' });
       const defaultL = [createDefaultLayer()];
       setLayers(defaultL);
       setActiveLayerId(defaultL[0].id);
       const initialFrame = createBlankFrame(defaultL, 800, 600);
-      initialFrame.thumbnailUrl = await compositeLayers(initialFrame, defaultL, 800, 600, '#ffffff', null, false);
+      initialFrame.thumbnailUrl = await compositeLayers(initialFrame, defaultL, 800, 600, { type: 'color', color: '#ffffff' }, null, false);
       setFrames([initialFrame]);
       setHistory([[initialFrame]]);
       setHistoryIndex(0);
@@ -1076,7 +1083,7 @@ export default function App() {
           lastModified: Date.now(),
           thumbnailUrl: frames[0]?.thumbnailUrl || '',
           canvasSize,
-          backgroundColor,
+          background,
           backgroundImage,
           layers,
           frames,
@@ -1104,12 +1111,12 @@ export default function App() {
             const newId = crypto.randomUUID();
             let thumb = data.thumbnailUrl;
             if (!thumb && data.frames.length > 0) {
-                 thumb = await compositeLayers(data.frames[0], data.layers, data.canvasSize.width, data.canvasSize.height, data.backgroundColor || '#ffffff', data.backgroundImage, true);
+                 thumb = await compositeLayers(data.frames[0], data.layers, data.canvasSize.width, data.canvasSize.height, data.background || { type: 'color', color: '#ffffff' }, data.backgroundImage, true);
             }
             // Also ensure all frames have transparent thumbnails if they don't have any
             const updatedFrames = await Promise.all(data.frames.map(async f => {
                 if (!f.thumbnailUrl) {
-                    return { ...f, thumbnailUrl: await compositeLayers(f, data.layers, data.canvasSize.width, data.canvasSize.height, data.backgroundColor || '#ffffff', data.backgroundImage, false) };
+                    return { ...f, thumbnailUrl: await compositeLayers(f, data.layers, data.canvasSize.width, data.canvasSize.height, data.background || { type: 'color', color: '#ffffff' }, data.backgroundImage, false) };
                 }
                 return f;
             }));
@@ -1349,7 +1356,7 @@ export default function App() {
     const newFrames = [...frames];
     const currentFrame = { ...newFrames[currentFrameIndex] };
     currentFrame.layers = { ...currentFrame.layers, [layerId]: dataUrl };
-    currentFrame.thumbnailUrl = await compositeLayers(currentFrame, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage, false);
+    currentFrame.thumbnailUrl = await compositeLayers(currentFrame, layers, canvasSize.width, canvasSize.height, background, backgroundImage, false);
     newFrames[currentFrameIndex] = currentFrame;
     updateFramesWithHistory(newFrames);
     setHasUnsavedChanges(true);
@@ -1387,7 +1394,7 @@ export default function App() {
 
   const addFrame = async () => {
     const newFrame = createBlankFrame(layers, canvasSize.width, canvasSize.height);
-    newFrame.thumbnailUrl = await compositeLayers(newFrame, layers, canvasSize.width, canvasSize.height, backgroundColor, backgroundImage, false);
+    newFrame.thumbnailUrl = await compositeLayers(newFrame, layers, canvasSize.width, canvasSize.height, background, backgroundImage, false);
     const newFrames = [...frames];
     newFrames.splice(currentFrameIndex + 1, 0, newFrame);
     updateFramesWithHistory(newFrames);
@@ -1561,6 +1568,19 @@ export default function App() {
           setCurrentFrameIndex(Math.max(0, newFrames.length - 1));
       }
       setHasUnsavedChanges(true);
+  };
+
+  const handleBulkUpdateFrameBackground = async (indices: number[], background: BackgroundSettings, backgroundImage: string | null) => {
+    const newFrames = await Promise.all(frames.map(async (frame, index) => {
+      if (indices.includes(index)) {
+        const updatedFrame = { ...frame, background, backgroundImage };
+        const thumbnailUrl = await compositeLayers(updatedFrame, layers, canvasSize.width, canvasSize.height, background, backgroundImage, false);
+        return { ...updatedFrame, thumbnailUrl };
+      }
+      return frame;
+    }));
+    updateFramesWithHistory(newFrames);
+    setHasUnsavedChanges(true);
   };
 
   const handleBulkDuplicateFrames = (indices: number[]) => {
@@ -1881,7 +1901,7 @@ export default function App() {
                 onSelectionDelete={() => setSelection(null)}
                 canvasWidth={canvasSize.width} 
                 canvasHeight={canvasSize.height} 
-                backgroundColor={backgroundColor}
+                background={background}
                 backgroundImage={backgroundImage} 
                 textToolFont={textToolFont} 
                 fillOpacity={fillOpacity}
@@ -1922,7 +1942,8 @@ export default function App() {
                   onOpenFrameManager={() => setIsFrameManagerOpen(true)} 
                   onOpenRecorder={() => setIsAudioRecorderOpen(true)} 
                   onOpenSoundLibrary={() => setIsSoundLibraryOpen(true)}
-                  backgroundColor={backgroundColor}
+                  background={background}
+                  backgroundImage={backgroundImage}
                 />
             </div>
         </div>
@@ -1999,6 +2020,7 @@ export default function App() {
         onDeleteFrames={handleBulkDeleteFrames}
         onDuplicateFrames={handleBulkDuplicateFrames}
         onReorderFrames={handleReorderFrames}
+        onUpdateFrameBackground={handleBulkUpdateFrameBackground}
       />
 
       <AudioRecorderModal 
@@ -2095,8 +2117,8 @@ export default function App() {
         setProjectName={setProjectName} 
         canvasSize={canvasSize} 
         setCanvasSize={setCanvasSize} 
-        backgroundColor={backgroundColor}
-        setBackgroundColor={setBackgroundColor}
+        background={background}
+        setBackground={setBackground}
         backgroundImage={backgroundImage} 
         setBackgroundImage={setBackgroundImage} 
         onBackupProject={handleBackupProject} 

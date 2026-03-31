@@ -31,6 +31,8 @@ export interface Frame {
   layers: Record<string, string>; // Maps layerId to dataUrl
   thumbnailUrl?: string; // Cached composite image for timeline
   durationMultiplier?: number; // Multiplier for frame duration (default 1)
+  background?: BackgroundSettings;
+  backgroundImage?: string | null;
 }
 
 export interface AudioTrack {
@@ -96,6 +98,12 @@ export interface Shortcuts {
   redo: string;
 }
 
+export interface BackgroundSettings {
+  type: 'color' | 'gradient3';
+  color: string;
+  gradientColors?: [string, string, string];
+}
+
 export interface AppState {
   frames: Frame[];
   currentFrameIndex: number;
@@ -109,7 +117,7 @@ export interface AppState {
   fillOpacity: number;
   fillTolerance: number;
   smoothing: number;
-  backgroundColor: string;
+  background: BackgroundSettings;
 }
 
 export interface ProjectMeta {
@@ -125,7 +133,7 @@ export interface ProjectData {
     lastModified: number;
     thumbnailUrl: string;
     canvasSize: { width: number; height: number };
-    backgroundColor: string;
+    background: BackgroundSettings;
     backgroundImage: string | null;
     layers: Layer[];
     frames: Frame[];

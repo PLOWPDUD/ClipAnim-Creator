@@ -1,5 +1,5 @@
 
-import { Frame, Layer, SelectionState } from "../types";
+import { Frame, Layer, SelectionState, BackgroundSettings } from "../types";
 
 export const hexToRgba = (hex: string) => {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -52,7 +52,7 @@ export const compositeLayers = async (
   layers: Layer[], 
   width: number = 800, 
   height: number = 600,
-  backgroundColor: string = '#ffffff',
+  background: BackgroundSettings = { type: 'color', color: '#ffffff' },
   backgroundImage?: string | null,
   includeBackground: boolean = true
 ): Promise<string> => {
@@ -62,9 +62,12 @@ export const compositeLayers = async (
   const ctx = canvas.getContext('2d');
   if (!ctx) return '';
 
-  // 1. Draw Background Image (if exists) or Color
+  const effectiveBackground = frame.background || background;
+  const effectiveBackgroundImage = frame.backgroundImage !== undefined ? frame.backgroundImage : backgroundImage;
+
+  // 1. Draw Background Image (if exists) or Color/Gradient
   if (includeBackground) {
-    if (backgroundImage) {
+    if (effectiveBackgroundImage) {
        // If we have a background image, draw it to fill the canvas
        await new Promise<void>((resolve) => {
           const img = new Image();
@@ -73,14 +76,21 @@ export const compositeLayers = async (
                resolve();
           };
           img.onerror = () => resolve();
-          img.src = backgroundImage;
+          img.src = effectiveBackgroundImage;
        });
     } else {
-        // Fallback to background color
-        if (backgroundColor === 'transparent') {
+        // Fallback to background color/gradient
+        if (effectiveBackground.type === 'gradient3' && effectiveBackground.gradientColors) {
+            const gradient = ctx.createLinearGradient(0, 0, width, height);
+            gradient.addColorStop(0, effectiveBackground.gradientColors[0]);
+            gradient.addColorStop(0.5, effectiveBackground.gradientColors[1]);
+            gradient.addColorStop(1, effectiveBackground.gradientColors[2]);
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        } else if (effectiveBackground.color === 'transparent') {
           ctx.clearRect(0, 0, width, height);
         } else {
-          ctx.fillStyle = backgroundColor;
+          ctx.fillStyle = effectiveBackground.color;
           ctx.fillRect(0, 0, width, height);
         }
     }

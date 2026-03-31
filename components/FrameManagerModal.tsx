@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Frame } from '../types';
+import { Frame, BackgroundSettings } from '../types';
 import { Icons } from '../Icons';
 import JSZip from 'jszip';
 import {
@@ -28,6 +28,7 @@ interface FrameManagerModalProps {
   onDeleteFrames: (indices: number[]) => void;
   onDuplicateFrames: (indices: number[]) => void;
   onReorderFrames: (frames: Frame[]) => void;
+  onUpdateFrameBackground: (indices: number[], background: BackgroundSettings, backgroundImage: string | null) => void;
 }
 
 const SortableFrameItem = ({ frame, index, isSelected, toggleSelection }: { frame: Frame, index: number, isSelected: boolean, toggleSelection: (index: number) => void }) => {
@@ -61,9 +62,17 @@ const SortableFrameItem = ({ frame, index, isSelected, toggleSelection }: { fram
             </div>
         </div>
         
-        <div className="absolute inset-0 bg-white">
+        <div 
+            className="absolute inset-0"
+            style={{ 
+                background: (frame.background || { type: 'color', color: '#ffffff' }).type === 'gradient3' ? ((frame.background || { type: 'color', color: '#ffffff' }).gradientColors ? `linear-gradient(to bottom right, ${(frame.background || { type: 'color', color: '#ffffff' }).gradientColors!.join(', ')})` : '#ffffff') : ((frame.background || { type: 'color', color: '#ffffff' }).color === 'transparent' ? 'transparent' : (frame.background || { type: 'color', color: '#ffffff' }).color)
+            }}
+        >
+            {frame.backgroundImage && (
+                <img src={frame.backgroundImage} alt="" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
+            )}
             {frame.thumbnailUrl && (
-                <img src={frame.thumbnailUrl} alt={`Frame ${index + 1}`} className="w-full h-full object-contain pointer-events-none" />
+                <img src={frame.thumbnailUrl} alt={`Frame ${index + 1}`} className="relative w-full h-full object-contain pointer-events-none" />
             )}
         </div>
 
@@ -80,11 +89,16 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
   frames,
   onDeleteFrames,
   onDuplicateFrames,
-  onReorderFrames
+  onReorderFrames,
+  onUpdateFrameBackground
 }) => {
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showBackgroundModal, setShowBackgroundModal] = useState(false);
+  const [tempBackground, setTempBackground] = useState<BackgroundSettings>({ type: 'color', color: '#ffffff' });
+  const [tempBackgroundImage, setTempBackgroundImage] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -248,6 +262,14 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
                     Duplicate ({selectedIndices.size})
                  </button>
                  <button 
+                    onClick={() => setShowBackgroundModal(true)}
+                    disabled={selectedIndices.size === 0}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors ${selectedIndices.size > 0 ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-800 text-gray-600 cursor-not-allowed'}`}
+                 >
+                    <Icons.Palette size={16} />
+                    Set Background
+                 </button>
+                 <button 
                     onClick={handleDelete}
                     disabled={selectedIndices.size === 0}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors ${selectedIndices.size > 0 ? 'bg-red-600/20 text-red-500 hover:bg-red-600 hover:text-white' : 'bg-gray-800 text-gray-600 cursor-not-allowed'}`}
@@ -255,8 +277,114 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
                     <Icons.Trash2 size={16} />
                     Delete ({selectedIndices.size})
                  </button>
-             </div>
+              </div>
         </div>
+
+        {/* Background Modal */}
+        {showBackgroundModal && (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                <div className="bg-[#1e1e1e] p-6 rounded-2xl border border-gray-700 w-[400px]">
+                    <h3 className="text-lg font-bold text-white mb-4">Set Background</h3>
+                    
+                    <div className="flex gap-2 mb-4">
+                        <button 
+                            onClick={() => setTempBackground({ ...tempBackground, type: 'color' })}
+                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${tempBackground.type === 'color' ? 'bg-[#FF3B30] text-white' : 'bg-gray-800 text-gray-400'}`}
+                        >
+                            Color
+                        </button>
+                        <button 
+                            onClick={() => setTempBackground({ ...tempBackground, type: 'gradient3', gradientColors: tempBackground.gradientColors || ['#FF3B30', '#007AFF', '#34C759'] })}
+                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${tempBackground.type === 'gradient3' ? 'bg-[#FF3B30] text-white' : 'bg-gray-800 text-gray-400'}`}
+                        >
+                            3-Color Gradient
+                        </button>
+                    </div>
+
+                    {tempBackground.type === 'color' ? (
+                        <div className="flex gap-4 items-center mb-4">
+                            <input 
+                                type="color" 
+                                value={tempBackground.color === 'transparent' ? '#ffffff' : tempBackground.color}
+                                onChange={(e) => setTempBackground({ ...tempBackground, color: e.target.value })}
+                                className="w-10 h-10 rounded cursor-pointer bg-transparent border-none"
+                            />
+                            <input 
+                                type="text" 
+                                value={tempBackground.color}
+                                onChange={(e) => setTempBackground({ ...tempBackground, color: e.target.value })}
+                                className="bg-gray-800 text-white rounded px-2 py-1 text-sm border border-gray-700 w-full"
+                            />
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-3 gap-2 mb-4">
+                            {(tempBackground.gradientColors || ['#FF3B30', '#007AFF', '#34C759']).map((color, index) => (
+                                <input
+                                    key={index}
+                                    type="color"
+                                    value={color}
+                                    onChange={(e) => {
+                                        const newColors = [...(tempBackground.gradientColors || ['#FF3B30', '#007AFF', '#34C759'])];
+                                        newColors[index] = e.target.value;
+                                        setTempBackground({ ...tempBackground, gradientColors: newColors as [string, string, string] });
+                                    }}
+                                    className="w-full h-10 rounded cursor-pointer bg-transparent border-none"
+                                />
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="mb-4">
+                        {tempBackgroundImage ? (
+                            <div className="relative w-full aspect-video bg-gray-800 rounded-lg overflow-hidden border border-gray-700 group">
+                                <img src={tempBackgroundImage} alt="BG" className="w-full h-full object-cover" />
+                                <button 
+                                    onClick={() => setTempBackgroundImage(null)}
+                                    className="absolute top-2 right-2 bg-red-600 p-1.5 rounded-full text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                    <Icons.Trash2 size={14} />
+                                </button>
+                            </div>
+                        ) : (
+                            <button 
+                                onClick={() => fileInputRef.current?.click()}
+                                className="w-full h-24 border-2 border-dashed border-gray-700 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-[#FF3B30] hover:text-[#FF3B30] transition-colors"
+                            >
+                                <Icons.Image size={24} className="mb-2" />
+                                <span className="text-xs">Import Background Image</span>
+                            </button>
+                        )}
+                        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                                const reader = new FileReader();
+                                reader.onload = (ev) => {
+                                    if (ev.target?.result) setTempBackgroundImage(ev.target.result as string);
+                                };
+                                reader.readAsDataURL(e.target.files[0]);
+                            }
+                        }} />
+                    </div>
+
+                    <div className="flex gap-2">
+                        <button 
+                            onClick={() => setShowBackgroundModal(false)}
+                            className="flex-1 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
+                        >
+                            Cancel
+                        </button>
+                        <button 
+                            onClick={() => {
+                                onUpdateFrameBackground(Array.from(selectedIndices), tempBackground, tempBackgroundImage);
+                                setShowBackgroundModal(false);
+                            }}
+                            className="flex-1 py-2 bg-[#FF3B30] text-white rounded-lg hover:bg-red-600"
+                        >
+                            Apply
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* Grid */}
         <div className="flex-1 overflow-y-auto p-6 bg-[#121212]">

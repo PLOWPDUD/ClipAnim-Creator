@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { motion } from 'motion/react';
-import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings } from '../types';
+import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings, BackgroundSettings } from '../types';
 import { floodFill, magicWandSelect, lassoSelect } from '../utils/drawingUtils';
 
 export interface CanvasAreaHandle {
@@ -38,7 +38,7 @@ interface CanvasAreaProps {
   // Canvas Settings
   canvasWidth: number;
   canvasHeight: number;
-  backgroundColor: string;
+  background: BackgroundSettings;
   backgroundImage: string | null;
 
   // Text Tool
@@ -122,7 +122,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   onSelectionDelete,
   canvasWidth,
   canvasHeight,
-  backgroundColor,
+  background,
   backgroundImage,
   textToolFont,
   fillOpacity,
@@ -1319,11 +1319,11 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 width: canvasWidth, 
                 height: canvasHeight,
                 imageRendering: 'auto',
-                backgroundColor: backgroundColor === 'transparent' ? 'transparent' : backgroundColor
+                background: (currentFrame.background || background).type === 'gradient3' ? ((currentFrame.background || background).gradientColors ? `linear-gradient(to bottom right, ${(currentFrame.background || background).gradientColors!.join(', ')})` : '#ffffff') : ((currentFrame.background || background).color === 'transparent' ? 'transparent' : (currentFrame.background || background).color)
             }}
         >
-            {backgroundImage && (
-                <img src={backgroundImage} alt="Background" className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none select-none" />
+            {(currentFrame.backgroundImage !== undefined ? currentFrame.backgroundImage : backgroundImage) && (
+                <img src={(currentFrame.backgroundImage !== undefined ? currentFrame.backgroundImage : backgroundImage)!} alt="Background" className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none select-none" />
             )}
             
             {showGrid && !isPlaying && (

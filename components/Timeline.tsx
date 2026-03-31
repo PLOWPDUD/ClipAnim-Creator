@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Frame, AudioTrack } from '../types';
+import { Frame, AudioTrack, BackgroundSettings } from '../types';
 import { Icons } from '../Icons';
 import { Waveform } from './Waveform';
 
@@ -26,7 +26,8 @@ interface TimelineProps {
   onOpenFrameManager: () => void;
   onOpenRecorder: () => void;
   onOpenSoundLibrary: () => void;
-  backgroundColor: string;
+  background: BackgroundSettings;
+  backgroundImage: string | null;
 }
 
 export const Timeline: React.FC<TimelineProps> = ({
@@ -52,7 +53,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   onOpenFrameManager,
   onOpenRecorder,
   onOpenSoundLibrary,
-  backgroundColor
+  background,
+  backgroundImage
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
@@ -287,13 +289,20 @@ export const Timeline: React.FC<TimelineProps> = ({
                         ${!isFocusMode && currentFrameIndex === index ? 'border-[var(--accent-color)] ring-2 ring-[var(--accent-color)]/50 scale-100 z-10 shadow-lg !opacity-100' : ''}
                         ${isFocusMode && currentFrameIndex === index ? 'opacity-50 scale-100 border-white' : ''}
                     `}
-                    style={{ backgroundColor: backgroundColor === 'transparent' ? 'transparent' : backgroundColor }}
                 >
-                    {frame.thumbnailUrl ? (
-                         <img src={frame.thumbnailUrl} alt={`Frame ${index + 1}`} className="w-full h-full object-contain pointer-events-none" />
-                    ) : (
-                        <div className="w-full h-full" />
-                    )}
+                    <div 
+                        className="absolute inset-0"
+                        style={{ 
+                            background: (frame.background || background).type === 'gradient3' ? ((frame.background || background).gradientColors ? `linear-gradient(to bottom right, ${(frame.background || background).gradientColors!.join(', ')})` : '#ffffff') : ((frame.background || background).color === 'transparent' ? 'transparent' : (frame.background || background).color)
+                        }}
+                    >
+                        {(frame.backgroundImage || backgroundImage) && (
+                            <img src={frame.backgroundImage || backgroundImage!} alt="" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
+                        )}
+                        {frame.thumbnailUrl && (
+                            <img src={frame.thumbnailUrl} alt={`Frame ${index + 1}`} className="relative w-full h-full object-contain pointer-events-none" />
+                        )}
+                    </div>
                     <span className="absolute bottom-0.5 right-0.5 text-[8px] font-bold text-[#121212] bg-white/90 px-1 rounded-sm">
                         {index + 1}
                     </span>

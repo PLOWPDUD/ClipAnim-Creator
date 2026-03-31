@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.1] - 2026-03-31
+
+### Fixed
+- **Canvas Background Rendering:** Frame-specific background settings now correctly override global project settings on the main canvas.
+- **Thumbnail Consistency:** Background colors, gradients, and images are now correctly rendered in both Frame Manager and Timeline thumbnails.
+- **Timeline Background Image Support:** Background images are now correctly displayed behind frame thumbnails in the main timeline.
+
+### Changed
+- **Standardized Thumbnail Generation:** Thumbnails are now generated with transparent backgrounds for better Onion Skinning support and UI consistency.
+
 ## [1.1.0] - 2026-03-30
 
 ### Added

@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { Icons } from '../Icons';
-import { OnionSkinSettings } from '../types';
+import { OnionSkinSettings, BackgroundSettings } from '../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -13,8 +13,8 @@ interface SettingsModalProps {
   setCanvasSize: (size: { width: number, height: number }) => void;
   backgroundImage: string | null;
   setBackgroundImage: (url: string | null) => void;
-  backgroundColor: string;
-  setBackgroundColor: (color: string) => void;
+  background: BackgroundSettings;
+  setBackground: (background: BackgroundSettings) => void;
   onBackupProject: () => void;
   onionSkinSettings: OnionSkinSettings;
   setOnionSkinSettings: (settings: OnionSkinSettings) => void;
@@ -31,8 +31,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setCanvasSize,
   backgroundImage,
   setBackgroundImage,
-  backgroundColor,
-  setBackgroundColor,
+  background,
+  setBackground,
   onBackupProject,
   onionSkinSettings,
   setOnionSkinSettings
@@ -147,36 +147,68 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Background */}
             <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Background</label>
-                <div className="flex gap-4 items-center mb-4">
-                    <div className="flex-1">
-                        <span className="text-[10px] text-gray-500 block mb-1">Color</span>
-                        <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2 border border-gray-700">
-                            <input 
-                                type="color" 
-                                value={backgroundColor === 'transparent' ? '#ffffff' : backgroundColor}
-                                onChange={(e) => setBackgroundColor(e.target.value)}
-                                className="w-8 h-8 rounded cursor-pointer bg-transparent border-none"
-                                disabled={backgroundColor === 'transparent'}
-                            />
-                            <input 
-                                type="text" 
-                                value={backgroundColor}
-                                onChange={(e) => setBackgroundColor(e.target.value)}
-                                className="bg-transparent text-white text-sm focus:outline-none w-full font-mono"
-                            />
-                        </div>
-                    </div>
+                <div className="flex gap-2 mb-4">
                     <button 
-                        onClick={() => setBackgroundColor(backgroundColor === 'transparent' ? '#ffffff' : 'transparent')}
-                        className={`mt-4 px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
-                            backgroundColor === 'transparent' 
-                            ? 'bg-[#FF3B30]/20 border-[#FF3B30] text-[#FF3B30]' 
-                            : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
-                        }`}
+                        onClick={() => setBackground({ ...background, type: 'color' })}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${background.type === 'color' ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-400'}`}
                     >
-                        Transparent
+                        Color
+                    </button>
+                    <button 
+                        onClick={() => setBackground({ ...background, type: 'gradient3', gradientColors: background.gradientColors || ['#FF3B30', '#007AFF', '#34C759'] })}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${background.type === 'gradient3' ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-400'}`}
+                    >
+                        3-Color Gradient
                     </button>
                 </div>
+
+                {background.type === 'color' ? (
+                    <div className="flex gap-4 items-center mb-4">
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2 border border-gray-700">
+                                <input 
+                                    type="color" 
+                                    value={background.color === 'transparent' ? '#ffffff' : background.color}
+                                    onChange={(e) => setBackground({ ...background, color: e.target.value })}
+                                    className="w-8 h-8 rounded cursor-pointer bg-transparent border-none"
+                                    disabled={background.color === 'transparent'}
+                                />
+                                <input 
+                                    type="text" 
+                                    value={background.color}
+                                    onChange={(e) => setBackground({ ...background, color: e.target.value })}
+                                    className="bg-transparent text-white text-sm focus:outline-none w-full font-mono"
+                                />
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => setBackground({ ...background, color: background.color === 'transparent' ? '#ffffff' : 'transparent' })}
+                            className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
+                                background.color === 'transparent' 
+                                ? 'bg-[#FF3B30]/20 border-[#FF3B30] text-[#FF3B30]' 
+                                : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            Transparent
+                        </button>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                        {(background.gradientColors || ['#FF3B30', '#007AFF', '#34C759']).map((color, index) => (
+                            <input
+                                key={index}
+                                type="color"
+                                value={color}
+                                onChange={(e) => {
+                                    const newColors = [...(background.gradientColors || ['#FF3B30', '#007AFF', '#34C759'])];
+                                    newColors[index] = e.target.value;
+                                    setBackground({ ...background, gradientColors: newColors as [string, string, string] });
+                                }}
+                                className="w-full h-10 rounded cursor-pointer bg-transparent border-none"
+                            />
+                        ))}
+                    </div>
+                )}
 
                 {backgroundImage ? (
                     <div className="relative w-full aspect-video bg-gray-800 rounded-lg overflow-hidden border border-gray-700 group">
