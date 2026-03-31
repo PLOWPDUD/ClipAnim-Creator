@@ -11,6 +11,15 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.1.5',
+    date: '2026-03-31',
+    type: 'patch',
+    changes: [
+      'Fixed Backpack Rename Issue: Added event propagation protection to the rename button to prevent accidental item selection while renaming.',
+      'Improved UI Stability: Ensured the rename controls are correctly layered and responsive on touch devices.'
+    ]
+  },
+  {
     version: '1.1.4',
     date: '2026-03-31',
     type: 'patch',

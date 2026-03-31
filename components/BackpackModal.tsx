@@ -186,7 +186,7 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                     )}
                   </div>
                   
-                  <div className="p-2 bg-[#1a1a1a] border-t border-gray-700 flex items-center gap-2">
+                  <div className="p-2 bg-[#1a1a1a] border-t border-gray-700 flex items-center gap-2 z-10">
                     {editingItemId === item.id ? (
                       <>
                         <input 
@@ -196,9 +196,10 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                           className="flex-1 bg-black text-sm p-1 rounded border border-gray-600 focus:border-[var(--accent-color)] outline-none"
                           autoFocus
                           onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(item.id); }}
+                          onClick={(e) => e.stopPropagation()}
                         />
                         <button 
-                          onClick={() => handleSaveName(item.id)} 
+                          onClick={(e) => { e.stopPropagation(); handleSaveName(item.id); }} 
                           className="p-2 -m-1 text-[var(--accent-color)] hover:opacity-80 transition-opacity"
                           title="Save"
                         >
@@ -209,7 +210,7 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                       <>
                         <span className="flex-1 text-xs text-gray-300 truncate">{item.name || 'Unnamed'}</span>
                         <button 
-                          onClick={() => { setEditingItemId(item.id); setEditingName(item.name || ''); }} 
+                          onClick={(e) => { e.stopPropagation(); setEditingItemId(item.id); setEditingName(item.name || ''); }} 
                           className="p-2 -m-1 text-gray-500 hover:text-white transition-colors"
                           title="Rename"
                         >

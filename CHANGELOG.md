@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.5] - 2026-03-31
+
+### Fixed
+- **Backpack Rename:** Fixed an issue where clicking the rename button would accidentally trigger the item selection (spawning it into the canvas). Added event propagation protection and improved layering.
+
 ## [1.1.4] - 2026-03-31
 
 ### Fixed
