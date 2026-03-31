@@ -433,6 +433,18 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
           } else if (brushType === 'pixel') {
               ctx.globalAlpha = 1;
               ctx.imageSmoothingEnabled = false;
+          } else if (brushType === 'watercolor') {
+              ctx.lineWidth = strokeWidth;
+              ctx.lineCap = 'round';
+              ctx.globalAlpha = 0.2;
+          } else if (brushType === 'oil') {
+              ctx.lineWidth = strokeWidth * 1.5;
+              ctx.lineCap = 'round';
+              ctx.globalAlpha = 0.8;
+          } else if (brushType === 'calligraphy') {
+              ctx.lineWidth = strokeWidth;
+              ctx.lineCap = 'butt';
+              ctx.globalAlpha = 1;
           }
       }
   };

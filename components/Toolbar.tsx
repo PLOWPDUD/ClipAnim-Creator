@@ -347,6 +347,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     { type: 'highlighter', icon: Icons.Highlighter },
                     { type: 'spray', icon: Icons.Spray },
                     { type: 'pixel', icon: Icons.Pixel },
+                    { type: 'watercolor', icon: Icons.Image },
+                    { type: 'oil', icon: Icons.Palette },
+                    { type: 'calligraphy', icon: Icons.Type },
                 ].map((b) => (
                     <button 
                         key={b.type}

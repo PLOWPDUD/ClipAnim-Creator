@@ -1,7 +1,7 @@
 
 export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'lasso' | 'wand' | 'shape' | 'text';
 
-export type BrushType = 'pen' | 'marker' | 'highlighter' | 'spray' | 'pixel';
+export type BrushType = 'pen' | 'marker' | 'highlighter' | 'spray' | 'pixel' | 'watercolor' | 'oil' | 'calligraphy';
 
 export type ShapeType = 'rectangle' | 'circle' | 'line' | 'triangle' | 'star' | 'hexagon' | 'heart' | 'arrow' | 'speech-bubble';
 
@@ -64,6 +64,8 @@ export interface SelectionState {
     font: string;
     color: string;
     fontSize: number;
+    bold?: boolean;
+    italic?: boolean;
   };
 }
 

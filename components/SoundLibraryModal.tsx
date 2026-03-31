@@ -32,6 +32,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'search' | 'saved'>('search');
+  const [playingSoundUrl, setPlayingSoundUrl] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -40,6 +41,11 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
       setSearchResults([]);
       setError(null);
       setActiveTab('search');
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+        setPlayingSoundUrl(null);
+      }
     }
   }, [isOpen]);
 
@@ -132,15 +138,30 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
     }
   };
 
-  const playPreview = (url: string) => {
-    if (audioRef.current) {
-      audioRef.current.pause();
+  const togglePlay = (url: string) => {
+    if (playingSoundUrl === url) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+        setPlayingSoundUrl(null);
+      }
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        setPlayingSoundUrl(null);
+        audioRef.current = null;
+      };
+      audio.play().catch(e => {
+        if (e.name !== 'AbortError') console.error(e);
+        setPlayingSoundUrl(null);
+        audioRef.current = null;
+      });
+      setPlayingSoundUrl(url);
     }
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    audio.play().catch(e => {
-      if (e.name !== 'AbortError') console.error(e);
-    });
   };
 
   if (!isOpen) return null;
@@ -218,10 +239,10 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
                       <span className="text-xs font-medium text-gray-200 line-clamp-2 leading-tight">{sound.name}</span>
                       <div className="flex flex-col gap-2 shrink-0">
                         <button 
-                          onClick={() => playPreview(sound.url)}
+                          onClick={() => togglePlay(sound.url)}
                           className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-[var(--accent-color)] transition-colors"
                         >
-                          <Icons.Play size={12} className="ml-0.5" />
+                          {playingSoundUrl === sound.url ? <Icons.Pause size={12} /> : <Icons.Play size={12} className="ml-0.5" />}
                         </button>
                         <button 
                           onClick={() => onToggleSaveSound(sound)}
@@ -264,10 +285,10 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
                     <span className="text-xs font-medium text-gray-200 line-clamp-2 leading-tight">{sound.name}</span>
                     <div className="flex flex-col gap-2 shrink-0">
                       <button 
-                        onClick={() => playPreview(sound.url)}
+                        onClick={() => togglePlay(sound.url)}
                         className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-[var(--accent-color)] transition-colors"
                       >
-                        <Icons.Play size={12} className="ml-0.5" />
+                        {playingSoundUrl === sound.url ? <Icons.Pause size={12} /> : <Icons.Play size={12} className="ml-0.5" />}
                       </button>
                       <button 
                         onClick={() => onToggleSaveSound(sound)}
