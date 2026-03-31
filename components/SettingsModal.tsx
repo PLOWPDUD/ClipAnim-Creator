@@ -211,13 +211,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
 
                 {backgroundImage ? (
-                    <div className="relative w-full aspect-video bg-gray-800 rounded-lg overflow-hidden border border-gray-700 group">
-                        <img src={backgroundImage} alt="BG" className="w-full h-full object-cover" />
+                    <div className="space-y-2">
+                        <div className="relative w-full aspect-video bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
+                            <img src={backgroundImage} alt="BG" className="w-full h-full object-cover" />
+                            <button 
+                                onClick={() => setBackgroundImage(null)}
+                                className="absolute top-2 right-2 bg-red-600 p-2 rounded-full text-white shadow-lg transition-transform active:scale-90"
+                                title="Remove Image"
+                            >
+                                <Icons.Trash2 size={16} />
+                            </button>
+                        </div>
                         <button 
                             onClick={() => setBackgroundImage(null)}
-                            className="absolute top-2 right-2 bg-red-600 p-1.5 rounded-full text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="w-full py-2 bg-gray-800 hover:bg-gray-700 text-red-400 text-xs font-bold rounded-lg border border-gray-700 transition-colors flex items-center justify-center gap-2"
                         >
-                            <Icons.Trash2 size={14} />
+                            <Icons.X size={14} />
+                            Remove Background Image
                         </button>
                     </div>
                 ) : (

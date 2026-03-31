@@ -193,19 +193,27 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                           type="text" 
                           value={editingName} 
                           onChange={(e) => setEditingName(e.target.value)}
-                          className="flex-1 bg-black text-xs p-1 rounded border border-gray-600 focus:border-[var(--accent-color)] outline-none"
+                          className="flex-1 bg-black text-sm p-1 rounded border border-gray-600 focus:border-[var(--accent-color)] outline-none"
                           autoFocus
                           onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(item.id); }}
                         />
-                        <button onClick={() => handleSaveName(item.id)} className="text-[var(--accent-color)]">
-                          <Icons.Check size={14} />
+                        <button 
+                          onClick={() => handleSaveName(item.id)} 
+                          className="p-2 -m-1 text-[var(--accent-color)] hover:opacity-80 transition-opacity"
+                          title="Save"
+                        >
+                          <Icons.Check size={18} />
                         </button>
                       </>
                     ) : (
                       <>
                         <span className="flex-1 text-xs text-gray-300 truncate">{item.name || 'Unnamed'}</span>
-                        <button onClick={() => { setEditingItemId(item.id); setEditingName(item.name || ''); }} className="text-gray-500 hover:text-white">
-                          <Icons.Settings size={14} />
+                        <button 
+                          onClick={() => { setEditingItemId(item.id); setEditingName(item.name || ''); }} 
+                          className="p-2 -m-1 text-gray-500 hover:text-white transition-colors"
+                          title="Rename"
+                        >
+                          <Icons.Settings size={18} />
                         </button>
                       </>
                     )}

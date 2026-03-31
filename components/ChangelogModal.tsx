@@ -11,6 +11,24 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.1.4',
+    date: '2026-03-31',
+    type: 'patch',
+    changes: [
+      'Improved Background Controls: Added a prominent "Remove Background Image" button in settings for better accessibility on mobile devices.',
+      'Enhanced UI Clarity: Background image removal is now always visible and easier to find when an image is set.'
+    ]
+  },
+  {
+    version: '1.1.3',
+    date: '2026-03-31',
+    type: 'patch',
+    changes: [
+      'Improved Backpack Accessibility: Increased the touch target and icon size for renaming saved selections in the backpack.',
+      'Enhanced Mobile Usability: Made it easier to rename items on Android and other touch devices.'
+    ]
+  },
+  {
     version: '1.1.2',
     date: '2026-03-31',
     type: 'patch',

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.4] - 2026-03-31
+
+### Fixed
+- **Background Controls:** Added a prominent "Remove Background Image" button in settings for better accessibility, especially on mobile devices where hover states are not available.
+
+## [1.1.3] - 2026-03-31
+
+### Fixed
+- **Backpack Accessibility:** Increased the touch target and icon size for renaming saved selections in the backpack, making it easier to use on mobile devices.
+
 ## [1.1.2] - 2026-03-31
 
 ### Fixed
