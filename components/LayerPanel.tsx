@@ -27,6 +27,7 @@ interface SortableLayerItemProps {
   onToggleLock: (id: string) => void;
   onToggleVisibility: (id: string) => void;
   onRemoveLayer: (id: string) => void;
+  onDuplicateLayer: (id: string) => void;
   onUpdateLayerSettings: (id: string, opacity: number, blendMode: GlobalCompositeOperation) => void;
   onRenameLayer: (id: string, newName: string) => void;
   layersCount: number;
@@ -39,6 +40,7 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
   onToggleLock,
   onToggleVisibility,
   onRemoveLayer,
+  onDuplicateLayer,
   onUpdateLayerSettings,
   onRenameLayer,
   layersCount,
@@ -134,6 +136,14 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
             title={layer.isVisible ? "Hide" : "Show"}
           >
             {layer.isVisible ? <Icons.Eye size={14} /> : <Icons.EyeOff size={14} />}
+          </button>
+
+          <button
+            onClick={(e) => { e.stopPropagation(); onDuplicateLayer(layer.id); }}
+            className="p-1.5 rounded hover:bg-black/30 text-gray-600 hover:text-blue-400"
+            title="Duplicate Layer"
+          >
+            <Icons.Copy size={14} />
           </button>
 
           <button
@@ -288,6 +298,7 @@ export const LayerPanel: React.FC<LayerPanelProps> = ({
                 onToggleLock={onToggleLock}
                 onToggleVisibility={onToggleVisibility}
                 onRemoveLayer={onRemoveLayer}
+                onDuplicateLayer={onDuplicateLayer}
                 onUpdateLayerSettings={onUpdateLayerSettings}
                 onRenameLayer={onRenameLayer}
                 layersCount={layers.length}

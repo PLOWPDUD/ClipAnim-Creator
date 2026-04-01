@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { motion } from 'motion/react';
+import { Icons } from '../Icons';
 import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings, BackgroundSettings } from '../types';
 import { floodFill, magicWandSelect, lassoSelect } from '../utils/drawingUtils';
 
@@ -50,6 +51,8 @@ interface CanvasAreaProps {
   smoothing: number;
   deviceType: 'mobile' | 'pc' | null;
   onColorPick: (color: string) => void;
+  cameraMode: boolean;
+  onToggleCameraMode: () => void;
 }
 
 const getMixBlendMode = (mode: GlobalCompositeOperation): any => {
@@ -130,7 +133,9 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   fillTolerance,
   smoothing,
   deviceType,
-  onColorPick
+  onColorPick,
+  cameraMode,
+  onToggleCameraMode
 }, ref) => {
   console.log('CanvasArea render', { layers, activeLayerId });
   const activeCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -567,7 +572,35 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     }
 
     if (tool === 'select' || tool === 'lasso') {
-        if (selection) onSelectionCommit();
+        // Only commit if we are not clicking on the selection
+        // Since this handler is on the container, and selection overlay stops propagation,
+        // we only get here if we clicked outside the selection box.
+        
+        // However, if the selection is outside the canvas, clicking on the canvas
+        // should probably NOT commit if the user is just trying to navigate.
+        // But if they are in 'select' tool, they probably want to start a new selection.
+        
+        // Let's add a small check: if the click is very close to the selection, don't commit.
+        const isClickNearSelection = () => {
+            if (!selection) return false;
+            const margin = 60;
+            // Simple unrotated check for now as a heuristic
+            return (
+                x >= selection.x - margin &&
+                x <= selection.x + selection.width + margin &&
+                y >= selection.y - margin &&
+                y <= selection.y + selection.height + margin
+            );
+        };
+
+        if (selection && !isClickNearSelection()) {
+            // Only commit if clicking inside the canvas bounds
+            const isInsideCanvas = x >= 0 && x <= canvasWidth && y >= 0 && y <= canvasHeight;
+            if (isInsideCanvas) {
+                onSelectionCommit();
+            }
+        }
+        
         selectionMode.current = 'create';
         dragStart.current = { x, y };
         if (tool === 'lasso') {
@@ -1365,7 +1398,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   return (
     <div 
       ref={containerRef} 
-      className="relative w-full h-full flex items-center justify-center bg-[#2a2a2a] overflow-hidden touch-none"
+      className="relative w-full h-full flex items-center justify-center bg-[#2a2a2a] overflow-visible touch-none"
       onWheel={handleWheel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -1376,15 +1409,21 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     >
         <div 
             ref={transformRef}
-            className="relative shadow-2xl origin-center"
+            className={`relative origin-center transition-shadow duration-300 overflow-visible ${cameraMode ? '' : 'shadow-2xl border border-white/20'}`}
             style={{ 
-                transform: `translate(0px, 0px) rotate(0deg) scale(1)`,
+                transform: `translate(${transform.current.x}px, ${transform.current.y}px) rotate(${transform.current.rotation}deg) scale(${transform.current.scale})`,
                 width: canvasWidth, 
                 height: canvasHeight,
                 imageRendering: 'auto',
                 background: (currentFrame.background || background).type === 'gradient3' ? ((currentFrame.background || background).gradientColors ? `linear-gradient(to bottom right, ${(currentFrame.background || background).gradientColors!.join(', ')})` : '#ffffff') : ((currentFrame.background || background).color === 'transparent' ? 'transparent' : (currentFrame.background || background).color)
             }}
         >
+            {cameraMode && (
+                <div className="absolute inset-0 pointer-events-none z-[150] shadow-[0_0_0_10000px_rgba(0,0,0,0.7)]" />
+            )}
+            {cameraMode && (
+                <div className="absolute inset-0 pointer-events-none z-[160] border-2 border-[var(--accent-color)]" />
+            )}
             {(currentFrame.backgroundImage !== undefined ? currentFrame.backgroundImage : backgroundImage) && (
                 <img src={(currentFrame.backgroundImage !== undefined ? currentFrame.backgroundImage : backgroundImage)!} alt="Background" className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none select-none" />
             )}
@@ -1408,7 +1447,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         filter: `url(#onion-before)`
                     }}
                 >
-                    <img src={f.thumbnailUrl} alt="" className="w-full h-full object-contain" />
+                    <img src={f.thumbnailUrl} alt="" className="w-full h-full" />
                 </div>
             ))}
             
@@ -1421,7 +1460,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         filter: `url(#onion-after)`
                     }}
                 >
-                     <img src={f.thumbnailUrl} alt="" className="w-full h-full object-contain" />
+                     <img src={f.thumbnailUrl} alt="" className="w-full h-full" />
                 </div>
             ))}
 
@@ -1480,7 +1519,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             {selection && (
                 <div 
                     ref={selectionOverlayRef}
-                    className="absolute z-[100] select-none" 
+                    className="absolute z-[200] select-none overflow-visible pointer-events-auto group" 
                     onPointerDown={handleSelectionPointerDown}
                     onDoubleClick={handleSelectionDoubleClick}
                     style={{
@@ -1501,7 +1540,27 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     />
                     
                     {/* Interactive Selection UI */}
-                    <div className="absolute inset-0 border-4 border-[#007AFF] pointer-events-none"></div>
+                    <div className="absolute inset-0 border-4 border-[#007AFF] pointer-events-none shadow-[0_0_15px_rgba(0,122,255,0.3)]"></div>
+
+                    {/* Commit/Delete Buttons */}
+                    <div className="absolute -top-14 left-1/2 -translate-x-1/2 flex gap-2 pointer-events-auto z-50 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <motion.button 
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={(e) => { e.stopPropagation(); onSelectionCommit(); }}
+                            className="bg-[#007AFF] text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-2xl flex items-center gap-2 hover:brightness-110 whitespace-nowrap"
+                        >
+                            <Icons.Check size={16} /> Commit
+                        </motion.button>
+                        <motion.button 
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={(e) => { e.stopPropagation(); onSelectionDelete(); }}
+                            className="bg-red-500 text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-2xl flex items-center gap-2 hover:brightness-110 whitespace-nowrap"
+                        >
+                            <Icons.Trash2 size={16} /> Delete
+                        </motion.button>
+                    </div>
                     
                     {/* Bigger Corner Handles */}
                     <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tl')} className="absolute -top-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-tl', selection.rotation, selection.scaleX, selection.scaleY) }} />
@@ -1522,7 +1581,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                             whileTap={{ scale: 0.95 }}
                             className="w-8 h-8 rounded-full bg-white border-2 border-[#007AFF] flex items-center justify-center text-[#007AFF] shadow-xl cursor-grab active:cursor-grabbing pointer-events-auto transition-colors"
                         >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                            <Icons.RotateCw size={20} />
                         </motion.div>
                     </div>
 
@@ -1557,11 +1616,11 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             )}
             
             {tool === 'select' && isCreatingSelection && (
-                 <div ref={marqueeRef} className="absolute border-2 border-dashed border-red-500 bg-red-500/20 pointer-events-none z-[110]" />
+                 <div ref={marqueeRef} className="absolute border-2 border-dashed border-red-500 bg-red-500/20 pointer-events-none z-[200]" />
             )}
 
             {tool === 'lasso' && isCreatingSelection && (
-                <svg className="absolute inset-0 w-full h-full pointer-events-none z-[110]">
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-[200] overflow-visible">
                     <polyline
                         points={lassoPoints.current.map(p => `${p.x},${p.y}`).join(' ')}
                         fill="rgba(255, 59, 48, 0.2)"
@@ -1580,7 +1639,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     onChange={(e) => setTextInput({ ...textInput, value: e.target.value })}
                     onKeyDown={(e) => { if(e.key === 'Enter') commitText(); }}
                     onPointerDown={(e) => e.stopPropagation()}
-                    className="absolute z-[100] bg-transparent border-none outline-none p-0 m-0"
+                    className="absolute z-[200] bg-transparent border-none outline-none p-0 m-0"
                     style={{ 
                         left: textInput.x, 
                         top: textInput.y, 
@@ -1596,12 +1655,22 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             )}
         </div>
         
-        <div className="absolute top-4 right-4 bg-black/50 text-white text-xs px-2 py-1 rounded pointer-events-none flex gap-2 z-[120]">
-            <span>{Math.round(transform.current.scale * 100)}%</span>
-            <span>{Math.round(transform.current.rotation)}°</span>
-            {tool === 'select' && <span>Select Mode</span>}
-            {tool === 'wand' && <span>Wand Mode</span>}
-            {tool === 'text' && <span>Text Mode</span>}
+        <div className="absolute top-4 right-4 flex gap-2 z-[120]">
+            <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={onToggleCameraMode}
+                className={`p-2 rounded-lg backdrop-blur-md border transition-all flex items-center gap-2 ${cameraMode ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white shadow-[0_0_15px_rgba(var(--accent-rgb),0.5)]' : 'bg-black/50 border-white/10 text-white hover:bg-black/70'}`}
+                title={cameraMode ? "Exit Camera View" : "Enter Camera View (Show Canvas Boundaries)"}
+            >
+                <Icons.Camera size={18} />
+                <span className="text-xs font-medium hidden sm:inline">{cameraMode ? "Camera ON" : "Camera OFF"}</span>
+            </motion.button>
+            
+            <div className="bg-black/50 text-white text-xs px-3 py-2 rounded-lg backdrop-blur-md border border-white/10 pointer-events-none flex gap-3">
+                <span className="flex items-center gap-1 opacity-70"><Icons.Maximize2 size={12} /> {Math.round(transform.current.scale * 100)}%</span>
+                <span className="flex items-center gap-1 opacity-70"><Icons.RotateCw size={12} /> {Math.round(transform.current.rotation)}°</span>
+            </div>
         </div>
 
         {/* Pan Sliders */}

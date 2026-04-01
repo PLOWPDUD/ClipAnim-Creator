@@ -11,6 +11,16 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.1.8',
+    date: '2026-03-31',
+    type: 'minor',
+    changes: [
+      'Added Camera Mode to visualize canvas boundaries and workspace',
+      'New Camera toggle button in the canvas area',
+      'Dimmed workspace effect when Camera Mode is active'
+    ]
+  },
+  {
     version: '1.1.7',
     date: '2026-03-31',
     type: 'minor',

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.8] - 2026-03-31
+### Added
+- Camera Mode: A new feature to visualize canvas boundaries and dim the workspace outside the canvas, similar to Adobe products.
+- Improved canvas visualization with a dedicated Camera toggle button.
+
 ## [1.1.7] - 2026-03-31
 
 ### Added

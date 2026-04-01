@@ -172,6 +172,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
   const [isFocusMode, setIsFocusMode] = useState(false);
+  const [cameraMode, setCameraMode] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   
   useEffect(() => {
@@ -693,6 +694,7 @@ export default function App() {
 
   const handleSelectionCommit = async () => {
       if (!selection) return;
+
       const canvas = document.createElement('canvas');
       canvas.width = canvasSize.width;
       canvas.height = canvasSize.height;
@@ -1423,20 +1425,27 @@ export default function App() {
     setTweenTargetIndex(index);
   };
 
-  const executeTween = async (index: number, numTweens: number, easing: string = 'linear') => {
+  const executeTween = async (index: number, numTweens: number, easing: string = 'linear', includeOnionSkin: boolean = true) => {
     if (index >= frames.length - 1) return; // Cannot tween the last frame
     
+    const originalOnionSkin = onionSkin;
+    if (!includeOnionSkin) {
+        setOnionSkin(false);
+    }
+
     const frameA = frames[index];
     const frameB = frames[index + 1];
     
-    const newFrames = [...frames];
     const generatedFrames: Frame[] = [];
 
     const canvas = document.createElement('canvas');
     canvas.width = canvasSize.width;
     canvas.height = canvasSize.height;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+        if (!includeOnionSkin) setOnionSkin(originalOnionSkin);
+        return;
+    }
 
     const getEasingProgress = (t: number, type: string) => {
       switch (type) {
@@ -1447,7 +1456,7 @@ export default function App() {
       }
     };
 
-    const getBoundingBox = (img: HTMLImageElement, width: number, height: number) => {
+    const getLayerStats = (img: HTMLImageElement, width: number, height: number) => {
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = width;
       tempCanvas.height = height;
@@ -1456,103 +1465,177 @@ export default function App() {
       tempCtx.drawImage(img, 0, 0);
       const imageData = tempCtx.getImageData(0, 0, width, height);
       const data = imageData.data;
+      
       let minX = width, minY = height, maxX = -1, maxY = -1;
+      let m00 = 0, m10 = 0, m01 = 0, m11 = 0, m20 = 0, m02 = 0;
+      
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           const alpha = data[(y * width + x) * 4 + 3];
           if (alpha > 0) {
+            const weight = alpha / 255;
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
             if (y < minY) minY = y;
             if (y > maxY) maxY = y;
+            
+            m00 += weight;
+            m10 += x * weight;
+            m01 += y * weight;
+            m11 += x * y * weight;
+            m20 += x * x * weight;
+            m02 += y * y * weight;
           }
         }
       }
-      if (minX > maxX || minY > maxY) return null;
-      return { x: minX, y: minY, w: Math.max(1, maxX - minX + 1), h: Math.max(1, maxY - minY + 1) };
+      
+      if (m00 < 0.1) return null;
+      
+      const centerX = m10 / m00;
+      const centerY = m01 / m00;
+      const mu20 = m20 / m00 - centerX * centerX;
+      const mu02 = m02 / m00 - centerY * centerY;
+      const mu11 = m11 / m00 - centerX * centerY;
+      
+      // Orientation angle in radians (principal axis)
+      const angle = 0.5 * Math.atan2(2 * mu11, mu20 - mu02);
+      
+      return { 
+        x: minX, 
+        y: minY, 
+        w: Math.max(1, maxX - minX + 1), 
+        h: Math.max(1, maxY - minY + 1),
+        centerX,
+        centerY,
+        angle
+      };
     };
 
-    const layerData: Record<string, { imgA: HTMLImageElement | null, imgB: HTMLImageElement | null, boxA: any, boxB: any }> = {};
+    const layerData: Record<string, { 
+      imgA: HTMLImageElement | null, 
+      imgB: HTMLImageElement | null, 
+      statsA: any, 
+      statsB: any 
+    }> = {};
 
     for (const layer of layers) {
       let imgA: HTMLImageElement | null = null;
       let imgB: HTMLImageElement | null = null;
-      let boxA = null;
-      let boxB = null;
+      let statsA = null;
+      let statsB = null;
 
       if (frameA.layers[layer.id]) {
         imgA = new Image();
         imgA.src = frameA.layers[layer.id];
         await new Promise(resolve => { imgA!.onload = resolve; });
-        boxA = getBoundingBox(imgA, canvasSize.width, canvasSize.height);
+        statsA = getLayerStats(imgA, canvasSize.width, canvasSize.height);
       }
 
       if (frameB.layers[layer.id]) {
         imgB = new Image();
         imgB.src = frameB.layers[layer.id];
         await new Promise(resolve => { imgB!.onload = resolve; });
-        boxB = getBoundingBox(imgB, canvasSize.width, canvasSize.height);
+        statsB = getLayerStats(imgB, canvasSize.width, canvasSize.height);
       }
 
-      layerData[layer.id] = { imgA, imgB, boxA, boxB };
+      layerData[layer.id] = { imgA, imgB, statsA, statsB };
     }
+
+    const compositeCanvas = document.createElement('canvas');
+    compositeCanvas.width = canvasSize.width;
+    compositeCanvas.height = canvasSize.height;
+    const compositeCtx = compositeCanvas.getContext('2d');
 
     for (let i = 1; i <= numTweens; i++) {
       const t = i / (numTweens + 1);
       const progress = getEasingProgress(t, easing);
       const newLayers: Record<string, string> = {};
+      
+      if (compositeCtx) {
+        compositeCtx.clearRect(0, 0, compositeCanvas.width, compositeCanvas.height);
+        // Background is handled by Timeline and CanvasArea separately, 
+        // thumbnails for onion skinning should be transparent.
+      }
 
       for (const layer of layers) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        const { imgA, imgB, boxA, boxB } = layerData[layer.id];
+        const { imgA, imgB, statsA, statsB } = layerData[layer.id];
 
-        if (imgA && imgB && boxA && boxB) {
-          const boxI = {
-            x: boxA.x + (boxB.x - boxA.x) * progress,
-            y: boxA.y + (boxB.y - boxA.y) * progress,
-            w: boxA.w + (boxB.w - boxA.w) * progress,
-            h: boxA.h + (boxB.h - boxA.h) * progress,
-          };
+        if (imgA && imgB && statsA && statsB) {
+          // Interpolate stats
+          const centerX = statsA.centerX + (statsB.centerX - statsA.centerX) * progress;
+          const centerY = statsA.centerY + (statsB.centerY - statsA.centerY) * progress;
+          const width = statsA.w + (statsB.w - statsA.w) * progress;
+          const height = statsA.h + (statsB.h - statsA.h) * progress;
+          
+          // Shortest path for principal axis angle (-PI/2 to PI/2)
+          let diff = statsB.angle - statsA.angle;
+          while (diff > Math.PI / 2) diff -= Math.PI;
+          while (diff < -Math.PI / 2) diff += Math.PI;
+          const angle = statsA.angle + diff * progress;
 
-          ctx.globalAlpha = 1.0;
-          if (progress < 0.5) {
-            const scaleXA = boxI.w / boxA.w;
-            const scaleYA = boxI.h / boxA.h;
-            ctx.setTransform(scaleXA, 0, 0, scaleYA, boxI.x - boxA.x * scaleXA, boxI.y - boxA.y * scaleYA);
-            ctx.drawImage(imgA, 0, 0);
-          } else {
-            const scaleXB = boxI.w / boxB.w;
-            const scaleYB = boxI.h / boxB.h;
-            ctx.setTransform(scaleXB, 0, 0, scaleYB, boxI.x - boxB.x * scaleXB, boxI.y - boxB.y * scaleYB);
-            ctx.drawImage(imgB, 0, 0);
-          }
+          // Cross-fade with smooth transformation
+          // Draw imgA
+          ctx.globalAlpha = 1 - progress;
+          ctx.save();
+          ctx.translate(centerX, centerY);
+          ctx.rotate(angle - statsA.angle);
+          ctx.scale(width / statsA.w, height / statsA.h);
+          ctx.translate(-statsA.centerX, -statsA.centerY);
+          ctx.drawImage(imgA, 0, 0);
+          ctx.restore();
 
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
-        } else {
-          ctx.globalAlpha = 1.0;
-          if (progress < 0.5 && imgA) {
-            ctx.drawImage(imgA, 0, 0);
-          } else if (progress >= 0.5 && imgB) {
-            ctx.drawImage(imgB, 0, 0);
+          // Draw imgB
+          ctx.globalAlpha = progress;
+          ctx.save();
+          ctx.translate(centerX, centerY);
+          ctx.rotate(angle - statsB.angle);
+          ctx.scale(width / statsB.w, height / statsB.h);
+          ctx.translate(-statsB.centerX, -statsB.centerY);
+          ctx.drawImage(imgB, 0, 0);
+          ctx.restore();
+        } else if (imgA || imgB) {
+          // Fade in or fade out if only one exists
+          ctx.globalAlpha = imgA ? (1 - progress) : progress;
+          const targetImg = imgA || imgB;
+          if (targetImg) {
+            ctx.drawImage(targetImg, 0, 0);
           }
         }
 
         ctx.globalAlpha = 1.0;
-        newLayers[layer.id] = canvas.toDataURL();
+        const layerDataUrl = canvas.toDataURL();
+        newLayers[layer.id] = layerDataUrl;
+        
+        if (compositeCtx && layer.isVisible) {
+          compositeCtx.save();
+          compositeCtx.globalAlpha = layer.opacity;
+          // Use the canvas directly to avoid async image loading issues
+          compositeCtx.drawImage(canvas, 0, 0);
+          compositeCtx.restore();
+        }
       }
-
+      
       generatedFrames.push({
         id: crypto.randomUUID(),
         layers: newLayers,
-        durationMultiplier: 1
+        durationMultiplier: 1,
+        background: frameA.background,
+        backgroundImage: frameA.backgroundImage,
+        thumbnailUrl: compositeCanvas.toDataURL('image/png')
       });
     }
 
+    const newFrames = [...frames];
     newFrames.splice(index + 1, 0, ...generatedFrames);
     updateFramesWithHistory(newFrames);
     setCurrentFrameIndex(index + numTweens + 1);
     setHasUnsavedChanges(true);
+
+    if (!includeOnionSkin) {
+        setOnionSkin(originalOnionSkin);
+    }
   };
 
   // Bulk operations
@@ -1839,7 +1922,7 @@ export default function App() {
             </div>
         </header>
       )}
-      <main className="flex-1 relative flex flex-row overflow-hidden min-h-0">
+      <main className="flex-1 relative flex flex-row overflow-visible min-h-0">
         <Toolbar 
             currentTool={tool} 
             onSelectTool={setTool} 
@@ -1873,7 +1956,7 @@ export default function App() {
             smoothing={smoothing}
             onChangeSmoothing={setSmoothing}
         />
-        <div className="flex-1 relative min-h-0 overflow-hidden bg-[#2a2a2a]">
+        <div className="flex-1 relative min-h-0 overflow-visible bg-[#2a2a2a]">
             <CanvasArea 
                 ref={canvasRef} 
                 currentFrame={frames[currentFrameIndex]} 
@@ -1906,13 +1989,15 @@ export default function App() {
                 smoothing={smoothing}
                 deviceType={deviceType}
                 onColorPick={setColor}
+                cameraMode={cameraMode}
+                onToggleCameraMode={() => setCameraMode(!cameraMode)}
             />
             <TweenModal
                 isOpen={tweenTargetIndex !== null}
                 onClose={() => setTweenTargetIndex(null)}
-                onGenerate={(numTweens, easing) => {
+                onGenerate={(numTweens, easing, includeOnionSkin) => {
                     if (tweenTargetIndex !== null) {
-                        executeTween(tweenTargetIndex, numTweens, easing);
+                        executeTween(tweenTargetIndex, numTweens, easing, includeOnionSkin);
                     }
                 }}
             />

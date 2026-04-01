@@ -71,7 +71,8 @@ import {
   Lasso,
   Pipette,
   Scissors,
-  Search
+  Search,
+  Camera
 } from 'lucide-react';
 
 export const Icons = {
@@ -149,5 +150,6 @@ export const Icons = {
   Smartphone,
   Lasso,
   Scissors,
-  Search
+  Search,
+  Camera
 };

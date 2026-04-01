@@ -29,6 +29,10 @@ interface ToolbarProps {
   onOpenHelp: () => void;
   textToolFont: string;
   onSelectTextToolFont: (font: string) => void;
+  textToolBold: boolean;
+  setTextToolBold: (bold: boolean) => void;
+  textToolItalic: boolean;
+  setTextToolItalic: (italic: boolean) => void;
   fillOpacity: number;
   onChangeFillOpacity: (opacity: number) => void;
   fillTolerance: number;
@@ -63,6 +67,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onOpenHelp,
   textToolFont,
   onSelectTextToolFont,
+  textToolBold,
+  setTextToolBold,
+  textToolItalic,
+  setTextToolItalic,
   fillOpacity,
   onChangeFillOpacity,
   fillTolerance,
@@ -458,6 +466,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 </div>
                 <input type="range" min="10" max="100" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
             </div>
+             <div className="w-full h-px bg-gray-700" />
+             <div className="flex gap-2">
+                <button 
+                    onClick={() => setTextToolBold(!textToolBold)}
+                    className={`flex-1 p-2 rounded-lg border transition-colors flex items-center justify-center ${textToolBold ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
+                    title="Bold"
+                >
+                    <Icons.Bold size={18} />
+                </button>
+                <button 
+                    onClick={() => setTextToolItalic(!textToolItalic)}
+                    className={`flex-1 p-2 rounded-lg border transition-colors flex items-center justify-center ${textToolItalic ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
+                    title="Italic"
+                >
+                    <Icons.Italic size={18} />
+                </button>
+             </div>
              <div className="w-full h-px bg-gray-700" />
             <div>
                 <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">

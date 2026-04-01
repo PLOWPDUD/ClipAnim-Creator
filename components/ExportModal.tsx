@@ -1,7 +1,7 @@
 import React from 'react';
 import { Icons } from '../Icons';
 
-export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'avi';
+export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'avi' | 'project-zip';
 export type ExportQuality = 'low' | 'medium' | 'high';
 
 interface ExportModalProps {
@@ -105,6 +105,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     { id: 'webm', label: 'WebM Video', icon: Icons.FileVideo, color: 'text-emerald-400', desc: 'Web-native format, small file size.' },
     { id: 'gif', label: 'Animated GIF', icon: Icons.Image, color: 'text-amber-400', desc: 'Looping animation for the web.' },
     { id: 'png-seq', label: 'PNG Sequence', icon: Icons.FileArchive, color: 'text-rose-400', desc: 'High quality frames in a ZIP file.' },
+    { id: 'project-zip', label: 'Project Archive', icon: Icons.FileArchive, color: 'text-purple-400', desc: 'Full project data and frames in a ZIP.' },
     { id: 'avi', label: 'AVI Video', icon: Icons.FileVideo, color: 'text-indigo-400', desc: 'Legacy format (Windows-friendly).' },
   ];
 

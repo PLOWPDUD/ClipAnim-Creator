@@ -4,12 +4,14 @@ import { Icons } from '../Icons';
 interface TweenModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onGenerate: (numFrames: number, easing: string) => void;
+  onGenerate: (numFrames: number, easing: string, includeOnionSkin: boolean) => void;
 }
 
 export const TweenModal: React.FC<TweenModalProps> = ({ isOpen, onClose, onGenerate }) => {
+  console.log("TweenModal rendered, isOpen:", isOpen);
   const [numFrames, setNumFrames] = useState(3);
   const [easing, setEasing] = useState('linear');
+  const [includeOnionSkin, setIncludeOnionSkin] = useState(true);
 
   if (!isOpen) return null;
 
@@ -22,7 +24,7 @@ export const TweenModal: React.FC<TweenModalProps> = ({ isOpen, onClose, onGener
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-[#1e1e1e] rounded-2xl w-full max-w-sm shadow-2xl border border-white/10 flex flex-col">
+      <div className="bg-[#1e1e1e] rounded-2xl w-full max-w-sm shadow-2xl border border-white/10 flex flex-col max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-white/10">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <Icons.Wand2 size={20} className="text-purple-400" />
@@ -72,6 +74,18 @@ export const TweenModal: React.FC<TweenModalProps> = ({ isOpen, onClose, onGener
               ))}
             </div>
           </div>
+
+          <div className="flex items-center justify-between p-3 bg-black/20 rounded-xl border border-white/5">
+            <label className="text-sm font-medium text-gray-300">
+              Include Onion Skin
+            </label>
+            <button 
+              onClick={() => setIncludeOnionSkin(!includeOnionSkin)}
+              className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${includeOnionSkin ? 'bg-purple-600' : 'bg-gray-600'}`}
+            >
+              <div className={`w-4 h-4 rounded-full bg-white transition-transform ${includeOnionSkin ? 'translate-x-6' : 'translate-x-0'}`} />
+            </button>
+          </div>
         </div>
 
         <div className="p-4 border-t border-white/10 flex justify-end gap-3 bg-black/20 rounded-b-2xl">
@@ -83,7 +97,7 @@ export const TweenModal: React.FC<TweenModalProps> = ({ isOpen, onClose, onGener
           </button>
           <button 
             onClick={() => {
-              onGenerate(numFrames, easing);
+              onGenerate(numFrames, easing, includeOnionSkin);
               onClose();
             }}
             className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-xl transition-colors shadow-lg shadow-purple-500/20"
