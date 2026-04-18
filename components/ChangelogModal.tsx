@@ -11,6 +11,18 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.2.0',
+    date: '2026-04-18',
+    type: 'major',
+    changes: [
+      'Advanced Audio Editor: Fully integrated audio layer editing directly in the timeline',
+      'Enhanced Timing Controls: Automatic frame expansion based on audio duration',
+      'Timeline Snapping: Audio clips now snap to frame boundaries for easy alignment',
+      'Custom Brush Engine: Import and use custom brushes for more artistic control',
+      'Motion Path Tool: Animate objects along custom paths across frames'
+    ]
+  },
+  {
     version: '1.1.8',
     date: '2026-03-31',
     type: 'minor',

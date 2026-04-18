@@ -1,9 +1,17 @@
 
-export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'lasso' | 'wand' | 'shape' | 'text' | 'eyedropper';
+export type SymmetryMode = 'none' | 'horizontal' | 'vertical';
+
+export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'lasso' | 'wand' | 'shape' | 'text' | 'eyedropper' | 'motionPath';
 
 export type BrushType = 'pen' | 'marker' | 'highlighter' | 'spray' | 'pixel' | 'watercolor' | 'oil' | 'calligraphy';
 
 export type ShapeType = 'rectangle' | 'circle' | 'line' | 'triangle' | 'star' | 'hexagon' | 'heart' | 'arrow' | 'speech-bubble';
+
+export interface MotionPath {
+  id: string;
+  points: Point[];
+  targetLayerId: string;
+}
 
 export interface Point {
   x: number;
@@ -61,6 +69,8 @@ export interface SelectionState {
   type?: 'text' | 'image';
   selectionType?: 'rectangle' | 'lasso' | 'wand';
   maskUrl?: string;
+  originX?: number;
+  originY?: number;
   textData?: {
     text: string;
     font: string;
@@ -118,6 +128,7 @@ export interface AppState {
   fillTolerance: number;
   smoothing: number;
   background: BackgroundSettings;
+  motionPaths: MotionPath[];
 }
 
 export interface ProjectMeta {
@@ -139,5 +150,6 @@ export interface ProjectData {
     frames: Frame[];
     fps: number;
     audioTracks: AudioTrack[];
+    motionPaths: MotionPath[];
     onionSkinSettings?: OnionSkinSettings;
 }

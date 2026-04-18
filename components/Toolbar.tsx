@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { ToolType, ShapeType, BrushType } from '../types';
+import { ToolType, ShapeType, BrushType, SymmetryMode } from '../types';
 import { Icons } from '../Icons';
 import { hexToHsv, hsvToHex } from '../utils/drawingUtils';
 
@@ -24,6 +24,8 @@ interface ToolbarProps {
   onFlipHorizontal: () => void;
   onFlipVertical: () => void;
   onRotate: () => void;
+  onSelectionCommit: () => void;
+  onSelectionDelete: () => void;
   shapeType: ShapeType;
   onSelectShapeType: (type: ShapeType) => void;
   onOpenHelp: () => void;
@@ -39,6 +41,10 @@ interface ToolbarProps {
   onChangeFillTolerance: (tolerance: number) => void;
   smoothing: number;
   onChangeSmoothing: (smoothing: number) => void;
+  symmetryMode: SymmetryMode;
+  onSelectSymmetryMode: (mode: SymmetryMode) => void;
+  customBrushes: string[];
+  onAddCustomBrush: (brush: string) => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -62,6 +68,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onFlipHorizontal,
   onFlipVertical,
   onRotate,
+  onSelectionCommit,
+  onSelectionDelete,
   shapeType,
   onSelectShapeType,
   onOpenHelp,
@@ -76,9 +84,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   fillTolerance,
   onChangeFillTolerance,
   smoothing,
-  onChangeSmoothing
+  onChangeSmoothing,
+  symmetryMode,
+  onSelectSymmetryMode,
+  customBrushes,
+  onAddCustomBrush
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const brushInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [activePopover, setActivePopover] = useState<ToolType | 'color' | null>(null);
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
@@ -182,6 +195,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     { id: 'eyedropper', icon: Icons.Eyedropper, label: 'Eyedropper' },
     { id: 'shape', icon: getShapeIcon(), label: 'Shapes' },
     { id: 'text', icon: Icons.Type, label: 'Text' },
+    { id: 'motionPath', icon: Icons.Repeat, label: 'Motion Path' },
   ];
 
   const textFonts = [
@@ -208,6 +222,39 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 <tool.icon size={24} />
             </button>
             ))}
+            
+            {/* Symmetry */}
+            <div className="flex flex-col items-center gap-2">
+                <button onClick={() => onSelectSymmetryMode('none')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'none' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>None</button>
+                <button onClick={() => onSelectSymmetryMode('horizontal')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'horizontal' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>H</button>
+                <button onClick={() => onSelectSymmetryMode('vertical')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'vertical' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>V</button>
+            </div>
+
+            {/* Custom Brushes */}
+            <div className="flex flex-col items-center gap-2">
+                <button onClick={() => brushInputRef.current?.click()} className="p-2 rounded-lg bg-gray-800 text-gray-400 hover:bg-gray-700">
+                    <Icons.Plus size={20} />
+                </button>
+                <input 
+                    ref={brushInputRef} 
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (e) => onAddCustomBrush(e.target?.result as string);
+                            reader.readAsDataURL(file);
+                        }
+                    }} 
+                />
+                {customBrushes.map((brush, index) => (
+                    <img key={index} src={brush} alt={`Brush ${index}`} className="w-8 h-8 rounded-lg" />
+                ))}
+            </div>
+            
+            <div className="w-8 h-px bg-gray-700 my-2 shrink-0" />
             
             {/* Image Import */}
             <button 
@@ -252,6 +299,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
             {hasSelection && (
             <div className="flex flex-col gap-2 shrink-0 mt-2">
+                <button onClick={onSelectionCommit} className="p-3 rounded-xl text-white bg-green-600 hover:bg-green-500 shadow-lg" title="Commit Selection (Let Go)">
+                    <Icons.Check size={20} />
+                </button>
+                <button onClick={onSelectionDelete} className="p-3 rounded-xl text-white bg-red-600 hover:bg-red-500 shadow-lg" title="Deselect (Discard)">
+                    <Icons.X size={20} />
+                </button>
                 <button onClick={onRotate} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title="Rotate">
                     <Icons.RotateCw size={20} />
                 </button>

@@ -4,7 +4,7 @@ import { Icons } from '../Icons';
 interface TweenModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onGenerate: (numFrames: number, easing: string, includeOnionSkin: boolean) => void;
+  onGenerate: (numFrames: number, easing: string, includeOnionSkin: boolean, interpolatePosition: boolean, interpolateScale: boolean, interpolateRotation: boolean) => void;
 }
 
 export const TweenModal: React.FC<TweenModalProps> = ({ isOpen, onClose, onGenerate }) => {
@@ -12,6 +12,9 @@ export const TweenModal: React.FC<TweenModalProps> = ({ isOpen, onClose, onGener
   const [numFrames, setNumFrames] = useState(3);
   const [easing, setEasing] = useState('linear');
   const [includeOnionSkin, setIncludeOnionSkin] = useState(true);
+  const [interpolatePosition, setInterpolatePosition] = useState(true);
+  const [interpolateScale, setInterpolateScale] = useState(true);
+  const [interpolateRotation, setInterpolateRotation] = useState(true);
 
   if (!isOpen) return null;
 
@@ -75,16 +78,31 @@ export const TweenModal: React.FC<TweenModalProps> = ({ isOpen, onClose, onGener
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-black/20 rounded-xl border border-white/5">
-            <label className="text-sm font-medium text-gray-300">
-              Include Onion Skin
-            </label>
-            <button 
-              onClick={() => setIncludeOnionSkin(!includeOnionSkin)}
-              className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${includeOnionSkin ? 'bg-purple-600' : 'bg-gray-600'}`}
-            >
-              <div className={`w-4 h-4 rounded-full bg-white transition-transform ${includeOnionSkin ? 'translate-x-6' : 'translate-x-0'}`} />
-            </button>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between p-3 bg-black/20 rounded-xl border border-white/5">
+              <label className="text-sm font-medium text-gray-300">Include Onion Skin</label>
+              <button onClick={() => setIncludeOnionSkin(!includeOnionSkin)} className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${includeOnionSkin ? 'bg-purple-600' : 'bg-gray-600'}`}>
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform ${includeOnionSkin ? 'translate-x-6' : 'translate-x-0'}`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-black/20 rounded-xl border border-white/5">
+              <label className="text-sm font-medium text-gray-300">Interpolate Position</label>
+              <button onClick={() => setInterpolatePosition(!interpolatePosition)} className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${interpolatePosition ? 'bg-purple-600' : 'bg-gray-600'}`}>
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform ${interpolatePosition ? 'translate-x-6' : 'translate-x-0'}`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-black/20 rounded-xl border border-white/5">
+              <label className="text-sm font-medium text-gray-300">Interpolate Scale</label>
+              <button onClick={() => setInterpolateScale(!interpolateScale)} className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${interpolateScale ? 'bg-purple-600' : 'bg-gray-600'}`}>
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform ${interpolateScale ? 'translate-x-6' : 'translate-x-0'}`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-black/20 rounded-xl border border-white/5">
+              <label className="text-sm font-medium text-gray-300">Interpolate Rotation</label>
+              <button onClick={() => setInterpolateRotation(!interpolateRotation)} className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${interpolateRotation ? 'bg-purple-600' : 'bg-gray-600'}`}>
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform ${interpolateRotation ? 'translate-x-6' : 'translate-x-0'}`} />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -97,7 +115,7 @@ export const TweenModal: React.FC<TweenModalProps> = ({ isOpen, onClose, onGener
           </button>
           <button 
             onClick={() => {
-              onGenerate(numFrames, easing, includeOnionSkin);
+              onGenerate(numFrames, easing, includeOnionSkin, interpolatePosition, interpolateScale, interpolateRotation);
               onClose();
             }}
             className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-xl transition-colors shadow-lg shadow-purple-500/20"

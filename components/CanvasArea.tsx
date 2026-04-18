@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { motion } from 'motion/react';
 import { Icons } from '../Icons';
-import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings, BackgroundSettings } from '../types';
+import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings, BackgroundSettings, Point, SymmetryMode } from '../types';
 import { floodFill, magicWandSelect, lassoSelect } from '../utils/drawingUtils';
 
 export interface CanvasAreaHandle {
@@ -53,6 +53,8 @@ interface CanvasAreaProps {
   onColorPick: (color: string) => void;
   cameraMode: boolean;
   onToggleCameraMode: () => void;
+  symmetryMode: SymmetryMode;
+  onApplyMotionPath: (points: Point[]) => void;
 }
 
 const getMixBlendMode = (mode: GlobalCompositeOperation): any => {
@@ -135,7 +137,9 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   deviceType,
   onColorPick,
   cameraMode,
-  onToggleCameraMode
+  onToggleCameraMode,
+  symmetryMode,
+  onApplyMotionPath
 }, ref) => {
   console.log('CanvasArea render', { layers, activeLayerId });
   const activeCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -165,7 +169,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const hasMoved = useRef(false);
   const drawStart = useRef<{x: number, y: number} | null>(null);
   const points = useRef<{x: number, y: number}[]>([]);
+  const symmetryPathPoints = useRef<Record<string, {x: number, y: number}[]>>({});
   const lastPoint = useRef<{x: number, y: number} | null>(null);
+  const symmetryLastPoints = useRef<Record<string, {x: number, y: number} | null>>({});
+  const motionPathPoints = useRef<{x: number, y: number}[]>([]);
   const canvasSnapshot = useRef<ImageData | null>(null);
 
   const dragStart = useRef<{x: number, y: number} | null>(null);
@@ -416,6 +423,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
       ctx.globalCompositeOperation = 'source-over';
+      ctx.setLineDash([]);
       
       if (tool === 'eraser') {
           ctx.globalCompositeOperation = 'destination-out';
@@ -618,7 +626,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             const newSelection = magicWandSelect(ctx, Math.floor(x), Math.floor(y));
             if (newSelection) {
                 saveCanvas();
-                onSelectionCreate(newSelection);
+                onSelectionCreate({ ...newSelection, originX: newSelection.x, originY: newSelection.y });
             }
         }
         isDrawing.current = false;
@@ -649,7 +657,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
 
     let didCommit = false;
     
-    const isActuallyDrawingOnSelection = selection && !didCommit && (mx >= 0 && mx <= selection.width && my >= 0 && my <= selection.height);
+    const isActuallyDrawingOnSelection = selection && !didCommit && (mx >= 0 && mx <= selection.width && my >= 0 && my <= selection.height) && tool !== 'motionPath';
     isDrawingOnSelectionRef.current = !!isActuallyDrawingOnSelection;
     
     const drawX = isActuallyDrawingOnSelection ? mx : x;
@@ -658,10 +666,39 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     const ctx = isActuallyDrawingOnSelection ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
     if (!ctx) return;
 
+    if (tool === 'motionPath') {
+        motionPathPoints.current = [{ x, y }];
+        isDrawing.current = true;
+        const activeCtx = activeCanvasRef.current?.getContext('2d');
+        if (activeCtx) {
+            canvasSnapshot.current = activeCtx.getImageData(0, 0, activeCtx.canvas.width, activeCtx.canvas.height);
+            setupBrush(activeCtx);
+            activeCtx.strokeStyle = 'rgba(255, 0, 0, 0.5)'; // Distinct color for motion path
+            activeCtx.lineWidth = 2;
+            activeCtx.setLineDash([5, 5]);
+            activeCtx.beginPath();
+            activeCtx.moveTo(x, y);
+        }
+        return;
+    }
+
     isDrawing.current = true;
     drawStart.current = { x: drawX, y: drawY };
     lastPoint.current = { x: drawX, y: drawY };
     points.current = [{ x: drawX, y: drawY }];
+
+    // Initialize symmetry points
+    symmetryLastPoints.current = {};
+    symmetryPathPoints.current = {};
+    if (symmetryMode !== 'none' && !isActuallyDrawingOnSelection) {
+        if (symmetryMode === 'horizontal') {
+            symmetryLastPoints.current['h'] = { x: canvasWidth - drawX, y: drawY };
+            symmetryPathPoints.current['h'] = [{ x: canvasWidth - drawX, y: drawY }];
+        } else if (symmetryMode === 'vertical') {
+            symmetryLastPoints.current['v'] = { x: drawX, y: canvasHeight - drawY };
+            symmetryPathPoints.current['v'] = [{ x: drawX, y: canvasHeight - drawY }];
+        }
+    }
 
     if (tool === 'fill') {
         floodFill(ctx, Math.floor(mx), Math.floor(my), color, fillOpacity, fillTolerance);
@@ -1103,6 +1140,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             ctx.beginPath();
             ctx.lineWidth = strokeWidth;
             ctx.strokeStyle = color;
+            ctx.setLineDash([]);
             if (selection) {
                 ctx.globalCompositeOperation = 'source-over';
             } else {
@@ -1213,6 +1251,15 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         } else if (tool === 'pen' && brushType === 'pixel') {
              if (lastPoint.current) {
                  drawPixelLine(ctx, lastPoint.current.x, lastPoint.current.y, drawX, drawY);
+                 
+                 if (symmetryMode !== 'none' && !isDrawingOnSelectionRef.current) {
+                     if (symmetryMode === 'horizontal') {
+                         drawPixelLine(ctx, canvasWidth - lastPoint.current.x, lastPoint.current.y, canvasWidth - drawX, drawY);
+                     } else if (symmetryMode === 'vertical') {
+                         drawPixelLine(ctx, lastPoint.current.x, canvasHeight - lastPoint.current.y, drawX, canvasHeight - drawY);
+                     }
+                 }
+                 
                  lastPoint.current = { x: drawX, y: drawY };
              }
         } else if (tool === 'pen' && brushType === 'spray') {
@@ -1222,14 +1269,28 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                  const offsetY = (Math.random() - 0.5) * strokeWidth * 2;
                  if (offsetX * offsetX + offsetY * offsetY <= strokeWidth * strokeWidth) {
                      ctx.fillRect(drawX + offsetX, drawY + offsetY, 1, 1);
+                     
+                     if (symmetryMode !== 'none' && !isDrawingOnSelectionRef.current) {
+                         if (symmetryMode === 'horizontal') {
+                             ctx.fillRect(canvasWidth - (drawX + offsetX), drawY + offsetY, 1, 1);
+                         } else if (symmetryMode === 'vertical') {
+                             ctx.fillRect(drawX + offsetX, canvasHeight - (drawY + offsetY), 1, 1);
+                         }
+                     }
                  }
              }
+        } else if (tool === 'motionPath') {
+            motionPathPoints.current.push({ x, y });
+            const activeCtx = activeCanvasRef.current?.getContext('2d');
+            if (activeCtx) {
+                activeCtx.lineTo(x, y);
+                activeCtx.stroke();
+            }
         } else if (tool === 'pen' || tool === 'eraser') {
             if (smoothing > 0 && tool === 'pen') {
                 points.current.push({ x: drawX, y: drawY });
                 if (points.current.length === 2) {
                     ctx.lineTo(drawX, drawY);
-                    ctx.stroke();
                 } else if (points.current.length > 2) {
                     const lastPoint = points.current[points.current.length - 2];
                     const midPoint = {
@@ -1237,12 +1298,66 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         y: (lastPoint.y + drawY) / 2
                     };
                     ctx.quadraticCurveTo(lastPoint.x, lastPoint.y, midPoint.x, midPoint.y);
-                    ctx.stroke();
                 }
             } else {
                 ctx.lineTo(drawX, drawY);
-                ctx.stroke();
             }
+
+            if (symmetryMode !== 'none' && !isDrawingOnSelectionRef.current) {
+                if (symmetryMode === 'horizontal') {
+                    const symX = canvasWidth - drawX;
+                    const symY = drawY;
+                    symmetryPathPoints.current['h']?.push({ x: symX, y: symY });
+                    
+                    if (symmetryLastPoints.current['h']) {
+                        ctx.moveTo(symmetryLastPoints.current['h'].x, symmetryLastPoints.current['h'].y);
+                        if (smoothing > 0 && tool === 'pen' && symmetryPathPoints.current['h']!.length > 2) {
+                            const lastSymPoint = symmetryPathPoints.current['h']![symmetryPathPoints.current['h']!.length - 2];
+                            const midSymPoint = {
+                                x: (lastSymPoint.x + symX) / 2,
+                                y: (lastSymPoint.y + symY) / 2
+                            };
+                            ctx.quadraticCurveTo(lastSymPoint.x, lastSymPoint.y, midSymPoint.x, midSymPoint.y);
+                        } else {
+                            ctx.lineTo(symX, symY);
+                        }
+                    }
+                    symmetryLastPoints.current['h'] = { x: symX, y: symY };
+                } else if (symmetryMode === 'vertical') {
+                    const symX = drawX;
+                    const symY = canvasHeight - drawY;
+                    symmetryPathPoints.current['v']?.push({ x: symX, y: symY });
+                    
+                    if (symmetryLastPoints.current['v']) {
+                        ctx.moveTo(symmetryLastPoints.current['v'].x, symmetryLastPoints.current['v'].y);
+                        if (smoothing > 0 && tool === 'pen' && symmetryPathPoints.current['v']!.length > 2) {
+                            const lastSymPoint = symmetryPathPoints.current['v']![symmetryPathPoints.current['v']!.length - 2];
+                            const midSymPoint = {
+                                x: (lastSymPoint.x + symX) / 2,
+                                y: (lastSymPoint.y + symY) / 2
+                            };
+                            ctx.quadraticCurveTo(lastSymPoint.x, lastSymPoint.y, midSymPoint.x, midSymPoint.y);
+                        } else {
+                            ctx.lineTo(symX, symY);
+                        }
+                    }
+                    symmetryLastPoints.current['v'] = { x: symX, y: symY };
+                }
+                
+                // Move back to main path
+                if (smoothing > 0 && tool === 'pen' && points.current.length > 2) {
+                    const lastPoint = points.current[points.current.length - 2];
+                    const midPoint = {
+                        x: (lastPoint.x + drawX) / 2,
+                        y: (lastPoint.y + drawY) / 2
+                    };
+                    ctx.moveTo(midPoint.x, midPoint.y);
+                } else {
+                    ctx.moveTo(drawX, drawY);
+                }
+            }
+            
+            ctx.stroke();
         }
 
         if (isDrawingOnSelectionRef.current && maskImageRef.current) {
@@ -1288,7 +1403,21 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     tempCtx?.putImageData(imageData, 0, 0);
                     ctx.clearRect(left, top, width, height);
                     saveCanvas(); 
-                    onSelectionCreate({ x: left, y: top, width, height, dataUrl: tempCanvas.toDataURL(), rotation: 0, scaleX: 1, scaleY: 1, anchorX: width / 2, anchorY: height / 2, selectionType: 'rectangle' });
+                    onSelectionCreate({ 
+                        x: left, 
+                        y: top, 
+                        width, 
+                        height, 
+                        dataUrl: tempCanvas.toDataURL(), 
+                        rotation: 0, 
+                        scaleX: 1, 
+                        scaleY: 1, 
+                        anchorX: width / 2, 
+                        anchorY: height / 2, 
+                        selectionType: 'rectangle',
+                        originX: left,
+                        originY: top
+                    });
                 }
             }
             setIsCreatingSelection(false);
@@ -1299,7 +1428,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     const newSelection = lassoSelect(ctx, lassoPoints.current);
                     if (newSelection) {
                         saveCanvas();
-                        onSelectionCreate(newSelection);
+                        onSelectionCreate({ ...newSelection, originX: newSelection.x, originY: newSelection.y });
                     }
                 }
             }
@@ -1320,6 +1449,21 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             if ((tool === 'pen' && brushType !== 'spray' && brushType !== 'pixel') || tool === 'eraser') {
                 if (!hasMoved.current && drawStart.current) {
                     ctx.lineTo(drawStart.current.x, drawStart.current.y);
+                    
+                    if (symmetryMode !== 'none' && !isDrawingOnSelectionRef.current) {
+                        if (symmetryMode === 'horizontal') {
+                            const symX = canvasWidth - drawStart.current.x;
+                            const symY = drawStart.current.y;
+                            ctx.moveTo(symX, symY);
+                            ctx.lineTo(symX, symY);
+                        } else if (symmetryMode === 'vertical') {
+                            const symX = drawStart.current.x;
+                            const symY = canvasHeight - drawStart.current.y;
+                            ctx.moveTo(symX, symY);
+                            ctx.lineTo(symX, symY);
+                        }
+                    }
+                    
                     ctx.stroke();
                 }
                 ctx.closePath();
@@ -1336,6 +1480,18 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     const size = Math.floor(strokeWidth);
                     ctx.fillStyle = color;
                     ctx.fillRect(Math.floor(drawStart.current.x - size/2), Math.floor(drawStart.current.y - size/2), size, size);
+                    
+                    if (symmetryMode !== 'none' && !isDrawingOnSelectionRef.current) {
+                        if (symmetryMode === 'horizontal') {
+                            const symX = canvasWidth - drawStart.current.x;
+                            const symY = drawStart.current.y;
+                            ctx.fillRect(Math.floor(symX - size/2), Math.floor(symY - size/2), size, size);
+                        } else if (symmetryMode === 'vertical') {
+                            const symX = drawStart.current.x;
+                            const symY = canvasHeight - drawStart.current.y;
+                            ctx.fillRect(Math.floor(symX - size/2), Math.floor(symY - size/2), size, size);
+                        }
+                    }
                 }
                 if (!isDrawingOnSelectionRef.current) saveCanvas();
                 else {
@@ -1355,6 +1511,15 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     const newUrl = selectionCanvasRef.current?.toDataURL();
                     if (newUrl) onSelectionUpdate({ ...selection!, dataUrl: newUrl });
                 }
+            } else if (tool === 'motionPath') {
+                ctx.closePath();
+                if (canvasSnapshot.current) {
+                    ctx.putImageData(canvasSnapshot.current, 0, 0);
+                }
+                if (motionPathPoints.current.length > 5) {
+                    onApplyMotionPath(motionPathPoints.current);
+                }
+                motionPathPoints.current = [];
             }
         }
         isDrawing.current = false;

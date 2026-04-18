@@ -85,8 +85,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   const handleTimelinePointerMove = (e: React.PointerEvent) => {
     if (draggingTrackId) {
       const dx = e.clientX - dragStartX;
-      const dt = dx / FRAME_WIDTH / fps;
-      const newStartTime = Math.max(0, dragStartStartTime + dt);
+      const startFrame = Math.round(dragStartStartTime * fps + dx / FRAME_WIDTH);
+      const newStartTime = Math.max(0, startFrame / fps);
       onUpdateAudioTrack(draggingTrackId, { startTime: newStartTime });
     }
   };
@@ -222,7 +222,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                             <div className="flex items-center mb-1">
                                 <Icons.Volume2 size={10} className="text-gray-300 mr-1" />
                                 <span className="text-[9px] text-gray-100 truncate flex-1">{track.name}</span>
-                                <button onClick={() => onRemoveAudioTrack(track.id)} className="text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => onRemoveAudioTrack(track.id)} className="text-gray-400 hover:text-red-400 transition-opacity">
                                     <Icons.X size={10}/>
                                 </button>
                             </div>

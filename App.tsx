@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings } from './types';
+import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
@@ -132,6 +132,8 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(true);
   const [tool, setTool] = useState<ToolType>('pen');
+  const [symmetryMode, setSymmetryMode] = useState<SymmetryMode>('none');
+  const [customBrushes, setCustomBrushes] = useState<string[]>([]);
   const [brushType, setBrushType] = useState<BrushType>('pen');
   const [shapeType, setShapeType] = useState<ShapeType>('rectangle');
   const [color, setColor] = useState('#000000');
@@ -146,7 +148,10 @@ export default function App() {
   const [penSize, setPenSize] = useState(5);
   const [eraserSize, setEraserSize] = useState(30);
   const [shapeSize, setShapeSize] = useState(5);
+  const [pendingMotionPath, setPendingMotionPath] = useState<Point[] | null>(null);
   const [textToolFont, setTextToolFont] = useState('sans-serif');
+  const [textToolBold, setTextToolBold] = useState(false);
+  const [textToolItalic, setTextToolItalic] = useState(false);
   const [fillOpacity, setFillOpacity] = useState(1);
   const [fillTolerance, setFillTolerance] = useState(0);
   const [smoothing, setSmoothing] = useState(0);
@@ -544,7 +549,16 @@ export default function App() {
       const url = URL.createObjectURL(file);
       const id = crypto.randomUUID();
       const audio = new Audio(url);
-      audio.onloadedmetadata = () => {
+      audio.onloadedmetadata = async () => {
+          console.log("Audio loaded, duration:", audio.duration, "fps:", fps);
+          if (isNaN(audio.duration)) {
+            console.error("Audio duration is NaN");
+            return;
+          }
+          const numFrames = Math.max(1, Math.ceil(audio.duration * fps));
+          console.log("Adding frames:", numFrames);
+          await addBlankFrames(numFrames);
+          
           const newTrack: AudioTrack = {
               id,
               url,
@@ -556,7 +570,7 @@ export default function App() {
               offset: 0
           };
           audioElementsRef.current.set(id, audio);
-          setAudioTracks([...audioTracks, newTrack]);
+          setAudioTracks(prev => [...prev, newTrack]);
           setHasUnsavedChanges(true);
       };
   };
@@ -565,7 +579,16 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const id = crypto.randomUUID();
       const audio = new Audio(url);
-      audio.onloadedmetadata = () => {
+      audio.onloadedmetadata = async () => {
+          console.log("Audio loaded, duration:", audio.duration, "fps:", fps);
+          if (isNaN(audio.duration)) {
+            console.error("Audio duration is NaN");
+            return;
+          }
+          const numFrames = Math.max(1, Math.ceil(audio.duration * fps));
+          console.log("Adding frames:", numFrames);
+          await addBlankFrames(numFrames);
+          
           const newTrack: AudioTrack = {
               id,
               url,
@@ -577,7 +600,7 @@ export default function App() {
               offset: 0
           };
           audioElementsRef.current.set(id, audio);
-          setAudioTracks([...audioTracks, newTrack]);
+          setAudioTracks(prev => [...prev, newTrack]);
           setHasUnsavedChanges(true);
           setIsAudioRecorderOpen(false);
       };
@@ -718,6 +741,123 @@ export default function App() {
       setSelection(null);
   };
 
+  const handleApplyMotionPath = async (path: Point[]) => {
+      if (!selection || path.length < 5) return;
+      setPendingMotionPath(path);
+  };
+
+  const finalizeMotionPath = async (path: Point[], numFrames: number, easing: string) => {
+      if (!selection || path.length < 5) return;
+
+      const numFramesToAnimate = numFrames;
+      const updatedFrames = [...frames];
+      const sampledPath: Point[] = [];
+      
+      const getEasingProgress = (t: number, type: string) => {
+        switch (type) {
+          case 'ease-in': return t * t;
+          case 'ease-out': return t * (2 - t);
+          case 'ease-in-out': return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+          default: return t; // linear
+        }
+      };
+
+      for (let i = 0; i < numFramesToAnimate; i++) {
+          const t = i / (numFramesToAnimate - 1);
+          const easedT = getEasingProgress(t, easing);
+          const index = easedT * (path.length - 1);
+          const low = Math.floor(index);
+          const high = Math.ceil(index);
+          const frac = index - low;
+          
+          if (low === high) {
+              sampledPath.push(path[low]);
+          } else {
+              sampledPath.push({
+                  x: path[low].x * (1 - frac) + path[high].x * frac,
+                  y: path[low].y * (1 - frac) + path[high].y * frac
+              });
+          }
+      }
+
+      let frameIdx = currentFrameIndex;
+      const initialLayerData = updatedFrames[currentFrameIndex].layers[activeLayerId];
+      
+      for (let i = 0; i < sampledPath.length; i++) {
+          if (frameIdx >= updatedFrames.length) {
+              const lastFrame = updatedFrames[updatedFrames.length - 1];
+              const newFrame: Frame = {
+                  ...lastFrame,
+                  id: crypto.randomUUID(),
+                  layers: { 
+                      ...lastFrame.layers,
+                      [activeLayerId]: initialLayerData // Use the "clean" layer with the hole
+                  }
+              };
+              updatedFrames.push(newFrame);
+          }
+
+          const frame = updatedFrames[frameIdx];
+          const point = sampledPath[i];
+
+          const canvas = document.createElement('canvas');
+          canvas.width = canvasSize.width;
+          canvas.height = canvasSize.height;
+          const ctx = canvas.getContext('2d');
+          
+          if (ctx) {
+              const layerData = frame.layers[activeLayerId];
+              if (layerData) {
+                  const img = await new Promise<HTMLImageElement>(r => {
+                      const img = new Image();
+                      img.onload = () => r(img);
+                      img.src = layerData;
+                  });
+                  ctx.drawImage(img, 0, 0);
+                  
+                  // If this is an existing frame (other than the first one), 
+                  // it might still have the object. Try to clear it.
+                  if (frameIdx > currentFrameIndex && selection.originX !== undefined && selection.originY !== undefined) {
+                      ctx.save();
+                      ctx.globalCompositeOperation = 'destination-out';
+                      if (selection.maskUrl) {
+                          const maskImg = await new Promise<HTMLImageElement>(r => {
+                              const img = new Image();
+                              img.onload = () => r(img);
+                              img.src = selection.maskUrl!;
+                          });
+                          ctx.drawImage(maskImg, selection.originX, selection.originY, selection.width, selection.height);
+                      } else {
+                          ctx.fillRect(selection.originX, selection.originY, selection.width, selection.height);
+                      }
+                      ctx.restore();
+                  }
+              }
+
+              const movedSelection = {
+                  ...selection,
+                  x: point.x - (selection.anchorX ?? selection.width / 2),
+                  y: point.y - (selection.anchorY ?? selection.height / 2)
+              };
+
+              await drawSelectionOntoCanvas(ctx, movedSelection);
+              updatedFrames[frameIdx] = {
+                  ...updatedFrames[frameIdx],
+                  layers: {
+                      ...updatedFrames[frameIdx].layers,
+                      [activeLayerId]: canvas.toDataURL()
+                  }
+              };
+          }
+          frameIdx++;
+      }
+
+      setFrames(updatedFrames);
+      setSelection(null);
+      setHasUnsavedChanges(true);
+      setTool('pen');
+  };
+
   const handleExportStart = async (format: ExportFormat, quality: ExportQuality) => {
     setIsExporting(true);
     setExportProgress(0);
@@ -739,13 +879,17 @@ export default function App() {
 
     if (format === 'mp4') {
         try {
+            // Ensure even dimensions for H.264
+            const exportWidth = canvasSize.width % 2 === 0 ? canvasSize.width : canvasSize.width - 1;
+            const exportHeight = canvasSize.height % 2 === 0 ? canvasSize.height : canvasSize.height - 1;
+
             // Using mp4-muxer for valid MP4 generation
             const muxer = new Mp4Muxer.Muxer({
                 target: new Mp4Muxer.ArrayBufferTarget(),
                 video: {
                     codec: 'avc',
-                    width: canvasSize.width,
-                    height: canvasSize.height
+                    width: exportWidth,
+                    height: exportHeight
                 },
                 fastStart: 'in-memory',
                 firstTimestampBehavior: 'offset',
@@ -764,16 +908,16 @@ export default function App() {
 
             videoEncoder.configure({
                 codec: 'avc1.42001f', // Standard AVC
-                width: canvasSize.width,
-                height: canvasSize.height,
+                width: exportWidth,
+                height: exportHeight,
                 bitrate: bitrateMap[quality],
                 framerate: fps
             });
 
             // Loop frames
             const canvas = document.createElement('canvas');
-            canvas.width = canvasSize.width;
-            canvas.height = canvasSize.height;
+            canvas.width = exportWidth;
+            canvas.height = exportHeight;
             const ctx = canvas.getContext('2d');
             if (!ctx) throw new Error("No context");
 
@@ -785,20 +929,19 @@ export default function App() {
                  const img = new Image();
                  await new Promise<void>((resolve) => { img.onload = () => resolve(); img.src = compositeFrames[i]; });
                  
+                 ctx.clearRect(0, 0, exportWidth, exportHeight);
                  if (background.type === 'gradient3' && background.gradientColors) {
-                    const gradient = ctx.createLinearGradient(0, 0, canvasSize.width, canvasSize.height);
+                    const gradient = ctx.createLinearGradient(0, 0, exportWidth, exportHeight);
                     gradient.addColorStop(0, background.gradientColors[0]);
                     gradient.addColorStop(0.5, background.gradientColors[1]);
                     gradient.addColorStop(1, background.gradientColors[2]);
                     ctx.fillStyle = gradient;
-                    ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+                    ctx.fillRect(0, 0, exportWidth, exportHeight);
                  } else if (background.color !== 'transparent') {
                     ctx.fillStyle = background.color;
-                    ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
-                 } else {
-                    ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
+                    ctx.fillRect(0, 0, exportWidth, exportHeight);
                  }
-                 ctx.drawImage(img, 0, 0);
+                 ctx.drawImage(img, 0, 0, exportWidth, exportHeight);
 
                  const frame = new VideoFrame(canvas, { timestamp: i * 1000000 / fps });
                  videoEncoder.encode(frame);
@@ -971,6 +1114,7 @@ export default function App() {
           frames,
           fps,
           audioTracks,
+          motionPaths: [],
           onionSkinSettings
       };
       try {
@@ -1091,6 +1235,7 @@ export default function App() {
           frames,
           fps,
           audioTracks,
+          motionPaths: [],
           onionSkinSettings
       };
       const blob = new Blob([JSON.stringify(projectData)], { type: 'application/json' });
@@ -1420,12 +1565,31 @@ export default function App() {
     setHasUnsavedChanges(true);
   };
 
+  const addBlankFrames = async (count: number) => {
+      let newFrames = [...frames];
+      for (let i = 0; i < count; i++) {
+        const newFrame = createBlankFrame(layers, canvasSize.width, canvasSize.height);
+        newFrame.thumbnailUrl = await compositeLayers(newFrame, layers, canvasSize.width, canvasSize.height, background, backgroundImage, false);
+        newFrames.push(newFrame);
+      }
+      updateFramesWithHistory(newFrames);
+      setHasUnsavedChanges(true);
+  };
+
   const tweenFrame = (index: number) => {
     if (index >= frames.length - 1) return; // Cannot tween the last frame
     setTweenTargetIndex(index);
   };
 
-  const executeTween = async (index: number, numTweens: number, easing: string = 'linear', includeOnionSkin: boolean = true) => {
+  const executeTween = async (
+    index: number, 
+    numTweens: number, 
+    easing: string = 'linear', 
+    includeOnionSkin: boolean = true,
+    interpolatePosition: boolean = true,
+    interpolateScale: boolean = true,
+    interpolateRotation: boolean = true
+  ) => {
     if (index >= frames.length - 1) return; // Cannot tween the last frame
     
     const originalOnionSkin = onionSkin;
@@ -1564,16 +1728,19 @@ export default function App() {
 
         if (imgA && imgB && statsA && statsB) {
           // Interpolate stats
-          const centerX = statsA.centerX + (statsB.centerX - statsA.centerX) * progress;
-          const centerY = statsA.centerY + (statsB.centerY - statsA.centerY) * progress;
-          const width = statsA.w + (statsB.w - statsA.w) * progress;
-          const height = statsA.h + (statsB.h - statsA.h) * progress;
+          const centerX = interpolatePosition ? (statsA.centerX + (statsB.centerX - statsA.centerX) * progress) : statsA.centerX;
+          const centerY = interpolatePosition ? (statsA.centerY + (statsB.centerY - statsA.centerY) * progress) : statsA.centerY;
+          const width = interpolateScale ? (statsA.w + (statsB.w - statsA.w) * progress) : statsA.w;
+          const height = interpolateScale ? (statsA.h + (statsB.h - statsA.h) * progress) : statsA.h;
           
           // Shortest path for principal axis angle (-PI/2 to PI/2)
-          let diff = statsB.angle - statsA.angle;
-          while (diff > Math.PI / 2) diff -= Math.PI;
-          while (diff < -Math.PI / 2) diff += Math.PI;
-          const angle = statsA.angle + diff * progress;
+          let angle = statsA.angle;
+          if (interpolateRotation) {
+            let diff = statsB.angle - statsA.angle;
+            while (diff > Math.PI / 2) diff -= Math.PI;
+            while (diff < -Math.PI / 2) diff += Math.PI;
+            angle = statsA.angle + diff * progress;
+          }
 
           // Cross-fade with smooth transformation
           // Draw imgA
@@ -1898,6 +2065,14 @@ export default function App() {
                     <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white" title="Copy"><Icons.Copy size={20} /></button>
                     <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white" title="Paste"><Icons.Clipboard size={20} /></button>
                     <button 
+                      onClick={handleSelectionCommit} 
+                      disabled={!selection} 
+                      className={`p-2 rounded-full ${selection ? 'text-green-400 hover:text-green-300' : 'text-gray-600'}`} 
+                      title="Commit Selection (Let Go)"
+                    >
+                      <Icons.Check size={20} />
+                    </button>
+                    <button 
                       onClick={() => {
                         if (selection) {
                           setSelection(null);
@@ -1928,6 +2103,10 @@ export default function App() {
             onSelectTool={setTool} 
             currentBrushType={brushType} 
             onSelectBrushType={setBrushType} 
+            symmetryMode={symmetryMode}
+            onSelectSymmetryMode={setSymmetryMode}
+            customBrushes={customBrushes}
+            onAddCustomBrush={(brush) => setCustomBrushes([...customBrushes, brush])}
             currentColor={color} 
             onChangeColor={setColor} 
             strokeWidth={currentStrokeWidth} 
@@ -1944,11 +2123,17 @@ export default function App() {
             onFlipHorizontal={() => setSelection(selection ? {...selection, scaleX: selection.scaleX * -1} : null)} 
             onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)} 
             onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)} 
+            onSelectionCommit={handleSelectionCommit}
+            onSelectionDelete={() => setSelection(null)}
             shapeType={shapeType} 
             onSelectShapeType={setShapeType} 
             onOpenHelp={() => setIsHelpOpen(true)} 
             textToolFont={textToolFont}
             onSelectTextToolFont={setTextToolFont}
+            textToolBold={textToolBold}
+            setTextToolBold={setTextToolBold}
+            textToolItalic={textToolItalic}
+            setTextToolItalic={setTextToolItalic}
             fillOpacity={fillOpacity}
             onChangeFillOpacity={setFillOpacity}
             fillTolerance={fillTolerance}
@@ -1991,13 +2176,25 @@ export default function App() {
                 onColorPick={setColor}
                 cameraMode={cameraMode}
                 onToggleCameraMode={() => setCameraMode(!cameraMode)}
+                symmetryMode={symmetryMode}
+                onApplyMotionPath={handleApplyMotionPath}
             />
             <TweenModal
                 isOpen={tweenTargetIndex !== null}
                 onClose={() => setTweenTargetIndex(null)}
-                onGenerate={(numTweens, easing, includeOnionSkin) => {
+                onGenerate={(numTweens, easing, includeOnionSkin, interpolatePosition, interpolateScale, interpolateRotation) => {
                     if (tweenTargetIndex !== null) {
-                        executeTween(tweenTargetIndex, numTweens, easing, includeOnionSkin);
+                        executeTween(tweenTargetIndex, numTweens, easing, includeOnionSkin, interpolatePosition, interpolateScale, interpolateRotation);
+                    }
+                }}
+            />
+            <TweenModal
+                isOpen={pendingMotionPath !== null}
+                onClose={() => setPendingMotionPath(null)}
+                onGenerate={(numTweens, easing) => {
+                    if (pendingMotionPath) {
+                        finalizeMotionPath(pendingMotionPath, numTweens, easing);
+                        setPendingMotionPath(null);
                     }
                 }}
             />
