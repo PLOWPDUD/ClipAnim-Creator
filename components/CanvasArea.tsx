@@ -1820,7 +1820,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             )}
         </div>
         
-        <div className="absolute top-4 right-4 flex gap-2 z-[120]">
+        <div className="absolute top-4 left-4 flex items-center gap-2 z-[120]">
             <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
