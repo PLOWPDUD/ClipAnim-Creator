@@ -52,6 +52,8 @@ export interface AudioTrack {
   startTime: number; // Start time in seconds relative to the timeline
   duration: number;  // Duration in seconds to play
   offset: number;    // Offset in seconds from the start of the original file
+  fadeIn?: number;   // Fade in duration in seconds
+  fadeOut?: number;  // Fade out duration in seconds
 }
 
 // Selection state

@@ -60,8 +60,16 @@ export const Timeline: React.FC<TimelineProps> = ({
   const audioInputRef = useRef<HTMLInputElement>(null);
   const [showAudio, setShowAudio] = useState(false);
   const [draggingTrackId, setDraggingTrackId] = useState<string | null>(null);
+  const [draggingFadeId, setDraggingFadeId] = useState<string | null>(null);
+  const [fadeType, setFadeType] = useState<'in' | 'out' | null>(null);
+  const [draggingTrimId, setDraggingTrimId] = useState<string | null>(null);
+  const [trimType, setTrimType] = useState<'start' | 'end' | null>(null);
+  
   const [dragStartX, setDragStartX] = useState(0);
   const [dragStartStartTime, setDragStartStartTime] = useState(0);
+  const [dragStartFade, setDragStartFade] = useState(0);
+  const [dragStartOffset, setDragStartOffset] = useState(0);
+  const [dragStartDuration, setDragStartDuration] = useState(0);
 
   const FRAME_WIDTH = 66; // 64px width + 2px margin
 
@@ -82,17 +90,59 @@ export const Timeline: React.FC<TimelineProps> = ({
     setDragStartStartTime(track.startTime);
   };
 
+  const handleFadePointerDown = (e: React.PointerEvent, track: AudioTrack, type: 'in' | 'out') => {
+    e.stopPropagation();
+    setDraggingFadeId(track.id);
+    setFadeType(type);
+    setDragStartX(e.clientX);
+    setDragStartFade(type === 'in' ? (track.fadeIn || 0) : (track.fadeOut || 0));
+  };
+
+  const handleTrimPointerDown = (e: React.PointerEvent, track: AudioTrack, type: 'start' | 'end') => {
+    e.stopPropagation();
+    setDraggingTrimId(track.id);
+    setTrimType(type);
+    setDragStartX(e.clientX);
+    setDragStartStartTime(track.startTime);
+    setDragStartOffset(track.offset);
+    setDragStartDuration(track.duration);
+  };
+
   const handleTimelinePointerMove = (e: React.PointerEvent) => {
     if (draggingTrackId) {
       const dx = e.clientX - dragStartX;
       const startFrame = Math.round(dragStartStartTime * fps + dx / FRAME_WIDTH);
       const newStartTime = Math.max(0, startFrame / fps);
       onUpdateAudioTrack(draggingTrackId, { startTime: newStartTime });
+    } else if (draggingFadeId && fadeType) {
+      const dx = e.clientX - dragStartX;
+      const dt = (fadeType === 'in' ? dx : -dx) / FRAME_WIDTH / fps;
+      const newFade = Math.max(0, dragStartFade + dt);
+      onUpdateAudioTrack(draggingFadeId, { [fadeType === 'in' ? 'fadeIn' : 'fadeOut']: newFade });
+    } else if (draggingTrimId && trimType) {
+      const dx = e.clientX - dragStartX;
+      const df = Math.round(dx / FRAME_WIDTH);
+      const dt = df / fps;
+      
+      if (trimType === 'start') {
+        const newStartTime = Math.max(0, dragStartStartTime + dt);
+        const actualDt = newStartTime - dragStartStartTime;
+        const newOffset = Math.max(0, dragStartOffset + actualDt);
+        const newDuration = Math.max(0.1, dragStartDuration - actualDt);
+        onUpdateAudioTrack(draggingTrimId, { startTime: newStartTime, offset: newOffset, duration: newDuration });
+      } else {
+        const newDuration = Math.max(0.1, dragStartDuration + dt);
+        onUpdateAudioTrack(draggingTrimId, { duration: newDuration });
+      }
     }
   };
 
   const handleTimelinePointerUp = () => {
     setDraggingTrackId(null);
+    setDraggingFadeId(null);
+    setFadeType(null);
+    setDraggingTrimId(null);
+    setTrimType(null);
   };
 
   return (
@@ -261,6 +311,48 @@ export const Timeline: React.FC<TimelineProps> = ({
                                     }}
                                     onPointerDown={(e) => handleAudioPointerDown(e, track)}
                                 >
+                                    {/* Fade visualization */}
+                                    <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible opacity-50">
+                                        {track.fadeIn && (
+                                            <line 
+                                                x1="0" y1="100%" 
+                                                x2={`${(track.fadeIn / track.duration) * 100}%`} y2="0" 
+                                                stroke="white" strokeWidth="1" strokeDasharray="2 2"
+                                            />
+                                        )}
+                                        {track.fadeOut && (
+                                            <line 
+                                                x1={`${(1 - track.fadeOut / track.duration) * 100}%`} y1="0" 
+                                                x2="100%" y2="100%" 
+                                                stroke="white" strokeWidth="1" strokeDasharray="2 2"
+                                            />
+                                        )}
+                                    </svg>
+
+                                    {/* Trim Handles */}
+                                    <div 
+                                        className="absolute inset-y-0 left-0 w-2 hover:bg-white/30 cursor-col-resize z-20"
+                                        onPointerDown={(e) => handleTrimPointerDown(e, track, 'start')}
+                                    />
+                                    <div 
+                                        className="absolute inset-y-0 right-0 w-2 hover:bg-white/30 cursor-col-resize z-20"
+                                        onPointerDown={(e) => handleTrimPointerDown(e, track, 'end')}
+                                    />
+
+                                    {/* Fade Handles */}
+                                    <div 
+                                        className="absolute top-0 w-3 h-3 rounded-full bg-white/70 border border-black/50 cursor-col-resize z-30 opacity-0 group-hover/clip:opacity-100 transition-opacity"
+                                        style={{ left: `${(track.fadeIn || 0) / track.duration * 100}%`, transform: 'translateX(-50%)' }}
+                                        onPointerDown={(e) => handleFadePointerDown(e, track, 'in')}
+                                        title="Fade In"
+                                    />
+                                    <div 
+                                        className="absolute top-0 w-3 h-3 rounded-full bg-white/70 border border-black/50 cursor-col-resize z-30 opacity-0 group-hover/clip:opacity-100 transition-opacity"
+                                        style={{ right: `${(track.fadeOut || 0) / track.duration * 100}%`, transform: 'translateX(50%)' }}
+                                        onPointerDown={(e) => handleFadePointerDown(e, track, 'out')}
+                                        title="Fade Out"
+                                    />
+
                                     <div className="absolute top-0 left-0 px-1 text-[8px] text-white/60 pointer-events-none z-10">
                                         {track.startTime.toFixed(1)}s
                                     </div>

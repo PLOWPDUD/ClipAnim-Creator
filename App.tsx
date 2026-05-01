@@ -1427,6 +1427,21 @@ export default function App() {
         if (audio) {
             const trackEndTime = track.startTime + track.duration;
             if (elapsed >= track.startTime && elapsed < trackEndTime) {
+                // Volume & Fade logic
+                let volume = track.volume;
+                const timeInTrack = elapsed - track.startTime;
+                
+                if (track.fadeIn && timeInTrack < track.fadeIn) {
+                    volume *= (timeInTrack / track.fadeIn);
+                } else if (track.fadeOut && (track.duration - timeInTrack) < track.fadeOut) {
+                    volume *= ((track.duration - timeInTrack) / track.fadeOut);
+                }
+                
+                if (audio.volume !== volume) {
+                    // Smooth volume adjustment to avoid pops
+                    audio.volume = Math.max(0, Math.min(1, volume));
+                }
+
                 if (audio.paused) {
                     audio.currentTime = track.offset + (elapsed - track.startTime);
                     audio.play().catch(e => {
