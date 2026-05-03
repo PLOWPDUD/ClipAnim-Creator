@@ -237,6 +237,10 @@ export const floodFill = (
   ctx.putImageData(imageData, 0, 0);
 };
 
+/**
+ * Optimized Magic Wand Selection tool using scanline-like approach or efficient BFS/DFS
+ * with TypedArrays to avoid memory overhead and object allocation.
+ */
 export const magicWandSelect = (
   ctx: CanvasRenderingContext2D,
   startX: number,
@@ -250,21 +254,38 @@ export const magicWandSelect = (
 
   const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
+  // Use a 32-bit view for much faster pixel comparisons (RGBA as a single integer)
+  const data32 = new Uint32Array(data.buffer);
   
-  const targetColor = getPixel(data, startX, startY, width);
+  const targetColor32 = data32[startY * width + startX];
+  const targetAlpha = (targetColor32 >> 24) & 0xFF;
 
-  const queue: [number, number][] = [[startX, startY]];
+  // Faster queue using TypedArray to avoid object creation
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+  queue[tail++] = startY * width + startX;
+
   const visited = new Uint8Array(width * height);
-  const selectedPixels: [number, number][] = [];
-  
-  let minX = width, minY = height, maxX = 0, maxY = 0;
-  let touchesEdge = false;
-
   visited[startY * width + startX] = 1;
 
-  while (queue.length > 0) {
-    const [x, y] = queue.pop()!;
-    selectedPixels.push([x, y]);
+  let minX = width, minY = height, maxX = 0, maxY = 0;
+  let touchesEdge = false;
+  let pixelCount = 0;
+
+  // Comparison function that respects original transparency matching logic
+  const isMatch = (pixel32: number) => {
+    if (targetAlpha === 0) return (pixel32 & 0xFF000000) === 0;
+    return pixel32 === targetColor32;
+  };
+
+  // Perform the selection flood fill
+  while (head < tail) {
+    const idx = queue[head++];
+    const x = idx % width;
+    const y = (idx / width) | 0; // Much faster than Math.floor for positive integers
+    
+    pixelCount++;
     
     if (x < minX) minX = x;
     if (x > maxX) maxX = x;
@@ -275,76 +296,94 @@ export const magicWandSelect = (
       touchesEdge = true;
     }
 
-    // Check neighbors
-    const neighbors = [
-      [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]
-    ];
-
-    for (const [nx, ny] of neighbors) {
-      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-        const idx = ny * width + nx;
-        if (!visited[idx]) {
-          visited[idx] = 1;
-          const neighborColor = getPixel(data, nx, ny, width);
-          if (colorsMatch(neighborColor, targetColor)) {
-            queue.push([nx, ny]);
-          }
-        }
+    // Neighbors (4-connectivity)
+    // Up
+    if (y > 0) {
+      const upIdx = idx - width;
+      if (!visited[upIdx] && isMatch(data32[upIdx])) {
+        visited[upIdx] = 1;
+        queue[tail++] = upIdx;
+      }
+    }
+    // Down
+    if (y < height - 1) {
+      const downIdx = idx + width;
+      if (!visited[downIdx] && isMatch(data32[downIdx])) {
+        visited[downIdx] = 1;
+        queue[tail++] = downIdx;
+      }
+    }
+    // Left
+    if (x > 0) {
+      const leftIdx = idx - 1;
+      if (!visited[leftIdx] && isMatch(data32[leftIdx])) {
+        visited[leftIdx] = 1;
+        queue[tail++] = leftIdx;
+      }
+    }
+    // Right
+    if (x < width - 1) {
+      const rightIdx = idx + 1;
+      if (!visited[rightIdx] && isMatch(data32[rightIdx])) {
+        visited[rightIdx] = 1;
+        queue[tail++] = rightIdx;
       }
     }
   }
 
   // If selecting transparent/empty space and it touches the canvas edge, 
   // it means it's not fully enclosed by an outline.
-  if (targetColor.a === 0 && touchesEdge) {
+  if (targetAlpha === 0 && touchesEdge) {
     return null;
   }
 
-  if (selectedPixels.length === 0) return null;
+  if (pixelCount === 0) return null;
 
-  const selWidth = maxX - minX + 1;
-  const selHeight = maxY - minY + 1;
+  const selWidth = (maxX - minX + 1);
+  const selHeight = (maxY - minY + 1);
 
   const tempCanvas = document.createElement('canvas');
   tempCanvas.width = selWidth;
   tempCanvas.height = selHeight;
-  const tempCtx = tempCanvas.getContext('2d');
+  const tempCtx = tempCanvas.getContext('2d', { alpha: true });
   if (!tempCtx) return null;
 
   const selImageData = tempCtx.createImageData(selWidth, selHeight);
-  const selData = selImageData.data;
-
-  // Move pixels from original to selection
-  for (const [x, y] of selectedPixels) {
-    const origIdx = (y * width + x) * 4;
-    const selIdx = ((y - minY) * selWidth + (x - minX)) * 4;
-    
-    // Copy to selection
-    selData[selIdx] = data[origIdx];
-    selData[selIdx + 1] = data[origIdx + 1];
-    selData[selIdx + 2] = data[origIdx + 2];
-    selData[selIdx + 3] = data[origIdx + 3];
-
-    // Clear from original
-    data[origIdx] = 0;
-    data[origIdx + 1] = 0;
-    data[origIdx + 2] = 0;
-    data[origIdx + 3] = 0;
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-  tempCtx.putImageData(selImageData, 0, 0);
+  const selData32 = new Uint32Array(selImageData.data.buffer);
 
   const maskCanvas = document.createElement('canvas');
   maskCanvas.width = selWidth;
   maskCanvas.height = selHeight;
-  const maskCtx = maskCanvas.getContext('2d');
-  if (maskCtx) {
-    maskCtx.fillStyle = '#000';
-    for (const [x, y] of selectedPixels) {
-      maskCtx.fillRect(x - minX, y - minY, 1, 1);
-    }
+  const maskCtx = maskCanvas.getContext('2d', { alpha: true });
+  if (!maskCtx) return null;
+  
+  const maskImageData = maskCtx.createImageData(selWidth, selHeight);
+  const maskData32 = new Uint32Array(maskImageData.data.buffer);
+
+  // Transfer pixels to the new canvas and clear from original in one loop
+  // We use the queue as our list of selected pixel indices
+  for (let i = 0; i < tail; i++) {
+    const idx = queue[i];
+    const x = idx % width;
+    const y = (idx / width) | 0;
+    
+    const selIdx = (y - minY) * selWidth + (x - minX);
+    
+    // Copy to selection
+    selData32[selIdx] = data32[idx];
+    
+    // Set mask (black #000000, alpha 255)
+    // Little-endian RGBA is 0xFF000000 (A=255, B=0, G=0, R=0)
+    maskData32[selIdx] = 0xFF000000;
+
+    // Clear from original
+    data32[idx] = 0;
   }
+
+  // Finalize canvases
+  ctx.putImageData(imageData, 0, 0);
+  tempCtx.putImageData(selImageData, 0, 0);
+  maskCtx.putImageData(maskImageData, 0, 0);
 
   return {
     x: minX,
@@ -361,6 +400,7 @@ export const magicWandSelect = (
     selectionType: 'wand'
   };
 };
+
 
 export const lassoSelect = (
   ctx: CanvasRenderingContext2D,
