@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icons } from '../Icons';
 
 interface AudioRecorderModalProps {
@@ -8,6 +9,7 @@ interface AudioRecorderModalProps {
 }
 
 export const AudioRecorderModal: React.FC<AudioRecorderModalProps> = ({ isOpen, onClose, onSave }) => {
+  const { t } = useTranslation();
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -118,7 +120,7 @@ export const AudioRecorderModal: React.FC<AudioRecorderModalProps> = ({ isOpen, 
 
       } catch (err) {
           console.error("Error accessing microphone:", err);
-          alert("Could not access microphone. Please check permissions.");
+          alert(t('recorder.micError'));
       }
   };
 
@@ -170,14 +172,14 @@ export const AudioRecorderModal: React.FC<AudioRecorderModalProps> = ({ isOpen, 
           
           <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
               <Icons.Mic size={24} className="text-[#FF3B30]" />
-              Record Audio
+              {t('recorder.title')}
           </h2>
 
           {/* Visualizer / Placeholder */}
           <div className="w-full h-32 bg-black/50 rounded-xl mb-6 overflow-hidden border border-gray-700 relative flex items-center justify-center">
                <canvas ref={canvasRef} width={350} height={128} className="absolute inset-0 w-full h-full" />
-               {!isRecording && !audioBlob && <span className="text-gray-500 text-sm relative z-10">Press record to start</span>}
-               {audioBlob && !isRecording && <span className="text-gray-300 text-sm relative z-10 font-bold">Recording Complete</span>}
+               {!isRecording && !audioBlob && <span className="text-gray-500 text-sm relative z-10">{t('recorder.pressToStart')}</span>}
+               {audioBlob && !isRecording && <span className="text-gray-300 text-sm relative z-10 font-bold">{t('recorder.complete')}</span>}
           </div>
 
           <div className="text-3xl font-mono font-bold text-white mb-8">
@@ -208,7 +210,7 @@ export const AudioRecorderModal: React.FC<AudioRecorderModalProps> = ({ isOpen, 
                       <button 
                         onClick={() => { setAudioBlob(null); setRecordingTime(0); }}
                         className="p-4 rounded-full bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 transition-all"
-                        title="Discard & Retry"
+                        title={t('recorder.discard')}
                       >
                           <Icons.RotateCcw size={24} />
                       </button>
@@ -223,7 +225,7 @@ export const AudioRecorderModal: React.FC<AudioRecorderModalProps> = ({ isOpen, 
                       <button 
                         onClick={() => onSave(audioBlob)}
                         className="p-4 rounded-full bg-green-500 text-white hover:bg-green-400 transition-all shadow-lg"
-                        title="Save Recording"
+                        title={t('recorder.save')}
                       >
                           <Icons.Check size={24} />
                       </button>
@@ -231,7 +233,7 @@ export const AudioRecorderModal: React.FC<AudioRecorderModalProps> = ({ isOpen, 
               )}
           </div>
 
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-sm">Cancel</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-sm">{t('common.cancel')}</button>
       </div>
     </div>
   );

@@ -1,6 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ToolType, ShapeType, BrushType, SymmetryMode } from '../types';
 import { Icons } from '../Icons';
+
+// ... (rest of imports)
 import { hexToHsv, hsvToHex } from '../utils/drawingUtils';
 
 interface ToolbarProps {
@@ -90,6 +93,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   customBrushes,
   onAddCustomBrush
 }) => {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const brushInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -186,24 +190,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   };
 
   const tools: { id: ToolType; icon: React.ElementType; label: string }[] = [
-    { id: 'select', icon: Icons.MousePointer2, label: 'Select' },
-    { id: 'lasso', icon: Icons.Lasso, label: 'Lasso' },
-    { id: 'wand', icon: Icons.Wand2, label: 'Wand' },
-    { id: 'pen', icon: Icons.Pencil, label: 'Brush' },
-    { id: 'eraser', icon: Icons.Eraser, label: 'Eraser' },
-    { id: 'fill', icon: Icons.PaintBucket, label: 'Fill' },
-    { id: 'eyedropper', icon: Icons.Eyedropper, label: 'Eyedropper' },
-    { id: 'shape', icon: getShapeIcon(), label: 'Shapes' },
-    { id: 'text', icon: Icons.Type, label: 'Text' },
-    { id: 'motionPath', icon: Icons.Repeat, label: 'Motion Path' },
+    { id: 'select', icon: Icons.MousePointer2, label: t('toolbar.select') },
+    { id: 'lasso', icon: Icons.Lasso, label: t('toolbar.lasso') },
+    { id: 'wand', icon: Icons.Wand2, label: t('toolbar.wand') },
+    { id: 'pen', icon: Icons.Pencil, label: t('toolbar.brush') },
+    { id: 'eraser', icon: Icons.Eraser, label: t('toolbar.eraser') },
+    { id: 'fill', icon: Icons.PaintBucket, label: t('toolbar.fill') },
+    { id: 'eyedropper', icon: Icons.Eyedropper, label: t('toolbar.eyedropper') },
+    { id: 'shape', icon: getShapeIcon(), label: t('toolbar.shapes') },
+    { id: 'text', icon: Icons.Type, label: t('toolbar.text') },
+    { id: 'motionPath', icon: Icons.Repeat, label: t('toolbar.motionPath') },
   ];
 
   const textFonts = [
-      { label: 'Sans Serif', value: 'sans-serif' },
-      { label: 'Serif', value: 'serif' },
-      { label: 'Monospace', value: 'monospace' },
-      { label: 'Cursive', value: 'cursive' },
-      { label: 'Fantasy', value: 'fantasy' },
+      { label: t('globalSettings.systemDefault'), value: 'sans-serif' },
+      { label: t('globalSettings.serif'), value: 'serif' },
+      { label: t('globalSettings.monospace'), value: 'monospace' },
+      { label: t('fonts.cursive'), value: 'cursive' },
+      { label: t('fonts.fantasy'), value: 'fantasy' },
       { label: 'Arial', value: 'Arial, sans-serif' },
       { label: 'Verdana', value: 'Verdana, sans-serif' },
       { label: 'Times', value: '"Times New Roman", serif' },
@@ -225,7 +229,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             
             {/* Symmetry */}
             <div className="flex flex-col items-center gap-2">
-                <button onClick={() => onSelectSymmetryMode('none')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'none' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>None</button>
+                <button onClick={() => onSelectSymmetryMode('none')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'none' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>{t('globalSettings.systemDefault')}</button>
                 <button onClick={() => onSelectSymmetryMode('horizontal')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'horizontal' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>H</button>
                 <button onClick={() => onSelectSymmetryMode('vertical')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'vertical' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>V</button>
             </div>
@@ -260,7 +264,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <button 
             onClick={() => fileInputRef.current?.click()}
             className="p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all shrink-0"
-            title="Import Image"
+            title={t('toolbar.importImage')}
             >
             <Icons.Image size={24} />
             </button>
@@ -276,7 +280,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <button 
             onClick={() => videoInputRef.current?.click()}
             className="p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all shrink-0"
-            title="Import Video"
+            title={t('toolbar.importVideo')}
             >
             <Icons.FileVideo size={24} />
             </button>
@@ -299,19 +303,19 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
             {hasSelection && (
             <div className="flex flex-col gap-2 shrink-0 mt-2">
-                <button onClick={onSelectionCommit} className="p-3 rounded-xl text-white bg-green-600 hover:bg-green-500 shadow-lg" title="Commit Selection (Let Go)">
+                <button onClick={onSelectionCommit} className="p-3 rounded-xl text-white bg-green-600 hover:bg-green-500 shadow-lg" title={t('tooltips.commitSelection')}>
                     <Icons.Check size={20} />
                 </button>
-                <button onClick={onSelectionDelete} className="p-3 rounded-xl text-white bg-red-600 hover:bg-red-500 shadow-lg" title="Deselect (Discard)">
+                <button onClick={onSelectionDelete} className="p-3 rounded-xl text-white bg-red-600 hover:bg-red-500 shadow-lg" title={t('tooltips.deselect')}>
                     <Icons.X size={20} />
                 </button>
-                <button onClick={onRotate} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title="Rotate">
+                <button onClick={onRotate} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title={t('tooltips.rotate')}>
                     <Icons.RotateCw size={20} />
                 </button>
-                <button onClick={onFlipHorizontal} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title="Flip H">
+                <button onClick={onFlipHorizontal} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title={t('tooltips.flipH')}>
                     <Icons.FlipHorizontal size={20} />
                 </button>
-                <button onClick={onFlipVertical} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title="Flip V">
+                <button onClick={onFlipVertical} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title={t('tooltips.flipV')}>
                     <Icons.FlipVertical size={20} />
                 </button>
             </div>
@@ -320,22 +324,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <div className="w-8 h-px bg-gray-700 my-2 shrink-0" />
 
             {/* Toggles */}
-            <button onClick={onToggleOnionSkin} className={`p-3 rounded-xl transition-colors shrink-0 ${onionSkin ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-400 hover:text-white'}`} title="Onion Skin">
+            <button onClick={onToggleOnionSkin} className={`p-3 rounded-xl transition-colors shrink-0 ${onionSkin ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-400 hover:text-white'}`} title={t('toolbar.onionSkin')}>
             <Icons.Ghost size={24} />
             </button>
             
-            <button onClick={onToggleGrid} className={`p-3 rounded-xl transition-colors shrink-0 ${showGrid ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-400 hover:text-white'}`} title="Grid">
+            <button onClick={onToggleGrid} className={`p-3 rounded-xl transition-colors shrink-0 ${showGrid ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-400 hover:text-white'}`} title={t('toolbar.grid')}>
             <Icons.Grid size={24} />
             </button>
 
-            <button onClick={onToggleFocusMode} className={`p-3 rounded-xl transition-colors shrink-0 ${isFocusMode ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-400 hover:text-white'}`} title="Focus Mode">
+            <button onClick={onToggleFocusMode} className={`p-3 rounded-xl transition-colors shrink-0 ${isFocusMode ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-400 hover:text-white'}`} title={t('toolbar.focusMode')}>
             {isFocusMode ? <Icons.Minimize2 size={24} /> : <Icons.Maximize2 size={24} />}
             </button>
         </div>
 
         {/* Help Button - Pinned to bottom */}
         <div className="shrink-0 p-2 border-t border-gray-700 flex justify-center bg-[#1e1e1e]">
-            <button onClick={onOpenHelp} className="p-3 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors" title="Help">
+            <button onClick={onOpenHelp} className="p-3 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors" title={t('toolbar.help')}>
                 <Icons.Help size={24} />
             </button>
         </div>
@@ -344,9 +348,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       {activePopover === 'color' && (
         <div className="fixed bg-[#252525] p-3 rounded-xl shadow-2xl w-60 border border-gray-700 z-50 flex flex-col gap-3" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
             <div className="flex bg-gray-800 p-1 rounded-lg">
-                <button onClick={() => setColorTab('wheel')} className={`flex-1 text-xs py-1 rounded ${colorTab === 'wheel' ? 'bg-[var(--accent-color)] text-white' : 'text-gray-400'}`}>Wheel</button>
-                <button onClick={() => setColorTab('sliders')} className={`flex-1 text-xs py-1 rounded ${colorTab === 'sliders' ? 'bg-[var(--accent-color)] text-white' : 'text-gray-400'}`}>Sliders</button>
-                <button onClick={() => setColorTab('palette')} className={`flex-1 text-xs py-1 rounded ${colorTab === 'palette' ? 'bg-[var(--accent-color)] text-white' : 'text-gray-400'}`}>Palette</button>
+                <button onClick={() => setColorTab('wheel')} className={`flex-1 text-xs py-1 rounded ${colorTab === 'wheel' ? 'bg-[var(--accent-color)] text-white' : 'text-gray-400'}`}>{t('toolbar.wheel')}</button>
+                <button onClick={() => setColorTab('sliders')} className={`flex-1 text-xs py-1 rounded ${colorTab === 'sliders' ? 'bg-[var(--accent-color)] text-white' : 'text-gray-400'}`}>{t('toolbar.sliders')}</button>
+                <button onClick={() => setColorTab('palette')} className={`flex-1 text-xs py-1 rounded ${colorTab === 'palette' ? 'bg-[var(--accent-color)] text-white' : 'text-gray-400'}`}>{t('toolbar.palette')}</button>
             </div>
             {colorTab === 'wheel' && (
                 <div className="flex flex-col items-center py-2">
@@ -374,7 +378,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-full border border-gray-600 shrink-0" style={{ backgroundColor: currentColor }} />
                         <button onClick={saveColorToPalette} className="flex-1 py-1.5 bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1">
-                            <Icons.Plus size={14} /> Save Color
+                            <Icons.Plus size={14} /> {t('toolbar.saveColor')}
                         </button>
                     </div>
                     <div className="grid grid-cols-5 gap-2 max-h-40 overflow-y-auto no-scrollbar">
@@ -425,14 +429,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             </div>
             <div>
                 <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>Size</span>
+                    <span>{t('toolbar.size')}</span>
                     <span>{strokeWidth}px</span>
                 </div>
                 <input type="range" min="1" max="100" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
             </div>
             <div>
                 <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>Smoothing</span>
+                    <span>{t('toolbar.smoothing')}</span>
                     <span>{smoothing}%</span>
                 </div>
                 <input type="range" min="0" max="100" value={smoothing} onChange={(e) => onChangeSmoothing(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
@@ -445,7 +449,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <div className="fixed bg-[#252525] p-4 rounded-xl shadow-2xl w-48 border border-gray-700 z-50 flex flex-col gap-4" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
             <div>
                 <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>Eraser Size</span>
+                    <span>{t('toolbar.eraser')} {t('toolbar.size')}</span>
                     <span>{strokeWidth}px</span>
                 </div>
                 <input type="range" min="1" max="100" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
@@ -458,7 +462,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <div className="fixed bg-[#252525] p-4 rounded-xl shadow-2xl w-56 border border-gray-700 z-50 flex flex-col gap-4" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
             <div>
                 <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>Opacity</span>
+                    <span>{t('toolbar.opacity')}</span>
                     <span>{Math.round(fillOpacity * 100)}%</span>
                 </div>
                 <input type="range" min="0" max="1" step="0.01" value={fillOpacity} onChange={(e) => onChangeFillOpacity(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
@@ -466,7 +470,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <div className="w-full h-px bg-gray-700" />
             <div>
                 <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>Tolerance</span>
+                    <span>{t('toolbar.tolerance')}</span>
                     <span>{fillTolerance}%</span>
                 </div>
                 <input type="range" min="0" max="100" value={fillTolerance} onChange={(e) => onChangeFillTolerance(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
@@ -501,7 +505,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             </div>
             <div>
                 <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>Stroke Width</span>
+                    <span>{t('toolbar.strokeWidth')}</span>
                     <span>{strokeWidth}px</span>
                 </div>
                 <input type="range" min="1" max="50" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
@@ -514,7 +518,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <div className="fixed bg-[#252525] p-4 rounded-xl shadow-2xl w-56 border border-gray-700 z-50 flex flex-col gap-4" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
             <div>
                 <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>Font Size</span>
+                    <span>{t('toolbar.fontSize')}</span>
                     <span>{strokeWidth}px</span>
                 </div>
                 <input type="range" min="10" max="100" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
@@ -524,14 +528,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 <button 
                     onClick={() => setTextToolBold(!textToolBold)}
                     className={`flex-1 p-2 rounded-lg border transition-colors flex items-center justify-center ${textToolBold ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
-                    title="Bold"
+                    title={t('fonts.bold')}
                 >
                     <Icons.Bold size={18} />
                 </button>
                 <button 
                     onClick={() => setTextToolItalic(!textToolItalic)}
                     className={`flex-1 p-2 rounded-lg border transition-colors flex items-center justify-center ${textToolItalic ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
-                    title="Italic"
+                    title={t('fonts.italic')}
                 >
                     <Icons.Italic size={18} />
                 </button>
@@ -539,7 +543,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
              <div className="w-full h-px bg-gray-700" />
             <div>
                 <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>Font Family</span>
+                    <span>{t('toolbar.fontFamily')}</span>
                 </div>
                 <div className="max-h-40 overflow-y-auto no-scrollbar space-y-1">
                     {textFonts.map(f => (

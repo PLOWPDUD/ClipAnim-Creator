@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion } from 'motion/react';
 import { Icons } from '../Icons';
 import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings, BackgroundSettings, Point, SymmetryMode } from '../types';
@@ -141,6 +142,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   symmetryMode,
   onApplyMotionPath
 }, ref) => {
+  const { t } = useTranslation();
   console.log('CanvasArea render', { layers, activeLayerId });
   const activeCanvasRef = useRef<HTMLCanvasElement>(null);
   const transformRef = useRef<HTMLDivElement>(null);
@@ -1715,7 +1717,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                             onClick={(e) => { e.stopPropagation(); onSelectionCommit(); }}
                             className="bg-[#007AFF] text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-2xl flex items-center gap-2 hover:brightness-110 whitespace-nowrap"
                         >
-                            <Icons.Check size={16} /> Commit
+                            <Icons.Check size={16} /> {t('canvas.commit')}
                         </motion.button>
                         <motion.button 
                             whileHover={{ scale: 1.05 }}
@@ -1723,7 +1725,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                             onClick={(e) => { e.stopPropagation(); onSelectionDelete(); }}
                             className="bg-red-500 text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-2xl flex items-center gap-2 hover:brightness-110 whitespace-nowrap"
                         >
-                            <Icons.Trash2 size={16} /> Delete
+                            <Icons.Trash2 size={16} /> {t('canvas.delete')}
                         </motion.button>
                     </div>
                     
@@ -1814,7 +1816,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         fontWeight: 'bold', 
                         minWidth: '20px' 
                     }}
-                    placeholder="Type..."
+                    placeholder={t('canvas.typePlaceholder')}
                     autoFocus
                 />
             )}
@@ -1826,10 +1828,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 whileTap={{ scale: 0.95 }}
                 onClick={onToggleCameraMode}
                 className={`p-2 rounded-lg backdrop-blur-md border transition-all flex items-center gap-2 ${cameraMode ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white shadow-[0_0_15px_rgba(var(--accent-rgb),0.5)]' : 'bg-black/50 border-white/10 text-white hover:bg-black/70'}`}
-                title={cameraMode ? "Exit Camera View" : "Enter Camera View (Show Canvas Boundaries)"}
+                title={cameraMode ? t('canvas.exitCamera') : t('canvas.enterCamera')}
             >
                 <Icons.Camera size={18} />
-                <span className="text-xs font-medium hidden sm:inline">{cameraMode ? "Camera ON" : "Camera OFF"}</span>
+                <span className="text-xs font-medium hidden sm:inline">{cameraMode ? t('canvas.cameraOn') : t('canvas.cameraOff')}</span>
             </motion.button>
             
             <div className="bg-black/50 text-white text-xs px-3 py-2 rounded-lg backdrop-blur-md border border-white/10 pointer-events-none flex gap-3">

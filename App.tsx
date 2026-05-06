@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
@@ -49,6 +50,12 @@ const createBlankFrame = (layers: Layer[], width: number, height: number, id: st
 const COLORS = ['#FF3B30', '#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF2D55'];
 
 export default function App() {
+  const { t, i18n } = useTranslation();
+
+  useEffect(() => {
+    document.dir = i18n.dir();
+  }, [i18n.language]);
+
   const [view, setView] = useState<'menu' | 'editor'>('menu');
   const [savedProjects, setSavedProjects] = useState<ProjectMeta[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -115,7 +122,7 @@ export default function App() {
   }, []);
 
   const [projectId, setProjectId] = useState<string>(crypto.randomUUID());
-  const [projectName, setProjectName] = useState('My Animation');
+  const [projectName, setProjectName] = useState(t('app.defaultProjectName'));
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const [background, setBackground] = useState<BackgroundSettings>({ type: 'color', color: '#ffffff' });
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
@@ -277,7 +284,7 @@ export default function App() {
 
   const addLayer = () => {
     const newLayerId = crypto.randomUUID();
-    const newLayer = createDefaultLayer(newLayerId, `Layer ${layers.length + 1}`);
+    const newLayer = createDefaultLayer(newLayerId, `${t('layers.newLayer')} ${layers.length + 1}`);
     const newLayers = [...layers, newLayer];
     setLayers(newLayers);
     setActiveLayerId(newLayerId);
@@ -318,7 +325,7 @@ export default function App() {
     const newLayer: Layer = {
         ...layerToCopy,
         id: newLayerId,
-        name: `${layerToCopy.name} Copy`,
+        name: `${layerToCopy.name} ${t('common.copy')}`,
         isVisible: true
     };
 
@@ -442,7 +449,7 @@ export default function App() {
                 console.log(`Successfully imported ${newFrames.length} GIF frames`);
             } catch (err) {
                 console.error("GIF Error:", err);
-                alert("This GIF is not supported or the parser failed.");
+                alert(t('errors.gifError'));
             }
         };
         reader.readAsArrayBuffer(file);
@@ -592,7 +599,7 @@ export default function App() {
           const newTrack: AudioTrack = {
               id,
               url,
-              name: `Recording ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+              name: `${t('common.recording')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
               color: COLORS[audioTracks.length % COLORS.length],
               volume: 1,
               startTime: 0,
@@ -897,7 +904,7 @@ export default function App() {
 
             const videoEncoder = new VideoEncoder({
                 output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-                error: (e) => { console.error(e); alert("Video encoding error: " + e.message); }
+                error: (e) => { console.error(e); alert(t('errors.exportError', { message: e.message })); }
             });
 
             const bitrateMap = {
@@ -963,7 +970,7 @@ export default function App() {
 
         } catch (e: any) {
             console.error("MP4 Export failed", e);
-            alert("MP4 Export failed. Your browser might not support WebCodecs or the format.");
+            alert(t('errors.mp4Error'));
             setIsExporting(false);
             setIsExportModalOpen(false);
         }
@@ -1000,7 +1007,7 @@ export default function App() {
 
       } catch (e: any) {
         console.error("GIF Export failed", e);
-        alert("GIF Export failed: " + e.message);
+        alert(t('errors.exportError', { message: e.message }));
         setIsExporting(false);
         setIsExportModalOpen(false);
       }
@@ -1090,7 +1097,7 @@ export default function App() {
 
       } catch (e: any) {
           console.error(e);
-          alert("Export failed: " + e.message);
+          alert(t('errors.exportError', { message: e.message }));
           setIsExporting(false);
           setIsExportModalOpen(false);
       }
@@ -1124,7 +1131,7 @@ export default function App() {
         setHasUnsavedChanges(false);
       } catch (e) {
           console.error(e);
-          alert("Failed to save.");
+          alert(t('errors.saveFailed'));
       }
   };
 
@@ -1141,7 +1148,7 @@ export default function App() {
       try {
         const data = await loadProjectFromDB(id);
         if (!data) {
-            alert("Project not found.");
+            alert(t('errors.projectNotFound'));
             setIsLoading(false);
             return;
         }
@@ -1168,7 +1175,7 @@ export default function App() {
         setView('editor');
       } catch (e) {
           console.error("Failed to load", e);
-          alert("Error loading project.");
+          alert(t('errors.loadError'));
       } finally {
           setIsLoading(false);
       }
@@ -1178,10 +1185,10 @@ export default function App() {
       clearAudio();
       const pid = crypto.randomUUID();
       setProjectId(pid);
-      setProjectName("New Animation");
+      setProjectName(t('menu.newProject'));
       setCanvasSize({ width: 800, height: 600 });
       setBackground({ type: 'color', color: '#ffffff' });
-      const defaultL = [createDefaultLayer()];
+      const defaultL = [createDefaultLayer('1', `${t('layers.newLayer')} 1`)];
       setLayers(defaultL);
       setActiveLayerId(defaultL[0].id);
       const initialFrame = createBlankFrame(defaultL, 800, 600);
@@ -1268,13 +1275,13 @@ export default function App() {
                 return f;
             }));
 
-            const fullData: ProjectData = { ...data, id: newId, lastModified: Date.now(), thumbnailUrl: thumb || '', frames: updatedFrames };
-            await saveProjectToDB(fullData);
+            const projectData: ProjectData = { ...data, id: newId, lastModified: Date.now(), thumbnailUrl: thumb || '', frames: updatedFrames };
+            await saveProjectToDB(projectData);
             const updatedList = await getProjectList();
             setSavedProjects(updatedList);
             loadProject(newId);
         } catch (err) {
-            alert("Failed to parse project file.");
+            alert(t('errors.parseError'));
         }
     };
     reader.readAsText(file);
@@ -1948,8 +1955,8 @@ export default function App() {
       {deviceType === null && (
         <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4">
           <div className="bg-[#1e1e1e] rounded-3xl p-10 max-w-lg w-full border border-gray-700 shadow-2xl text-center">
-            <h2 className="text-3xl font-bold mb-4">Welcome to ClipAnim!</h2>
-            <p className="text-gray-400 mb-8">Choose your device type to optimize your experience. This can be changed later in settings.</p>
+            <h2 className="text-3xl font-bold mb-4">{t('menu.welcome')}</h2>
+            <p className="text-gray-400 mb-8">{t('menu.welcomeDesc')}</p>
             <div className="grid grid-cols-2 gap-6">
               <button 
                 onClick={() => setDeviceType('mobile')}
@@ -1958,7 +1965,7 @@ export default function App() {
                 <div className="w-16 h-16 bg-blue-500/20 rounded-2xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
                   <Icons.Smartphone size={32} />
                 </div>
-                <span className="text-xl font-bold">Mobile</span>
+                <span className="text-xl font-bold">{t('globalSettings.mobile')}</span>
               </button>
               <button 
                 onClick={() => setDeviceType('pc')}
@@ -1967,7 +1974,7 @@ export default function App() {
                 <div className="w-16 h-16 bg-green-500/20 rounded-2xl flex items-center justify-center text-green-500 group-hover:scale-110 transition-transform">
                   <Icons.Monitor size={32} />
                 </div>
-                <span className="text-xl font-bold">PC</span>
+                <span className="text-xl font-bold">{t('globalSettings.pc')}</span>
               </button>
             </div>
           </div>
@@ -1990,25 +1997,25 @@ export default function App() {
       {view === 'menu' ? (
         <div className="flex flex-col h-full p-6 overflow-hidden">
              <div className="mb-8 flex justify-between items-end">
-                 <div>
-                    <h1 className="text-3xl font-bold mb-2">My Animations</h1>
-                    <p className="text-gray-400">Create, edit and share your stories.</p>
+                  <div>
+                    <h1 className="text-3xl font-bold mb-2">{t('menu.myAnimations')}</h1>
+                    <p className="text-gray-400">{t('menu.myAnimationsDesc')}</p>
                     <div className="flex gap-4 items-center mt-4">
-                        <button 
+                         <button 
                             onClick={() => setIsGlobalSettingsOpen(true)}
                             className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full transition-colors font-bold text-sm"
                         >
                             <Icons.Settings size={16} />
-                            Settings
+                            {t('timeline.settings')}
                         </button>
                         <button 
                             onClick={() => setIsChangelogOpen(true)}
                             className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full transition-colors font-bold text-sm"
                         >
                             <Icons.FileJson size={16} />
-                            Changelog
+                            {t('changelog.fullChangelog')}
                         </button>
-                        <a href="https://github.com/PLOWPDUD/ClipAnim-Creator" target="_blank" rel="noopener noreferrer" className="inline-block text-xs font-bold text-[var(--accent-color)] hover:opacity-80 transition-opacity bg-white/5 px-3 py-1.5 rounded-full border border-[var(--accent-color)]/20">Visit The Open Source Here</a>
+                        <a href="https://github.com/PLOWPDUD/ClipAnim-Creator" target="_blank" rel="noopener noreferrer" className="inline-block text-xs font-bold text-[var(--accent-color)] hover:opacity-80 transition-opacity bg-white/5 px-3 py-1.5 rounded-full border border-[var(--accent-color)]/20">{t('app.openSource')}</a>
                     </div>
                  </div>
                  <input ref={importFileRef} type="file" accept=".json" onChange={handleImportProjectFile} className="hidden" />
@@ -2016,11 +2023,11 @@ export default function App() {
              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-10">
                  <button onClick={createNewProject} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-[#FF3B30] hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
                      <div className="w-16 h-16 rounded-full bg-[#FF3B30]/20 flex items-center justify-center text-[#FF3B30] mb-3 group-hover:scale-110 transition-transform"><Icons.Plus size={32} /></div>
-                     <span className="font-bold text-gray-300 group-hover:text-white">New Animation</span>
+                     <span className="font-bold text-gray-300 group-hover:text-white">{t('menu.newProject')}</span>
                  </button>
                  <button onClick={() => importFileRef.current?.click()} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-blue-500 hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
                      <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-500 mb-3 group-hover:scale-110 transition-transform"><Icons.Upload size={32} /></div>
-                     <span className="font-bold text-gray-300 group-hover:text-white">Import Project</span>
+                     <span className="font-bold text-gray-300 group-hover:text-white">{t('menu.importProject')}</span>
                  </button>
                  {savedProjects.map(project => (
                      <div key={project.id} onClick={() => loadProject(project.id)} className="relative group aspect-[4/3] bg-[#1e1e1e] rounded-2xl overflow-hidden cursor-pointer hover:ring-2 ring-[var(--accent-color)] transition-all shadow-lg">
@@ -2032,7 +2039,7 @@ export default function App() {
                          <button 
                             onClick={(e) => deleteProject(e, project.id)} 
                             className="absolute top-2 right-2 p-2 bg-black/60 hover:bg-red-600 text-white rounded-full opacity-100 transition-opacity z-10"
-                            title="Delete Project"
+                            title={t('tooltips.deleteProject')}
                           >
                             <Icons.Trash2 size={16} />
                           </button>
@@ -2056,34 +2063,34 @@ export default function App() {
                     <button 
                       onClick={() => canvasRef.current?.zoomOut()} 
                       className="p-2 rounded-full text-gray-400 hover:text-white" 
-                      title="Zoom Out"
+                      title={t('tooltips.zoomOut')}
                     >
                       <Icons.ZoomOut size={20} />
                     </button>
                     <button 
                       onClick={() => canvasRef.current?.resetView()} 
                       className="p-2 rounded-full text-gray-400 hover:text-white" 
-                      title="Reset View"
+                      title={t('tooltips.resetView')}
                     >
                       <Icons.RotateCcw size={20} />
                     </button>
                     <button 
                       onClick={() => canvasRef.current?.zoomIn()} 
                       className="p-2 rounded-full text-gray-400 hover:text-white" 
-                      title="Zoom In"
+                      title={t('tooltips.zoomIn')}
                     >
                       <Icons.ZoomIn size={20} />
                     </button>
                     <div className="h-6 w-px bg-gray-700 mx-1" />
-                    <button onClick={() => importIntoSelectionRef.current?.click()} disabled={!selection} className={`p-2 rounded-full ${selection ? 'text-gray-400 hover:text-white' : 'text-gray-600'}`} title="Import into Selection"><Icons.Image size={20} /></button>
-                    <button onClick={handleCut} disabled={!selection} className="p-2 text-gray-400 hover:text-white" title="Cut"><Icons.Scissors size={20} /></button>
-                    <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white" title="Copy"><Icons.Copy size={20} /></button>
-                    <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white" title="Paste"><Icons.Clipboard size={20} /></button>
+                    <button onClick={() => importIntoSelectionRef.current?.click()} disabled={!selection} className={`p-2 rounded-full ${selection ? 'text-gray-400 hover:text-white' : 'text-gray-600'}`} title={t('tooltips.importIntoSelection')}><Icons.Image size={20} /></button>
+                    <button onClick={handleCut} disabled={!selection} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.cut')}><Icons.Scissors size={20} /></button>
+                    <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.copy')}><Icons.Copy size={20} /></button>
+                    <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.paste')}><Icons.Clipboard size={20} /></button>
                     <button 
                       onClick={handleSelectionCommit} 
                       disabled={!selection} 
                       className={`p-2 rounded-full ${selection ? 'text-green-400 hover:text-green-300' : 'text-gray-600'}`} 
-                      title="Commit Selection (Let Go)"
+                      title={t('tooltips.commitSelection')}
                     >
                       <Icons.Check size={20} />
                     </button>
@@ -2096,18 +2103,18 @@ export default function App() {
                       }} 
                       disabled={!selection} 
                       className={`p-2 rounded-full ${selection ? 'text-red-400 hover:text-red-300' : 'text-gray-600'}`} 
-                      title="Delete Selection"
+                      title={t('tooltips.deleteSelection')}
                     >
                       <Icons.Trash2 size={20} />
                     </button>
                 </div>
                 <div className="flex items-center space-x-2">
-                    <button onClick={() => setIsBackpackOpen(true)} className={`p-2 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title="Backpack"><Icons.Briefcase size={20} /></button>
-                    <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className="p-2 text-gray-400 hover:text-white" title="Layers"><Icons.Layers size={20} /></button>
-                    <button onClick={saveProject} className="p-2 text-gray-400 hover:text-white" title="Save Project"><Icons.Save size={20} /></button>
-                    <button onClick={() => setIsExportModalOpen(true)} className="p-2 text-gray-400 hover:text-white" title="Export"><Icons.Download size={20} /></button>
-                    <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white" title="Project Settings"><Icons.LayoutGrid size={20} /></button>
-                    <button onClick={() => setIsGlobalSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white" title="Global Settings"><Icons.Settings size={20} /></button>
+                    <button onClick={() => setIsBackpackOpen(true)} className={`p-2 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title={t('tooltips.backpack')}><Icons.Briefcase size={20} /></button>
+                    <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.layers')}><Icons.Layers size={20} /></button>
+                    <button onClick={saveProject} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.saveProject')}><Icons.Save size={20} /></button>
+                    <button onClick={() => setIsExportModalOpen(true)} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.export')}><Icons.Download size={20} /></button>
+                    <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.projectSettings')}><Icons.LayoutGrid size={20} /></button>
+                    <button onClick={() => setIsGlobalSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.globalSettings')}><Icons.Settings size={20} /></button>
                 </div>
             </div>
         </header>
@@ -2258,11 +2265,11 @@ export default function App() {
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-[#1e1e1e] rounded-3xl p-8 max-w-sm w-full border border-gray-700 shadow-2xl text-center">
                 <div className="w-16 h-16 bg-[var(--accent-color)]/20 rounded-full flex items-center justify-center text-[var(--accent-color)] mx-auto mb-6"> <Icons.Save size={32} /> </div>
-                <h2 className="text-2xl font-bold mb-2">Unsaved Changes</h2>
+                <h2 className="text-2xl font-bold mb-2">{t('menu.unsavedTitle')}</h2>
                 <div className="grid grid-cols-1 gap-3">
-                    <button onClick={() => confirmExit(true)} className="w-full py-4 bg-[var(--accent-color)] text-white font-bold rounded-2xl hover:opacity-90 transition-colors">Save & Exit</button>
-                    <button onClick={() => confirmExit(false)} className="w-full py-4 bg-gray-700 text-white font-bold rounded-2xl hover:bg-gray-600 transition-colors">Discard Changes</button>
-                    <button onClick={() => setShowExitConfirm(false)} className="w-full py-4 bg-transparent text-gray-400 font-bold rounded-2xl hover:text-white transition-colors">Cancel</button>
+                    <button onClick={() => confirmExit(true)} className="w-full py-4 bg-[var(--accent-color)] text-white font-bold rounded-2xl hover:opacity-90 transition-colors">{t('menu.saveAndExit')}</button>
+                    <button onClick={() => confirmExit(false)} className="w-full py-4 bg-gray-700 text-white font-bold rounded-2xl hover:bg-gray-600 transition-colors">{t('menu.discardChanges')}</button>
+                    <button onClick={() => setShowExitConfirm(false)} className="w-full py-4 bg-transparent text-gray-400 font-bold rounded-2xl hover:text-white transition-colors">{t('common.cancel')}</button>
                 </div>
             </div>
         </div>
@@ -2298,11 +2305,11 @@ export default function App() {
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-[#1e1e1e] rounded-3xl p-8 max-w-sm w-full border border-gray-700 shadow-2xl text-center">
                 <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center text-red-500 mx-auto mb-6"> <Icons.Trash2 size={32} /> </div>
-                <h2 className="text-2xl font-bold mb-2">Delete Animation?</h2>
-                <p className="text-gray-400 mb-8">This action cannot be undone. All frames and audio will be permanently removed.</p>
+                <h2 className="text-2xl font-bold mb-2">{t('menu.deleteTitle')}</h2>
+                <p className="text-gray-400 mb-8">{t('menu.deleteDesc')}</p>
                 <div className="grid grid-cols-1 gap-3">
-                    <button onClick={confirmDeleteProject} className="w-full py-4 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 transition-colors">Delete Permanently</button>
-                    <button onClick={() => setProjectToDelete(null)} className="w-full py-4 bg-gray-700 text-white font-bold rounded-2xl hover:bg-gray-600 transition-colors">Cancel</button>
+                    <button onClick={confirmDeleteProject} className="w-full py-4 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 transition-colors">{t('menu.deletePermanently')}</button>
+                    <button onClick={() => setProjectToDelete(null)} className="w-full py-4 bg-gray-700 text-white font-bold rounded-2xl hover:bg-gray-600 transition-colors">{t('common.cancel')}</button>
                 </div>
             </div>
         </div>

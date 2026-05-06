@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icons } from '../Icons';
 
@@ -10,6 +11,15 @@ interface ChangelogEntry {
 }
 
 const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.2.1',
+    date: '2026-05-06',
+    type: 'patch',
+    changes: [
+      'Expanded multilingual support for animation tools and project settings',
+      'Updated changelog for translation updates'
+    ]
+  },
   {
     version: '1.2.0',
     date: '2026-04-18',
@@ -234,6 +244,7 @@ interface ChangelogModalProps {
 }
 
 export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   return (
     <AnimatePresence>
       {isOpen && (
@@ -257,8 +268,8 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose 
                   <Icons.Help size={24} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">What's New</h2>
-                  <p className="text-sm text-gray-500 font-medium">Version {CHANGELOG[0].version}</p>
+                  <h2 className="text-xl font-bold text-gray-900">{t('changelog.title')}</h2>
+                  <p className="text-sm text-gray-500 font-medium">{t('changelog.version', { version: CHANGELOG[0].version })}</p>
                 </div>
               </div>
               <button
@@ -284,12 +295,12 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose 
                     <div className="space-y-3 pb-2">
                       <div className="flex items-center gap-2">
                         <h3 className={`font-bold ${index === 0 ? 'text-gray-900' : 'text-gray-500'}`}>
-                          Version {entry.version}
+                          {t('changelog.version', { version: entry.version })}
                         </h3>
                         <span className="text-xs text-gray-400 font-medium">{entry.date}</span>
                         {index === 0 && (
                           <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-[10px] font-bold rounded-full uppercase tracking-wider">
-                            Latest
+                            {t('changelog.latest')}
                           </span>
                         )}
                       </div>
@@ -312,7 +323,7 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose 
                 onClick={onClose}
                 className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-2xl shadow-lg shadow-blue-200 transition-all active:scale-[0.98]"
               >
-                Got it!
+                {t('changelog.gotIt')}
               </button>
             </div>
           </motion.div>

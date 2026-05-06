@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icons } from '../Icons';
 
 interface HelpModalProps {
@@ -7,6 +8,7 @@ interface HelpModalProps {
 }
 
 export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   return (
@@ -16,7 +18,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
         <div className="flex justify-between items-center p-6 border-b border-gray-700 bg-[#252525]">
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
             <Icons.Help className="text-[#FF3B30]" />
-            Shortcuts & Guide
+            {t('help.title')}
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700 transition-colors">
             <Icons.X size={24} />
@@ -28,92 +30,91 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             
             {/* Tools Section */}
             <section>
-                <h3 className="text-[#FF3B30] font-bold uppercase tracking-wider text-sm mb-4 border-b border-gray-700 pb-2">Tools</h3>
+                <h3 className="text-[#FF3B30] font-bold uppercase tracking-wider text-sm mb-4 border-b border-gray-700 pb-2">{t('help.tools')}</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    <ShortcutItem icon={Icons.Pencil} label="Brush" k="B" />
-                    <ShortcutItem icon={Icons.Eraser} label="Eraser" k="E" />
-                    <ShortcutItem icon={Icons.PaintBucket} label="Fill" k="G" />
-                    <ShortcutItem icon={Icons.MousePointer2} label="Select" k="V" />
-                    <ShortcutItem icon={Icons.Lasso} label="Lasso" k="L" />
-                    <ShortcutItem icon={Icons.Wand2} label="Wand" k="W" />
-                    <ShortcutItem icon={Icons.Square} label="Shapes" k="U" />
-                    <ShortcutItem icon={Icons.Type} label="Text" k="T" />
+                    <ShortcutItem icon={Icons.Pencil} label={t('toolbar.brush')} k="B" />
+                    <ShortcutItem icon={Icons.Eraser} label={t('toolbar.eraser')} k="E" />
+                    <ShortcutItem icon={Icons.PaintBucket} label={t('toolbar.fill')} k="G" />
+                    <ShortcutItem icon={Icons.MousePointer2} label={t('toolbar.select')} k="V" />
+                    <ShortcutItem icon={Icons.Lasso} label={t('toolbar.lasso')} k="L" />
+                    <ShortcutItem icon={Icons.Wand2} label={t('toolbar.wand')} k="W" />
+                    <ShortcutItem icon={Icons.Square} label={t('toolbar.shapes')} k="U" />
+                    <ShortcutItem icon={Icons.Type} label={t('toolbar.text')} k="T" />
                 </div>
             </section>
 
             {/* Canvas Control */}
             <section>
-                <h3 className="text-[#FF3B30] font-bold uppercase tracking-wider text-sm mb-4 border-b border-gray-700 pb-2">Canvas & Navigation</h3>
+                <h3 className="text-[#FF3B30] font-bold uppercase tracking-wider text-sm mb-4 border-b border-gray-700 pb-2">{t('help.canvas')}</h3>
                 <div className="space-y-3">
-                    <KeyRow label="Pan Canvas" value="Right-Click Drag" />
-                    <KeyRow label="Zoom" value="Ctrl + Scroll / Pinch" />
-                    <KeyRow label="Play / Pause" value="Spacebar" />
-                    <KeyRow label="Next / Prev Frame" value="Arrow Keys" />
-                    <KeyRow label="Toggle Grid" value="G" />
+                    <KeyRow label={t('help.pan')} value={t('help.rightClickDrag')} />
+                    <KeyRow label={t('help.zoom')} value={t('help.ctrlScrollPinch')} />
+                    <KeyRow label={t('help.playPause')} value={t('help.spacebar')} />
+                    <KeyRow label={t('help.nextPrev')} value={t('help.arrowKeys')} />
+                    <KeyRow label={t('help.toggleGrid')} value="G" />
                 </div>
             </section>
 
             {/* General Actions */}
              <section>
-                <h3 className="text-[#FF3B30] font-bold uppercase tracking-wider text-sm mb-4 border-b border-gray-700 pb-2">Actions</h3>
+                <h3 className="text-[#FF3B30] font-bold uppercase tracking-wider text-sm mb-4 border-b border-gray-700 pb-2">{t('help.actions')}</h3>
                 <div className="space-y-3">
-                    <KeyRow label="Undo" value="Ctrl + Z" />
-                    <KeyRow label="Redo" value="Ctrl + Shift + Z" />
-                    <KeyRow label="Copy Selection" value="Ctrl + C" />
-                    <KeyRow label="Paste Selection" value="Ctrl + V" />
-                    <KeyRow label="Delete Selection" value="Del / Backspace" />
-                    <KeyRow label="Save Project" value="Ctrl + S" />
-                    <KeyRow label="Export Movie" value="Ctrl + Shift + E" />
+                    <KeyRow label={t('help.undo')} value={`${t('keys.ctrl')} + Z`} />
+                    <KeyRow label={t('help.redo')} value={`${t('keys.ctrl')} + ${t('keys.shift')} + Z`} />
+                    <KeyRow label={t('help.copy')} value={`${t('keys.ctrl')} + C`} />
+                    <KeyRow label={t('help.paste')} value={`${t('keys.ctrl')} + V`} />
+                    <KeyRow label={t('help.delete')} value={t('help.delBackspace')} />
+                    <KeyRow label={t('help.save')} value={`${t('keys.ctrl')} + S`} />
+                    <KeyRow label={t('help.export')} value={`${t('keys.ctrl')} + ${t('keys.shift')} + E`} />
                 </div>
             </section>
 
              {/* Features Guide */}
              <section>
-                <h3 className="text-[#FF3B30] font-bold uppercase tracking-wider text-sm mb-4 border-b border-gray-700 pb-2">How To...</h3>
+                <h3 className="text-[#FF3B30] font-bold uppercase tracking-wider text-sm mb-4 border-b border-gray-700 pb-2">{t('help.howTo')}</h3>
                 <div className="space-y-4 text-sm text-gray-300">
                     <div className="flex gap-3">
                         <div className="p-2 bg-gray-800 rounded-lg h-fit"><Icons.Wand2 size={20} /></div>
                         <div>
-                            <p className="font-bold text-white">Magic Wand vs. Tweening</p>
+                            <p className="font-bold text-white">{t('help.magicWandTitle')}</p>
                             <p className="text-gray-400">
-                                <span className="text-white font-semibold">Toolbar Wand:</span> Used for color-based selection on the canvas. <br/>
-                                <span className="text-white font-semibold">Timeline Wand:</span> Used to automatically generate transition frames (tweening) between keyframes.
+                                {t('help.magicWandDesc')}
                             </p>
                         </div>
                     </div>
                     <div className="flex gap-3">
                         <div className="p-2 bg-gray-800 rounded-lg h-fit"><Icons.Image size={20} /></div>
                         <div>
-                            <p className="font-bold text-white">Import Image</p>
-                            <p className="text-gray-400">Click the Image icon in the toolbar on the left to add a reference image or background layer.</p>
+                            <p className="font-bold text-white">{t('help.importImageTitle')}</p>
+                            <p className="text-gray-400">{t('help.importImageDesc')}</p>
                         </div>
                     </div>
                      <div className="flex gap-3">
                         <div className="p-2 bg-gray-800 rounded-lg h-fit"><Icons.Music size={20} /></div>
                         <div>
-                            <p className="font-bold text-white">Add Audio</p>
-                            <p className="text-gray-400">Click the Music icon in the timeline (bottom right) to open the audio panel, then click "Add Track" to import MP3/WAV files.</p>
+                            <p className="font-bold text-white">{t('help.addAudioTitle')}</p>
+                            <p className="text-gray-400">{t('help.addAudioDesc')}</p>
                         </div>
                     </div>
                     <div className="flex gap-3">
                         <div className="p-2 bg-gray-800 rounded-lg h-fit"><Icons.FolderDown size={20} /></div>
                         <div>
-                            <p className="font-bold text-white">Import/Export Project</p>
-                            <p className="text-gray-400">Go to Settings to backup your project as a .JSON file. Use the "Import Project" button on the home screen to restore it.</p>
+                            <p className="font-bold text-white">{t('help.projectFileTitle')}</p>
+                            <p className="text-gray-400">{t('help.projectFileDesc')}</p>
                         </div>
                     </div>
                     <div className="flex gap-3">
                         <div className="p-2 bg-gray-800 rounded-lg h-fit"><Icons.FileVideo size={20} /></div>
                         <div>
-                            <p className="font-bold text-white">Import Video</p>
-                            <p className="text-gray-400">Click the Video icon in the toolbar to import MP4/MOV files. You can extract frames to use as a background or reference for your animation.</p>
+                            <p className="font-bold text-white">{t('help.importVideoTitle')}</p>
+                            <p className="text-gray-400">{t('help.importVideoDesc')}</p>
                         </div>
                     </div>
                     <div className="flex gap-3">
                         <div className="p-2 bg-gray-800 rounded-lg h-fit"><Icons.Music size={20} /></div>
                         <div>
-                            <p className="font-bold text-white">Sound Library</p>
-                            <p className="text-gray-400">Search thousands of free sound effects from Freesound in the "Library" tab. Save your favorites to the "Saved" tab for quick access.</p>
+                            <p className="font-bold text-white">{t('help.soundLibraryTitle')}</p>
+                            <p className="text-gray-400">{t('help.soundLibraryDesc')}</p>
                         </div>
                     </div>
                 </div>
@@ -123,7 +124,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
         
         <div className="p-6 border-t border-gray-700 bg-[#252525] text-center">
             <button onClick={onClose} className="w-full py-3 bg-[#FF3B30] text-white font-bold rounded-xl hover:bg-red-600 transition-colors">
-                Got it
+                {t('help.gotIt')}
             </button>
         </div>
       </div>

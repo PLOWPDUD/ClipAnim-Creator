@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icons } from '../Icons';
 
 interface SoundLibraryModalProps {
@@ -27,6 +28,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
   savedSounds,
   onToggleSaveSound
 }) => {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ name: string; url: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -172,7 +174,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
         <div className="flex items-center justify-between p-4 border-b border-white/10">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <Icons.Music size={20} className="text-[var(--accent-color)]" />
-            Sound Library
+            {t('soundLibrary.title')}
           </h2>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-white/10 transition-colors">
             <Icons.X size={20} />
@@ -184,13 +186,13 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
             onClick={() => setActiveTab('search')}
             className={`flex-1 py-3 text-xs font-bold transition-colors ${activeTab === 'search' ? 'text-[var(--accent-color)] border-b-2 border-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`}
           >
-            Search
+            {t('soundLibrary.search')}
           </button>
           <button 
             onClick={() => setActiveTab('saved')}
             className={`flex-1 py-3 text-xs font-bold transition-colors ${activeTab === 'saved' ? 'text-[var(--accent-color)] border-b-2 border-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`}
           >
-            Saved ({savedSounds.length})
+            {t('soundLibrary.saved')} ({savedSounds.length})
           </button>
         </div>
 
@@ -201,7 +203,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search sounds (e.g. cartoon, pop, magic)..."
+                placeholder={t('soundLibrary.searchPlaceholder')}
                 className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-[var(--accent-color)] transition-colors"
               />
               <Icons.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -209,7 +211,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
                 type="submit"
                 className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-[var(--accent-color)] text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity"
               >
-                Search
+                {t('soundLibrary.search')}
               </button>
             </form>
           </div>
@@ -220,7 +222,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
             isLoading ? (
               <div className="col-span-2 py-10 flex flex-col items-center justify-center gap-3 text-gray-400">
                 <div className="w-6 h-6 border-2 border-[var(--accent-color)] border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm">Searching Freesound...</span>
+                <span className="text-sm">{t('soundLibrary.searching')}</span>
               </div>
             ) : error ? (
               <div className="col-span-2 py-10 text-center text-red-400 text-sm px-4">
@@ -228,7 +230,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
               </div>
             ) : (searchResults.length > 0 ? searchResults : (searchQuery ? [] : DEFAULT_SOUNDS)).length === 0 ? (
               <div className="col-span-2 py-10 text-center text-gray-400 text-sm">
-                No sounds found for "{searchQuery}"
+                {t('soundLibrary.noSoundsFound', { query: searchQuery })}
               </div>
             ) : (
               (searchResults.length > 0 ? searchResults : (searchQuery ? [] : DEFAULT_SOUNDS)).map((sound, idx) => {
@@ -247,7 +249,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
                         <button 
                           onClick={() => onToggleSaveSound(sound)}
                           className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${isSaved ? 'bg-[var(--accent-color)] text-white' : 'bg-white/10 text-gray-400 hover:text-white hover:bg-white/20'}`}
-                          title={isSaved ? "Remove from Saved" : "Save to Library"}
+                          title={isSaved ? t('soundLibrary.removeFromSaved') : t('soundLibrary.saveToLibrary')}
                         >
                           <Icons.Star size={12} fill={isSaved ? "currentColor" : "none"} />
                         </button>
@@ -260,7 +262,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
                       }}
                       className="w-full py-1.5 bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold rounded-lg transition-colors mt-auto"
                     >
-                      Add to Timeline
+                      {t('soundLibrary.addToTimeline')}
                     </button>
                   </div>
                 );
@@ -270,12 +272,12 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
             savedSounds.length === 0 ? (
               <div className="col-span-2 py-10 text-center text-gray-400 text-sm flex flex-col items-center gap-2">
                 <Icons.Star size={32} className="opacity-20" />
-                <span>No saved sounds yet.</span>
+                <span>{t('soundLibrary.noSavedSounds')}</span>
                 <button 
                   onClick={() => setActiveTab('search')}
                   className="text-[var(--accent-color)] hover:underline mt-2"
                 >
-                  Go to Search
+                  {t('soundLibrary.goToSearch')}
                 </button>
               </div>
             ) : (
@@ -293,7 +295,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
                       <button 
                         onClick={() => onToggleSaveSound(sound)}
                         className="w-7 h-7 rounded-full bg-[var(--accent-color)] text-white flex items-center justify-center transition-colors"
-                        title="Remove from Saved"
+                        title={t('soundLibrary.removeFromSaved')}
                       >
                         <Icons.Star size={12} fill="currentColor" />
                       </button>
@@ -306,7 +308,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
                     }}
                     className="w-full py-1.5 bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold rounded-lg transition-colors mt-auto"
                   >
-                    Add to Timeline
+                    {t('soundLibrary.addToTimeline')}
                   </button>
                 </div>
               ))
@@ -317,7 +319,7 @@ export const SoundLibraryModal: React.FC<SoundLibraryModalProps> = ({
         {activeTab === 'search' && searchQuery && !isLoading && !error && searchResults.length > 0 && (
           <div className="p-2 text-center border-t border-white/10">
             <p className="text-[10px] text-gray-500">
-              Results from <a href="https://freesound.org" target="_blank" rel="noopener noreferrer" className="hover:text-white underline">freesound.org</a>
+              {t('soundLibrary.resultsFrom')} <a href="https://freesound.org" target="_blank" rel="noopener noreferrer" className="hover:text-white underline">freesound.org</a>
             </p>
           </div>
         )}

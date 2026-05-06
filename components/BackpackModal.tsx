@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icons } from '../Icons';
 import { BackpackItem } from '../types';
 import JSZip from 'jszip';
@@ -24,6 +25,7 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
   onStartSelecting,
   onImportItems
 }) => {
+  const { t } = useTranslation();
   const [isDeleteMode, setIsDeleteMode] = useState(false);
   const [isExportMode, setIsExportMode] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
@@ -118,18 +120,18 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
           // Basic validation: check if items have required properties
           const validItems = importedItems.filter(item => item.id && item.dataUrl);
           if (validItems.length > 0) {
-            if (confirm(`Import ${validItems.length} items? This will add them to your current backpack.`)) {
+            if (confirm(t('backpack.importConfirm', { count: validItems.length }))) {
               onImportItems([...items, ...validItems]);
             }
           } else {
-            alert('No valid items found in the JSON file.');
+            alert(t('backpack.invalidJson'));
           }
         } else {
-          alert('Invalid JSON format. Expected an array of items.');
+          alert(t('backpack.badFormat'));
         }
       } catch (error) {
         console.error('Import error:', error);
-        alert('Failed to parse JSON file.');
+        alert(t('backpack.parseFailed'));
       }
     };
     reader.readAsText(file);
@@ -142,7 +144,7 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
         <div className="flex justify-between items-center p-4 border-b border-gray-700">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <Icons.Briefcase size={24} />
-            Backpack
+            {t('backpack.title')}
           </h2>
           <div className="flex items-center gap-2">
             <input 
@@ -179,7 +181,7 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${isExportMode ? 'bg-[#FF3B30]/20 text-[#FF3B30] hover:bg-[#FF3B30]/30' : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'}`}
                 >
                   <Icons.FileImage size={16} />
-                  {isExportMode ? 'Cancel' : 'Export PNG/ZIP'}
+                  {isExportMode ? t('common.cancel') : t('backpack.exportPngZip')}
                 </button>
                 <button 
                   onClick={() => {
@@ -190,7 +192,7 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${isDeleteMode ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'}`}
                 >
                   <Icons.Trash2 size={16} />
-                  {isDeleteMode ? 'Done' : 'Delete'}
+                  {isDeleteMode ? t('common.done') : t('common.delete')}
                 </button>
               </>
             )}
@@ -205,15 +207,15 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
             <div className="mb-4 p-3 bg-[#FF3B30]/10 border border-[#FF3B30]/30 rounded-lg flex items-center justify-between animate-in slide-in-from-top-2">
               <span className="text-sm text-gray-300">
                 {selectedItemIds.size === 0 
-                  ? 'Select items to export' 
-                  : `${selectedItemIds.size} item${selectedItemIds.size > 1 ? 's' : ''} selected`}
+                  ? t('backpack.selectToExport') 
+                  : t('backpack.itemSelected', { count: selectedItemIds.size })}
               </span>
               <button
                 onClick={handleDownloadImages}
                 disabled={selectedItemIds.size === 0}
                 className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${selectedItemIds.size === 0 ? 'bg-gray-800 text-gray-600 cursor-not-allowed' : 'bg-[#FF3B30] text-white hover:bg-red-600 shadow-lg active:scale-95'}`}
               >
-                {selectedItemIds.size > 1 ? 'Download ZIP' : 'Download PNG'}
+                {selectedItemIds.size > 1 ? t('common.download') + ' ZIP' : t('common.download') + ' PNG'}
               </button>
             </div>
           )}
@@ -225,10 +227,10 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                 className="w-full py-3 px-4 bg-[var(--accent-color)] hover:opacity-90 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-opacity"
               >
                 <Icons.MousePointer2 size={18} />
-                Select An Object
+                {t('backpack.selectObject')}
               </button>
               <p className="text-sm text-gray-400 text-center mt-2">
-                Select an area on the canvas to save it to your backpack.
+                {t('backpack.selectAreaDesc')}
               </p>
             </div>
           )}
@@ -236,8 +238,8 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
           {items.length === 0 ? (
             <div className="text-center py-12 text-gray-500 flex flex-col items-center">
               <Icons.Briefcase size={48} className="mb-4 opacity-20" />
-              <p>Your backpack is empty.</p>
-              <p className="text-sm mt-1">Save selections to reuse them later.</p>
+              <p>{t('backpack.empty')}</p>
+              <p className="text-sm mt-1">{t('backpack.emptyDesc')}</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -305,18 +307,18 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleSaveName(item.id); }} 
                           className="p-2 -m-1 text-[var(--accent-color)] hover:opacity-80 transition-opacity"
-                          title="Save"
+                          title={t('common.save')}
                         >
                           <Icons.Check size={18} />
                         </button>
                       </>
                     ) : (
                       <>
-                        <span className="flex-1 text-xs text-gray-300 truncate">{item.name || 'Unnamed'}</span>
+                        <span className="flex-1 text-xs text-gray-300 truncate">{item.name || t('backpack.unnamed')}</span>
                         <button 
                           onClick={(e) => { e.stopPropagation(); setEditingItemId(item.id); setEditingName(item.name || ''); }} 
                           className="p-2 -m-1 text-gray-500 hover:text-white transition-colors"
-                          title="Rename"
+                          title={t('layers.rename')}
                         >
                           <Icons.Settings size={18} />
                         </button>

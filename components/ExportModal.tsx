@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icons } from '../Icons';
 
 export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'avi' | 'project-zip';
@@ -29,6 +30,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   fps,
   exportedFile
 }) => {
+  const { t } = useTranslation();
   const [quality, setQuality] = React.useState<ExportQuality>('medium');
 
   if (!isOpen) return null;
@@ -75,20 +77,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         
         if (canShareFiles) {
           await navigator.share({
-            title: projectName,
-            text: 'Check out my animation created with ClipAnim!',
+            title: t('export.shareTitle'),
+            text: t('export.shareTextDefault'),
             files: [file]
           });
         } else {
           // Fallback to sharing just text/url if files aren't supported but share API exists
           await navigator.share({
-            title: projectName,
-            text: `Check out my animation "${projectName}" created with ClipAnim!`,
+            title: t('export.shareTitle'),
+            text: t('export.shareTextWithName', { name: projectName }),
             url: window.location.href
           });
         }
       } else {
-        alert("Sharing is not supported on this browser. Please download the file instead.");
+        alert(t('export.shareNotSupported'));
       }
     } catch (e) {
       // Don't alert on user cancellation
@@ -96,23 +98,23 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         return;
       }
       console.error("Share failed:", e);
-      alert("Sharing failed. Please download the file instead.");
+      alert(t('export.shareFailed'));
     }
   };
 
   const formats: { id: ExportFormat; label: string; icon: React.ElementType; color: string; desc: string }[] = [
-    { id: 'mp4', label: 'MP4 Video', icon: Icons.FileVideo, color: 'text-blue-400', desc: 'Standard video, great for social media.' },
-    { id: 'webm', label: 'WebM Video', icon: Icons.FileVideo, color: 'text-emerald-400', desc: 'Web-native format, small file size.' },
-    { id: 'gif', label: 'Animated GIF', icon: Icons.Image, color: 'text-amber-400', desc: 'Looping animation for the web.' },
-    { id: 'png-seq', label: 'PNG Sequence', icon: Icons.FileArchive, color: 'text-rose-400', desc: 'High quality frames in a ZIP file.' },
-    { id: 'project-zip', label: 'Project Archive', icon: Icons.FileArchive, color: 'text-purple-400', desc: 'Full project data and frames in a ZIP.' },
-    { id: 'avi', label: 'AVI Video', icon: Icons.FileVideo, color: 'text-indigo-400', desc: 'Legacy format (Windows-friendly).' },
+    { id: 'mp4', label: t('export.mp4'), icon: Icons.FileVideo, color: 'text-blue-400', desc: t('export.mp4Desc') },
+    { id: 'webm', label: t('export.webm'), icon: Icons.FileVideo, color: 'text-emerald-400', desc: t('export.webmDesc') },
+    { id: 'gif', label: t('export.gif'), icon: Icons.Image, color: 'text-amber-400', desc: t('export.gifDesc') },
+    { id: 'png-seq', label: t('export.pngSeq'), icon: Icons.FileArchive, color: 'text-rose-400', desc: t('export.pngSeqDesc') },
+    { id: 'project-zip', label: t('export.projectZip'), icon: Icons.FileArchive, color: 'text-purple-400', desc: t('export.projectZipDesc') },
+    { id: 'avi', label: t('export.avi'), icon: Icons.FileVideo, color: 'text-indigo-400', desc: t('export.aviDesc') },
   ];
 
   const qualityOptions: { id: ExportQuality; label: string; desc: string }[] = [
-    { id: 'low', label: 'Low', desc: 'Smallest file size, lower quality' },
-    { id: 'medium', label: 'Medium', desc: 'Balanced quality and size' },
-    { id: 'high', label: 'High', desc: 'Best quality, larger file size' },
+    { id: 'low', label: t('export.low'), desc: t('export.lowDesc') },
+    { id: 'medium', label: t('export.medium'), desc: t('export.mediumDesc') },
+    { id: 'high', label: t('export.high'), desc: t('export.highDesc') },
   ];
 
   return (
@@ -122,20 +124,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         {isExporting && (
           <div className="absolute inset-0 z-50 bg-[#1e1e1e]/95 flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-200">
              <div className="w-16 h-16 rounded-full border-4 border-gray-700 border-t-[#FF3B30] animate-spin mb-6" />
-             <h2 className="text-2xl font-bold mb-2">Rendering...</h2>
-             <p className="text-gray-400 mb-6">Processing frames and encoding your movie.</p>
+             <h2 className="text-2xl font-bold mb-2">{t('export.rendering')}</h2>
+             <p className="text-gray-400 mb-6">{t('export.renderingDesc')}</p>
              <div className="w-full max-w-md bg-gray-800 h-3 rounded-full overflow-hidden mb-2">
                 <div 
                     className="h-full bg-[#FF3B30] transition-all duration-300 shadow-[0_0_10px_rgba(255,59,48,0.5)]" 
                     style={{ width: `${progress}%` }} 
                 />
              </div>
-             <span className="text-xs font-mono text-gray-500 mb-6">{progress}% Complete</span>
+             <span className="text-xs font-mono text-gray-500 mb-6">{progress}% {t('common.done')}</span>
              <button 
                  onClick={onCancel}
                  className="px-6 py-2 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white text-xs font-bold transition-all border border-gray-700"
              >
-                 Cancel Export
+                 {t('common.cancel')}
              </button>
           </div>
         )}
@@ -145,8 +147,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
              <div className="w-20 h-20 rounded-full bg-emerald-500/20 flex items-center justify-center mb-6">
                  <Icons.Check className="text-emerald-500" size={40} />
              </div>
-             <h2 className="text-3xl font-bold mb-2">Export Complete!</h2>
-             <p className="text-gray-400 mb-8">Your movie is ready to be shared or downloaded.</p>
+             <h2 className="text-3xl font-bold mb-2">{t('export.success')}</h2>
+             <p className="text-gray-400 mb-8">{t('export.successDesc')}</p>
              
              <div className="flex gap-4">
                  <button 
@@ -154,14 +156,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                      className="px-8 py-4 rounded-2xl bg-[#FF3B30] hover:bg-[#FF453A] text-white font-bold transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(255,59,48,0.3)] hover:scale-105 active:scale-95"
                  >
                      <Icons.Share2 size={20} />
-                     Share Movie
+                     {t('common.share')}
                  </button>
                  <button 
                      onClick={handleDownload}
                      className="px-8 py-4 rounded-2xl bg-gray-800 hover:bg-gray-700 text-white font-bold transition-all flex items-center gap-2 border border-gray-700 hover:scale-105 active:scale-95"
                  >
                      <Icons.Download size={20} />
-                     Download
+                     {t('common.download')}
                  </button>
              </div>
              
@@ -169,7 +171,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                  onClick={onClose}
                  className="mt-8 px-6 py-2 rounded-full text-gray-500 hover:text-white text-sm font-bold transition-colors"
              >
-                 Close
+                 {t('common.close')}
              </button>
           </div>
         )}
@@ -178,18 +180,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {/* Left Panel: Settings */}
           <div className="w-1/2 p-8 border-r border-gray-700/50 flex flex-col">
             <div className="mb-8">
-              <h2 className="text-3xl font-bold text-white mb-2">Make a Movie</h2>
+              <h2 className="text-3xl font-bold text-white mb-2">{t('export.makeMovie')}</h2>
               <div className="flex flex-wrap items-center gap-2">
                   <span className="text-gray-400 text-sm font-medium truncate max-w-[180px]">{projectName}</span>
                   <span className="w-1 h-1 rounded-full bg-gray-600" />
-                  <span className="text-gray-500 text-xs uppercase font-bold tracking-wider">{frameCount} Frames</span>
+                  <span className="text-gray-500 text-xs uppercase font-bold tracking-wider">{frameCount} {t('timeline.frames')}</span>
                   <span className="w-1 h-1 rounded-full bg-gray-600" />
                   <span className="text-gray-500 text-xs uppercase font-bold tracking-wider">{(frameCount / fps).toFixed(1)}s</span>
               </div>
             </div>
 
             <div className="mb-8">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 block">Graphics Quality</label>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 block">{t('export.quality')}</label>
                 <div className="grid grid-cols-1 gap-3">
                     {qualityOptions.map((opt) => (
                         <button
@@ -219,7 +221,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     className="w-full py-3.5 rounded-2xl bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold text-sm transition-all border border-gray-700 hover:border-gray-600 flex items-center justify-center gap-2"
                 >
                     <Icons.ChevronLeft size={18} />
-                    Back to Editor
+                    {t('common.done')}
                 </button>
             </div>
           </div>
@@ -227,7 +229,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {/* Right Panel: Formats */}
           <div className="w-1/2 bg-black/20 p-8 flex flex-col">
             <div className="flex justify-between items-center mb-6">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Select Format & Export</label>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t('export.format')}</label>
                 <button onClick={onClose} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-800 transition-colors">
                     <Icons.X size={20} />
                 </button>
@@ -254,9 +256,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
             <div className="mt-6 pt-6 border-t border-gray-700/30">
                 <p className="text-[10px] text-gray-600 leading-relaxed">
-                    ClipAnim uses client-side encoding. High quality exports may take longer.
+                    {t('export.disclaimer')}
                     <br />
-                    <span className="text-gray-500 italic">Tip: Double-check your audio tracks before exporting!</span>
+                    <span className="text-gray-500 italic">{t('help.about')}</span>
                 </p>
             </div>
           </div>

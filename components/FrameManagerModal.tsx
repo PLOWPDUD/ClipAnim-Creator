@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Frame, BackgroundSettings } from '../types';
 import { Icons } from '../Icons';
 import JSZip from 'jszip';
@@ -32,6 +33,7 @@ interface FrameManagerModalProps {
 }
 
 const SortableFrameItem = ({ frame, index, isSelected, toggleSelection }: { frame: Frame, index: number, isSelected: boolean, toggleSelection: (index: number) => void }) => {
+  const { t } = useTranslation();
   const {
     attributes,
     listeners,
@@ -77,7 +79,7 @@ const SortableFrameItem = ({ frame, index, isSelected, toggleSelection }: { fram
         </div>
 
         <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
-            <span className="text-xs font-bold text-white shadow-black drop-shadow-md">Frame {index + 1}</span>
+            <span className="text-xs font-bold text-white shadow-black drop-shadow-md">{t('frameManager.frameLabel', { number: index + 1 })}</span>
         </div>
     </div>
   );
@@ -92,6 +94,7 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
   onReorderFrames,
   onUpdateFrameBackground
 }) => {
+  const { t } = useTranslation();
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showBackgroundModal, setShowBackgroundModal] = useState(false);
@@ -226,9 +229,9 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <Icons.FrameGrid className="text-[#FF3B30]" />
-              Frame Manager
+              {t('frameManager.title')}
             </h2>
-            <span className="text-sm text-gray-400">{frames.length} Frames</span>
+            <span className="text-sm text-gray-400">{t('frameManager.framesCount', { count: frames.length })}</span>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors">
             <Icons.X size={24} />
@@ -241,7 +244,7 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
                 onClick={selectAll}
                 className="text-sm font-bold text-blue-400 hover:text-blue-300 px-3 py-1.5 hover:bg-blue-500/10 rounded transition-colors"
              >
-                {selectedIndices.size === frames.length ? 'Deselect All' : 'Select All'}
+                {selectedIndices.size === frames.length ? t('frameManager.deselectAll') : t('frameManager.selectAll')}
              </button>
 
              <div className="flex gap-2">
@@ -251,7 +254,7 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors ${selectedIndices.size > 0 && !isExporting ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-gray-800 text-gray-600 cursor-not-allowed'}`}
                  >
                     {isExporting ? <Icons.Loader2 size={16} className="animate-spin" /> : <Icons.Download size={16} />}
-                    Export ({selectedIndices.size})
+                    {t('frameManager.exportCount', { count: selectedIndices.size })}
                  </button>
                  <button 
                     onClick={handleDuplicate}
@@ -259,7 +262,7 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors ${selectedIndices.size > 0 ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-800 text-gray-600 cursor-not-allowed'}`}
                  >
                     <Icons.Copy size={16} />
-                    Duplicate ({selectedIndices.size})
+                    {t('frameManager.duplicateCount', { count: selectedIndices.size })}
                  </button>
                  <button 
                     onClick={() => setShowBackgroundModal(true)}
@@ -267,7 +270,7 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors ${selectedIndices.size > 0 ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-800 text-gray-600 cursor-not-allowed'}`}
                  >
                     <Icons.Palette size={16} />
-                    Set Background
+                    {t('frameManager.setBackground')}
                  </button>
                  <button 
                     onClick={handleDelete}
@@ -275,7 +278,7 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors ${selectedIndices.size > 0 ? 'bg-red-600/20 text-red-500 hover:bg-red-600 hover:text-white' : 'bg-gray-800 text-gray-600 cursor-not-allowed'}`}
                  >
                     <Icons.Trash2 size={16} />
-                    Delete ({selectedIndices.size})
+                    {t('frameManager.deleteCount', { count: selectedIndices.size })}
                  </button>
               </div>
         </div>
@@ -284,20 +287,20 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
         {showBackgroundModal && (
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
                 <div className="bg-[#1e1e1e] p-6 rounded-2xl border border-gray-700 w-[400px]">
-                    <h3 className="text-lg font-bold text-white mb-4">Set Background</h3>
+                    <h3 className="text-lg font-bold text-white mb-4">{t('frameManager.setBackground')}</h3>
                     
                     <div className="flex gap-2 mb-4">
                         <button 
                             onClick={() => setTempBackground({ ...tempBackground, type: 'color' })}
                             className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${tempBackground.type === 'color' ? 'bg-[#FF3B30] text-white' : 'bg-gray-800 text-gray-400'}`}
                         >
-                            Color
+                            {t('frameManager.color')}
                         </button>
                         <button 
                             onClick={() => setTempBackground({ ...tempBackground, type: 'gradient3', gradientColors: tempBackground.gradientColors || ['#FF3B30', '#007AFF', '#34C759'] })}
                             className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${tempBackground.type === 'gradient3' ? 'bg-[#FF3B30] text-white' : 'bg-gray-800 text-gray-400'}`}
                         >
-                            3-Color Gradient
+                            {t('frameManager.gradient')}
                         </button>
                     </div>
 
@@ -351,7 +354,7 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
                                 className="w-full h-24 border-2 border-dashed border-gray-700 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-[#FF3B30] hover:text-[#FF3B30] transition-colors"
                             >
                                 <Icons.Image size={24} className="mb-2" />
-                                <span className="text-xs">Import Background Image</span>
+                                <span className="text-xs">{t('frameManager.importBgImage')}</span>
                             </button>
                         )}
                         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
@@ -370,7 +373,7 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
                             onClick={() => setShowBackgroundModal(false)}
                             className="flex-1 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
                         >
-                            Cancel
+                            {t('common.cancel')}
                         </button>
                         <button 
                             onClick={() => {
@@ -379,7 +382,7 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
                             }}
                             className="flex-1 py-2 bg-[#FF3B30] text-white rounded-lg hover:bg-red-600"
                         >
-                            Apply
+                            {t('frameManager.apply')}
                         </button>
                     </div>
                 </div>
@@ -419,11 +422,11 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
             <div className="absolute inset-0 z-[70] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
                 <div className="bg-[#1e1e1e] rounded-3xl p-8 max-w-sm w-full border border-gray-700 shadow-2xl text-center">
                     <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center text-red-500 mx-auto mb-6"> <Icons.Trash2 size={32} /> </div>
-                    <h2 className="text-2xl font-bold mb-2">Delete {selectedIndices.size} Frames?</h2>
-                    <p className="text-gray-400 mb-8">This action cannot be undone. Selected frames will be permanently removed.</p>
+                    <h2 className="text-2xl font-bold mb-2">{t('frameManager.deleteConfirmTitle', { count: selectedIndices.size })}</h2>
+                    <p className="text-gray-400 mb-8">{t('frameManager.deleteConfirmDesc')}</p>
                     <div className="grid grid-cols-1 gap-3">
-                        <button onClick={confirmDelete} className="w-full py-4 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 transition-colors">Delete Permanently</button>
-                        <button onClick={() => setShowDeleteConfirm(false)} className="w-full py-4 bg-gray-700 text-white font-bold rounded-2xl hover:bg-gray-600 transition-colors">Cancel</button>
+                        <button onClick={confirmDelete} className="w-full py-4 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 transition-colors">{t('frameManager.deletePermanently')}</button>
+                        <button onClick={() => setShowDeleteConfirm(false)} className="w-full py-4 bg-gray-700 text-white font-bold rounded-2xl hover:bg-gray-600 transition-colors">{t('common.cancel')}</button>
                     </div>
                 </div>
             </div>

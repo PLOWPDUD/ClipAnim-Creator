@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Layer } from '../types';
 import { Icons } from '../Icons';
 import {
@@ -45,6 +46,7 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
   onRenameLayer,
   layersCount,
 }) => {
+  const { t } = useTranslation();
   const {
     attributes,
     listeners,
@@ -125,7 +127,7 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
           <button
             onClick={(e) => { e.stopPropagation(); onToggleLock(layer.id); }}
             className={`p-1.5 rounded hover:bg-black/30 ${layer.isLocked ? 'text-[#FF3B30]' : 'text-gray-600'}`}
-            title={layer.isLocked ? "Unlock" : "Lock"}
+            title={layer.isLocked ? t('layers.locked') : t('layers.locked')}
           >
             {layer.isLocked ? <Icons.Lock size={14} /> : <Icons.Unlock size={14} />}
           </button>
@@ -133,7 +135,7 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
           <button
             onClick={(e) => { e.stopPropagation(); onToggleVisibility(layer.id); }}
             className={`p-1.5 rounded hover:bg-black/30 ${layer.isVisible ? 'text-gray-300' : 'text-gray-600'}`}
-            title={layer.isVisible ? "Hide" : "Show"}
+            title={layer.isVisible ? t('layers.visible') : t('layers.visible')}
           >
             {layer.isVisible ? <Icons.Eye size={14} /> : <Icons.EyeOff size={14} />}
           </button>
@@ -141,7 +143,7 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
           <button
             onClick={(e) => { e.stopPropagation(); onDuplicateLayer(layer.id); }}
             className="p-1.5 rounded hover:bg-black/30 text-gray-600 hover:text-blue-400"
-            title="Duplicate Layer"
+            title={t('layers.duplicate')}
           >
             <Icons.Copy size={14} />
           </button>
@@ -162,7 +164,7 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
           {/* Opacity Slider */}
           <div>
             <div className="flex justify-between text-[10px] text-gray-400 mb-1 uppercase tracking-wide">
-              <span>Opacity</span>
+              <span>{t('layers.opacity')}</span>
               <span>{Math.round(layer.opacity * 100)}%</span>
             </div>
             <input
@@ -178,7 +180,7 @@ const SortableLayerItem: React.FC<SortableLayerItemProps> = ({
 
           {/* Blend Mode */}
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-gray-400 uppercase tracking-wide">Blend Mode</span>
+            <span className="text-[10px] text-gray-400 uppercase tracking-wide">{t('layers.blendMode')}</span>
             <select
               value={layer.blendMode}
               onChange={(e) => onUpdateLayerSettings(layer.id, layer.opacity, e.target.value as GlobalCompositeOperation)}
@@ -226,6 +228,7 @@ export const LayerPanel: React.FC<LayerPanelProps> = ({
   onReorderLayers,
   onClose
 }) => {
+  const { t } = useTranslation();
   const sensors = useSensors(
     useSensor(MouseSensor, {
       activationConstraint: {
@@ -265,15 +268,15 @@ export const LayerPanel: React.FC<LayerPanelProps> = ({
   return (
     <div className="absolute right-16 top-4 w-72 bg-[#1e1e1e] border border-gray-700 rounded-lg shadow-xl z-40 flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-4">
       <div className="p-3 bg-[#252525] flex justify-between items-center border-b border-gray-700">
-        <h3 className="font-bold text-sm text-white">Layers</h3>
+        <h3 className="font-bold text-sm text-white">{t('layers.title')}</h3>
         <div className="flex items-center gap-2">
-            <button onClick={onAddLayer} className="p-1 hover:bg-gray-600 rounded text-gray-300 hover:text-white" title="Add Layer">
+            <button onClick={onAddLayer} className="p-1 hover:bg-gray-600 rounded text-gray-300 hover:text-white" title={t('layers.newLayer')}>
                 <Icons.Plus size={16} />
             </button>
-            <button onClick={() => onDuplicateLayer(activeLayerId)} className="p-1 hover:bg-gray-600 rounded text-gray-300 hover:text-white" title="Duplicate Layer">
+            <button onClick={() => onDuplicateLayer(activeLayerId)} className="p-1 hover:bg-gray-600 rounded text-gray-300 hover:text-white" title={t('layers.duplicate')}>
                 <Icons.Copy size={16} />
             </button>
-            <button onClick={onClose} className="p-1 hover:bg-gray-600 rounded text-gray-300 hover:text-white" title="Close">
+            <button onClick={onClose} className="p-1 hover:bg-gray-600 rounded text-gray-300 hover:text-white" title={t('common.close')}>
                 <Icons.X size={16} />
             </button>
         </div>

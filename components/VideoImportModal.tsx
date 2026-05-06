@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icons } from '../Icons';
 
@@ -17,6 +18,7 @@ export const VideoImportModal: React.FC<VideoImportModalProps> = ({
   onImport,
   targetFps
 }) => {
+  const { t } = useTranslation();
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [startTime, setStartTime] = useState(0);
@@ -122,7 +124,7 @@ export const VideoImportModal: React.FC<VideoImportModalProps> = ({
             <div className="p-4 sm:p-5 border-b border-gray-800 flex items-center justify-between shrink-0">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <Icons.FileVideo size={20} className="text-blue-500" />
-                Import Video
+                {t('videoImport.title')}
               </h2>
               <button
                 onClick={onClose}
@@ -146,13 +148,13 @@ export const VideoImportModal: React.FC<VideoImportModalProps> = ({
 
               <div className="space-y-3">
                 <div className="flex justify-between text-xs font-medium text-gray-400">
-                  <span>Start: {startTime.toFixed(2)}s</span>
-                  <span>End: {endTime.toFixed(2)}s</span>
+                  <span>{t('help.start') || 'Start'}: {startTime.toFixed(2)}s</span>
+                  <span>{t('help.end') || 'End'}: {endTime.toFixed(2)}s</span>
                 </div>
                 
                 <div className="flex flex-col gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Start Time</label>
+                    <label className="block text-xs text-gray-500 mb-1">{t('videoImport.startTime')}</label>
                     <input
                       type="range"
                       min={0}
@@ -170,7 +172,7 @@ export const VideoImportModal: React.FC<VideoImportModalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">End Time</label>
+                    <label className="block text-xs text-gray-500 mb-1">{t('videoImport.endTime')}</label>
                     <input
                       type="range"
                       min={0}
@@ -197,22 +199,19 @@ export const VideoImportModal: React.FC<VideoImportModalProps> = ({
                     disabled={isExtracting}
                     className="w-4 h-4 rounded border-gray-600 bg-gray-800 accent-blue-500"
                   />
-                  Import audio track
+                  {t('videoImport.importAudio')}
                 </label>
 
                 <div className="bg-blue-500/10 text-blue-400 p-3 rounded-xl text-xs flex items-start gap-2">
                   <Icons.Help className="shrink-0 mt-0.5" size={14} />
-                  <p>
-                    This will extract approximately <strong>{Math.floor((endTime - startTime) * targetFps)} frames</strong> at {targetFps} FPS. 
-                    Importing long videos may take a while and consume significant memory.
-                  </p>
+                  <p dangerouslySetInnerHTML={{ __html: t('videoImport.extractWarning', { count: Math.floor((endTime - startTime) * targetFps), fps: targetFps }) }} />
                 </div>
               </div>
 
               {isExtracting && (
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs text-gray-400">
-                    <span>Extracting frames...</span>
+                    <span>{t('videoImport.extractingFrames')}</span>
                     <span>{progress}%</span>
                   </div>
                   <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
@@ -231,7 +230,7 @@ export const VideoImportModal: React.FC<VideoImportModalProps> = ({
                 disabled={isExtracting}
                 className="px-4 py-2 rounded-xl font-bold text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handleExtract}
@@ -241,12 +240,12 @@ export const VideoImportModal: React.FC<VideoImportModalProps> = ({
                 {isExtracting ? (
                   <>
                     <Icons.Loader2 size={16} className="animate-spin" />
-                    Extracting...
+                    {t('videoImport.extracting')}
                   </>
                 ) : (
                   <>
                     <Icons.Download size={16} />
-                    Import Frames
+                    {t('videoImport.importFrames')}
                   </>
                 )}
               </button>

@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Frame, AudioTrack, BackgroundSettings } from '../types';
 import { Icons } from '../Icons';
 import { Waveform } from './Waveform';
@@ -56,6 +57,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   background,
   backgroundImage
 }) => {
+  const { t } = useTranslation();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const [showAudio, setShowAudio] = useState(false);
@@ -158,14 +160,14 @@ export const Timeline: React.FC<TimelineProps> = ({
               <button 
                   onClick={onOpenFrameManager}
                   className="p-1.5 rounded-full text-gray-300 hover:text-white hover:bg-white/10 transition-colors drop-shadow-md"
-                  title="Frame Viewer"
+                  title={t('layers.title')}
               >
                   <Icons.FrameGrid size={18} />
               </button>
               <button 
                   onClick={() => setShowAudio(!showAudio)}
                   className={`p-1.5 rounded-full transition-colors ${showAudio ? 'text-[var(--accent-color)] bg-black/40' : 'text-gray-300 hover:text-white drop-shadow-md'}`}
-                  title="Toggle Audio Tracks"
+                  title={t('timeline.audio')}
               >
                   <Icons.Music size={16} />
                   {audioTracks.length > 0 && (
@@ -175,7 +177,7 @@ export const Timeline: React.FC<TimelineProps> = ({
               <button 
                   onClick={onToggleLoop}
                   className={`p-1.5 rounded-full transition-colors ${isLooping ? 'text-[var(--accent-color)] bg-black/40' : 'text-gray-300 hover:text-white drop-shadow-md'}`}
-                  title={isLooping ? "Looping On" : "Looping Off"}
+                  title={isLooping ? t('timeline.loop') : t('timeline.loop')}
               >
                   <Icons.Repeat size={16} />
               </button>
@@ -194,7 +196,7 @@ export const Timeline: React.FC<TimelineProps> = ({
 
           <div className="flex items-center space-x-1 bg-black/40 rounded-lg p-1 backdrop-blur-sm">
                 <div className="flex items-center space-x-1 px-2 border-r border-white/10 mr-1">
-                    <span className="text-[10px] text-gray-400 font-bold uppercase">Hold</span>
+                    <span className="text-[10px] text-gray-400 font-bold uppercase">{t('timeline.frames')}</span>
                     <input 
                       type="number" 
                       min="1" 
@@ -202,16 +204,16 @@ export const Timeline: React.FC<TimelineProps> = ({
                       value={frames[currentFrameIndex]?.durationMultiplier || 1}
                       onChange={(e) => onUpdateFrameDuration(currentFrameIndex, parseInt(e.target.value) || 1)}
                       className="w-10 bg-black/50 text-white text-xs rounded px-1 py-0.5 border border-white/10 text-center"
-                      title="Frame Duration Multiplier (Hold for X frames)"
+                      title={t('timeline.frames')}
                     />
                 </div>
                <button onClick={() => onDeleteFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-gray-300 hover:text-white" disabled={frames.length <= 1}>
                   <Icons.Trash2 size={16} />
                </button>
-               <button onClick={() => onCopyFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-gray-300 hover:text-white" title="Duplicate Frame">
+               <button onClick={() => onCopyFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-gray-300 hover:text-white" title={t('layers.duplicate')}>
                   <Icons.Copy size={16} />
                </button>
-               <button onClick={() => onTweenFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-purple-400 hover:text-purple-300" title="Tween to Next Frame">
+               <button onClick={() => onTweenFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-purple-400 hover:text-purple-300" title={t('toolbar.wand')}>
                   <Icons.Wand2 size={16} />
                </button>
           </div>
@@ -227,10 +229,10 @@ export const Timeline: React.FC<TimelineProps> = ({
                 value={currentFrameIndex} 
                 onChange={(e) => onSelectFrame(parseInt(e.target.value))}
                 className="flex-1 h-1.5 bg-black/40 rounded-full appearance-none accent-[var(--accent-color)] cursor-pointer hover:bg-black/60 transition-colors"
-                title="Scrub Frames"
+                title={t('timeline.scrubFrames')}
             />
             <span className="text-[10px] text-white font-mono whitespace-nowrap opacity-80 bg-black/40 px-2 py-0.5 rounded border border-white/10">
-                Frame {currentFrameIndex + 1} / {frames.length}
+                {t('timeline.frames')} {currentFrameIndex + 1} / {frames.length}
             </span>
         </div>
       )}
@@ -238,28 +240,28 @@ export const Timeline: React.FC<TimelineProps> = ({
       {showAudio && !isFocusMode && (
         <div className="mb-2 flex flex-col gap-1 px-2 animate-in fade-in slide-in-from-bottom-2">
             <div className="flex justify-between items-center bg-black/60 backdrop-blur-md p-1 rounded text-xs">
-                <span className="text-gray-200 font-bold uppercase tracking-wider px-2">Audio Layers</span>
+                <span className="text-gray-200 font-bold uppercase tracking-wider px-2">{t('timeline.audio')}</span>
                 <div className="flex gap-2">
                     <button 
                         onClick={onOpenSoundLibrary}
                         className="flex items-center space-x-1 text-purple-400 hover:text-purple-300 px-2 border-r border-white/10 pr-3"
                     >
                         <Icons.Music size={12} />
-                        <span>Library</span>
+                        <span>{t('timeline.backpack')}</span>
                     </button>
                     <button 
                         onClick={onOpenRecorder}
                         className="flex items-center space-x-1 text-red-400 hover:text-red-300 px-2 border-r border-white/10 pr-3"
                     >
                         <Icons.Mic size={12} />
-                        <span>Record</span>
+                        <span>{t('timeline.recordAudio')}</span>
                     </button>
                     <button 
                         onClick={() => audioInputRef.current?.click()}
                         className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 px-2"
                     >
                         <Icons.Plus size={12} />
-                        <span>Import</span>
+                        <span>{t('timeline.importAudio')}</span>
                     </button>
                 </div>
                 <input ref={audioInputRef} type="file" accept="audio/*" className="hidden" onChange={onAddAudioTrack} />
@@ -289,7 +291,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                                 <button 
                                     onClick={() => onCutAudioTrack(track.id, currentFrameIndex / fps)}
                                     className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white"
-                                    title="Cut at Playhead"
+                                    title={t('timeline.cutAtPlayhead')}
                                 >
                                     <Icons.Pencil size={10} />
                                 </button>
@@ -344,13 +346,13 @@ export const Timeline: React.FC<TimelineProps> = ({
                                         className="absolute top-0 w-3 h-3 rounded-full bg-white/70 border border-black/50 cursor-col-resize z-30 opacity-0 group-hover/clip:opacity-100 transition-opacity"
                                         style={{ left: `${(track.fadeIn || 0) / track.duration * 100}%`, transform: 'translateX(-50%)' }}
                                         onPointerDown={(e) => handleFadePointerDown(e, track, 'in')}
-                                        title="Fade In"
+                                        title={t('timeline.fadeIn')}
                                     />
                                     <div 
                                         className="absolute top-0 w-3 h-3 rounded-full bg-white/70 border border-black/50 cursor-col-resize z-30 opacity-0 group-hover/clip:opacity-100 transition-opacity"
                                         style={{ right: `${(track.fadeOut || 0) / track.duration * 100}%`, transform: 'translateX(50%)' }}
                                         onPointerDown={(e) => handleFadePointerDown(e, track, 'out')}
-                                        title="Fade Out"
+                                        title={t('timeline.fadeOut')}
                                     />
 
                                     <div className="absolute top-0 left-0 px-1 text-[8px] text-white/60 pointer-events-none z-10">

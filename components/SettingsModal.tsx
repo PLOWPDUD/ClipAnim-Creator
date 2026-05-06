@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Icons } from '../Icons';
 import { OnionSkinSettings, BackgroundSettings } from '../types';
 
@@ -37,6 +38,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onionSkinSettings,
   setOnionSkinSettings
 }) => {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -62,7 +64,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-[#1e1e1e] w-[400px] max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border border-gray-700 p-6 flex flex-col no-scrollbar">
         <div className="flex justify-between items-center mb-6 shrink-0">
-          <h2 className="text-xl font-bold text-white">Project Settings</h2>
+          <h2 className="text-xl font-bold text-white">{t('settings.title')}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-gray-800">
             <Icons.X size={24} />
           </button>
@@ -71,21 +73,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="space-y-6 flex-1">
             {/* Project Name */}
             <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Project Name</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">{t('settings.name')}</label>
                 <input 
                     type="text" 
                     value={projectName}
                     onChange={(e) => setProjectName(e.target.value)}
                     className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 border border-gray-700 focus:border-[#FF3B30] focus:outline-none"
-                    placeholder="My Animation"
+                    placeholder={t('settings.name')}
                 />
             </div>
 
             {/* Playback */}
             <div>
               <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
-                <span>Frame Rate</span>
-                <span className="text-[#FF3B30]">{fps} FPS</span>
+                <span>{t('timeline.fps')}</span>
+                <span className="text-[#FF3B30]">{fps} {t('timeline.fps')}</span>
               </div>
               <input
                   type="range"
@@ -104,7 +106,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             {/* Canvas Size */}
             <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Canvas Size</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">{t('settings.canvasSize')}</label>
                 <div className="grid grid-cols-2 gap-2 mb-3">
                     {presets.map(p => (
                         <button 
@@ -122,7 +124,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
                 <div className="flex gap-2">
                     <div className="flex-1">
-                        <span className="text-[10px] text-gray-500 block mb-1">Width</span>
+                        <span className="text-[10px] text-gray-500 block mb-1">{t('settings.width')}</span>
                         <input 
                             type="number" 
                             value={canvasSize.width}
@@ -131,7 +133,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         />
                     </div>
                     <div className="flex-1">
-                         <span className="text-[10px] text-gray-500 block mb-1">Height</span>
+                         <span className="text-[10px] text-gray-500 block mb-1">{t('settings.height')}</span>
                         <input 
                             type="number" 
                             value={canvasSize.height}
@@ -146,19 +148,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             {/* Background */}
             <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Background</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">{t('settings.background')}</label>
                 <div className="flex gap-2 mb-4">
                     <button 
                         onClick={() => setBackground({ ...background, type: 'color' })}
                         className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${background.type === 'color' ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-400'}`}
                     >
-                        Color
+                        {t('settings.backgroundColor')}
                     </button>
                     <button 
                         onClick={() => setBackground({ ...background, type: 'gradient3', gradientColors: background.gradientColors || ['#FF3B30', '#007AFF', '#34C759'] })}
                         className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${background.type === 'gradient3' ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-400'}`}
                     >
-                        3-Color Gradient
+                        {t('settings.gradient')}
                     </button>
                 </div>
 
@@ -189,7 +191,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
                             }`}
                         >
-                            Transparent
+                            {t('settings.backgroundColor')}
                         </button>
                     </div>
                 ) : (
@@ -217,7 +219,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <button 
                                 onClick={() => setBackgroundImage(null)}
                                 className="absolute top-2 right-2 bg-red-600 p-2 rounded-full text-white shadow-lg transition-transform active:scale-90"
-                                title="Remove Image"
+                                title={t('settings.removeImage')}
                             >
                                 <Icons.Trash2 size={16} />
                             </button>
@@ -227,7 +229,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             className="w-full py-2 bg-gray-800 hover:bg-gray-700 text-red-400 text-xs font-bold rounded-lg border border-gray-700 transition-colors flex items-center justify-center gap-2"
                         >
                             <Icons.X size={14} />
-                            Remove Background Image
+                            {t('settings.removeImage')}
                         </button>
                     </div>
                 ) : (
@@ -236,7 +238,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         className="w-full h-24 border-2 border-dashed border-gray-700 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-[#FF3B30] hover:text-[#FF3B30] transition-colors"
                     >
                         <Icons.Image size={24} className="mb-2" />
-                        <span className="text-xs">Import Background Image</span>
+                        <span className="text-xs">{t('settings.backgroundImage')}</span>
                     </button>
                 )}
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
@@ -246,13 +248,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             {/* Onion Skin Settings */}
             <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-4">Onion Skin Settings</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-4">{t('settings.onionSkin')}</label>
                 
                 <div className="space-y-4">
                     {/* Previous Frame */}
                     <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700">
                         <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs font-medium text-gray-300">Previous Frame</span>
+                            <span className="text-xs font-medium text-gray-300">{t('settings.before')}</span>
                             <input 
                                 type="color" 
                                 value={onionSkinSettings.beforeColor}
@@ -262,7 +264,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                         <div className="space-y-1">
                             <div className="flex justify-between text-[10px] text-gray-500">
-                                <span>Opacity</span>
+                                <span>{t('layers.opacity')}</span>
                                 <span>{Math.round(onionSkinSettings.beforeOpacity * 100)}%</span>
                             </div>
                             <input 
@@ -275,7 +277,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                         <div className="mt-3">
                             <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                                <span>Frames Before</span>
+                                <span>{t('settings.numFrames')}</span>
                                 <span>{onionSkinSettings.numBefore}</span>
                             </div>
                             <div className="flex gap-1">
@@ -295,7 +297,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {/* Next Frame */}
                     <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700">
                         <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs font-medium text-gray-300">Next Frame</span>
+                            <span className="text-xs font-medium text-gray-300">{t('settings.after')}</span>
                             <input 
                                 type="color" 
                                 value={onionSkinSettings.afterColor}
@@ -305,7 +307,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                         <div className="space-y-1">
                             <div className="flex justify-between text-[10px] text-gray-500">
-                                <span>Opacity</span>
+                                <span>{t('layers.opacity')}</span>
                                 <span>{Math.round(onionSkinSettings.afterOpacity * 100)}%</span>
                             </div>
                             <input 
@@ -318,7 +320,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                         <div className="mt-3">
                             <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                                <span>Frames After</span>
+                                <span>{t('settings.numFrames')}</span>
                                 <span>{onionSkinSettings.numAfter}</span>
                             </div>
                             <div className="flex gap-1">
@@ -341,16 +343,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             {/* Backup/Export Project File */}
             <div>
-                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Backup</label>
+                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">{t('settings.backup')}</label>
                  <button 
                     onClick={onBackupProject}
                     className="w-full flex items-center justify-center gap-2 py-3 bg-gray-800 border border-gray-600 text-gray-200 font-bold rounded-xl hover:bg-gray-700 hover:text-white transition-colors"
                  >
                     <Icons.FolderDown size={18} />
-                    <span>Save Project File (.json)</span>
+                    <span>{t('settings.saveProjectFile')}</span>
                  </button>
                  <p className="text-[10px] text-gray-500 mt-2 text-center">
-                    Download a file containing all layers, frames, and settings to edit later.
+                    {t('settings.backupDesc')}
                  </p>
             </div>
         </div>
@@ -360,7 +362,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onClick={onClose}
             className="w-full py-3 bg-[#FF3B30] text-white font-bold rounded-xl hover:bg-red-600 transition-colors shadow-lg"
             >
-            Done
+            {t('common.done')}
             </button>
         </div>
       </div>
