@@ -2055,7 +2055,16 @@ export default function App() {
             <div className="flex items-center justify-between px-4 h-full min-w-max space-x-8">
                 <div className="flex items-center space-x-2">
                     <button onClick={handleGoHome} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white relative"><Icons.Home size={24} />{hasUnsavedChanges && <span className="absolute top-2 right-2 w-2 h-2 bg-[var(--accent-color)] rounded-full ring-2 ring-[#1e1e1e]" />}</button>
-                    <h1 className="font-bold text-lg hidden sm:block truncate max-w-[150px]">{projectName}</h1>
+                    <input 
+                        type="text"
+                        value={projectName}
+                        onChange={(e) => {
+                            setProjectName(e.target.value);
+                            setHasUnsavedChanges(true);
+                        }}
+                        className="font-bold text-lg hidden sm:block truncate max-w-[150px] bg-transparent hover:bg-gray-800 focus:bg-gray-800 rounded px-2 outline-none border border-transparent focus:border-gray-600 transition-colors cursor-text text-white"
+                        title={t('settings.name')}
+                    />
                 </div>
                 <div className="flex items-center space-x-2">
                     <button onClick={undo} disabled={historyIndex <= 0} className={`p-2 rounded-full ${historyIndex > 0 ? 'text-white' : 'text-gray-600'}`}> <Icons.Undo size={20} /> </button>
@@ -2292,6 +2301,10 @@ export default function App() {
           isExporting={isExporting} 
           progress={exportProgress} 
           projectName={projectName}
+          setProjectName={(name) => {
+              setProjectName(name);
+              setHasUnsavedChanges(true);
+          }}
           frameCount={frames.length}
           fps={fps}
           exportedFile={exportedFile}

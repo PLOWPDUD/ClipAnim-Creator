@@ -13,6 +13,7 @@ interface ExportModalProps {
   isExporting: boolean;
   progress: number;
   projectName: string;
+  setProjectName: (name: string) => void;
   frameCount: number;
   fps: number;
   exportedFile?: { url: string, name: string, blob: Blob } | null;
@@ -26,6 +27,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   isExporting, 
   progress,
   projectName,
+  setProjectName,
   frameCount,
   fps,
   exportedFile
@@ -181,9 +183,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           <div className="w-1/2 p-8 border-r border-gray-700/50 flex flex-col">
             <div className="mb-8">
               <h2 className="text-3xl font-bold text-white mb-2">{t('export.makeMovie')}</h2>
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                  <input 
+                      type="text" 
+                      value={projectName}
+                      onChange={(e) => setProjectName(e.target.value)}
+                      className="bg-gray-800 text-white rounded px-2 py-1 text-sm font-medium border border-gray-700 hover:border-gray-500 focus:border-[var(--accent-color)] focus:outline-none transition-colors w-full max-w-[200px]"
+                  />
+              </div>
               <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-gray-400 text-sm font-medium truncate max-w-[180px]">{projectName}</span>
-                  <span className="w-1 h-1 rounded-full bg-gray-600" />
                   <span className="text-gray-500 text-xs uppercase font-bold tracking-wider">{frameCount} {t('timeline.frames')}</span>
                   <span className="w-1 h-1 rounded-full bg-gray-600" />
                   <span className="text-gray-500 text-xs uppercase font-bold tracking-wider">{(frameCount / fps).toFixed(1)}s</span>
