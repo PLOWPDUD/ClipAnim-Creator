@@ -48,6 +48,7 @@ interface ToolbarProps {
   onSelectSymmetryMode: (mode: SymmetryMode) => void;
   customBrushes: string[];
   onAddCustomBrush: (brush: string) => void;
+  isPainting?: boolean;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -91,7 +92,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   symmetryMode,
   onSelectSymmetryMode,
   customBrushes,
-  onAddCustomBrush
+  onAddCustomBrush,
+  isPainting
 }) => {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -189,7 +191,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       }
   };
 
-  const tools: { id: ToolType; icon: React.ElementType; label: string }[] = [
+  const allTools: { id: ToolType; icon: React.ElementType; label: string }[] = [
     { id: 'select', icon: Icons.MousePointer2, label: t('toolbar.select') },
     { id: 'lasso', icon: Icons.Lasso, label: t('toolbar.lasso') },
     { id: 'wand', icon: Icons.Wand2, label: t('toolbar.wand') },
@@ -201,6 +203,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     { id: 'text', icon: Icons.Type, label: t('toolbar.text') },
     { id: 'motionPath', icon: Icons.Repeat, label: t('toolbar.motionPath') },
   ];
+
+  const tools = isPainting ? allTools.filter(t => t.id !== 'motionPath') : allTools;
 
   const textFonts = [
       { label: t('globalSettings.systemDefault'), value: 'sans-serif' },
@@ -277,20 +281,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             />
 
             {/* Video Import */}
-            <button 
-            onClick={() => videoInputRef.current?.click()}
-            className="p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all shrink-0"
-            title={t('toolbar.importVideo')}
-            >
-            <Icons.FileVideo size={24} />
-            </button>
-            <input 
-            ref={videoInputRef} 
-            type="file" 
-            accept="video/mp4" 
-            className="hidden" 
-            onChange={(e) => { if(e.target.files?.[0]) onImportVideo(e.target.files[0]); if(videoInputRef.current) videoInputRef.current.value=''; }} 
-            />
+            {!isPainting && (
+              <>
+                <button 
+                onClick={() => videoInputRef.current?.click()}
+                className="p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all shrink-0"
+                title={t('toolbar.importVideo')}
+                >
+                <Icons.FileVideo size={24} />
+                </button>
+                <input 
+                ref={videoInputRef} 
+                type="file" 
+                accept="video/mp4" 
+                className="hidden" 
+                onChange={(e) => { if(e.target.files?.[0]) onImportVideo(e.target.files[0]); if(videoInputRef.current) videoInputRef.current.value=''; }} 
+                />
+              </>
+            )}
 
             <div className="w-8 h-px bg-gray-700 my-2 shrink-0" />
 
@@ -324,9 +332,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <div className="w-8 h-px bg-gray-700 my-2 shrink-0" />
 
             {/* Toggles */}
-            <button onClick={onToggleOnionSkin} className={`p-3 rounded-xl transition-colors shrink-0 ${onionSkin ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-400 hover:text-white'}`} title={t('toolbar.onionSkin')}>
-            <Icons.Ghost size={24} />
-            </button>
+            {!isPainting && (
+              <button onClick={onToggleOnionSkin} className={`p-3 rounded-xl transition-colors shrink-0 ${onionSkin ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-400 hover:text-white'}`} title={t('toolbar.onionSkin')}>
+              <Icons.Ghost size={24} />
+              </button>
+            )}
             
             <button onClick={onToggleGrid} className={`p-3 rounded-xl transition-colors shrink-0 ${showGrid ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-400 hover:text-white'}`} title={t('toolbar.grid')}>
             <Icons.Grid size={24} />

@@ -138,6 +138,7 @@ export interface ProjectMeta {
     name: string;
     lastModified: number;
     thumbnailUrl: string;
+    type?: 'animation' | 'painting';
 }
 
 export interface ProjectData {
@@ -145,6 +146,7 @@ export interface ProjectData {
     name: string;
     lastModified: number;
     thumbnailUrl: string;
+    type?: 'animation' | 'painting';
     canvasSize: { width: number; height: number };
     background: BackgroundSettings;
     backgroundImage: string | null;

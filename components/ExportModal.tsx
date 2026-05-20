@@ -2,18 +2,19 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icons } from '../Icons';
 
-export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'avi' | 'project-zip';
+export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'png' | 'avi' | 'project-zip';
 export type ExportQuality = 'low' | 'medium' | 'high';
 
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (format: ExportFormat, quality: ExportQuality) => void;
+  onExport: (format: ExportFormat, quality: ExportQuality, transparent: boolean) => void;
   onCancel: () => void;
   isExporting: boolean;
   progress: number;
   projectName: string;
   setProjectName: (name: string) => void;
+  projectType?: 'animation' | 'painting';
   frameCount: number;
   fps: number;
   exportedFile?: { url: string, name: string, blob: Blob } | null;
@@ -28,12 +29,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   progress,
   projectName,
   setProjectName,
+  projectType = 'animation',
   frameCount,
   fps,
   exportedFile
 }) => {
   const { t } = useTranslation();
   const [quality, setQuality] = React.useState<ExportQuality>('medium');
+  const [transparent, setTransparent] = React.useState(false);
 
   if (!isOpen) return null;
 
@@ -104,14 +107,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  const formats: { id: ExportFormat; label: string; icon: React.ElementType; color: string; desc: string }[] = [
+  const allFormats: { id: ExportFormat; label: string; icon: React.ElementType; color: string; desc: string }[] = [
     { id: 'mp4', label: t('export.mp4'), icon: Icons.FileVideo, color: 'text-blue-400', desc: t('export.mp4Desc') },
     { id: 'webm', label: t('export.webm'), icon: Icons.FileVideo, color: 'text-emerald-400', desc: t('export.webmDesc') },
     { id: 'gif', label: t('export.gif'), icon: Icons.Image, color: 'text-amber-400', desc: t('export.gifDesc') },
     { id: 'png-seq', label: t('export.pngSeq'), icon: Icons.FileArchive, color: 'text-rose-400', desc: t('export.pngSeqDesc') },
+    { id: 'png', label: t('export.png', 'PNG Image'), icon: Icons.Image, color: 'text-purple-400', desc: t('export.pngDesc', 'Export a static PNG image') },
     { id: 'project-zip', label: t('export.projectZip'), icon: Icons.FileArchive, color: 'text-purple-400', desc: t('export.projectZipDesc') },
     { id: 'avi', label: t('export.avi'), icon: Icons.FileVideo, color: 'text-indigo-400', desc: t('export.aviDesc') },
   ];
+
+  const formats = projectType === 'painting' 
+    ? allFormats.filter(f => f.id === 'png') 
+    : allFormats.filter(f => f.id !== 'png');
 
   const qualityOptions: { id: ExportQuality; label: string; desc: string }[] = [
     { id: 'low', label: t('export.low'), desc: t('export.lowDesc') },
@@ -223,7 +231,25 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 </div>
             </div>
 
-            <div className="mt-auto pt-6">
+            <div className="mb-6 border-b border-gray-700/50 pb-6">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className={`relative w-12 h-6 rounded-full transition-colors ${transparent ? 'bg-[#FF3B30]' : 'bg-gray-700'}`}>
+                    <div className={`absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform ${transparent ? 'translate-x-6' : ''}`} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-white group-hover:text-gray-300 transition-colors">{t('export.transparent', 'Transparent Background')}</div>
+                    <div className="text-[10px] text-gray-500">{t('export.transparentDesc', 'Omit background for formats that support alpha channel (PNG, WebM, GIF)')}</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="hidden"
+                    checked={transparent}
+                    onChange={(e) => setTransparent(e.target.checked)}
+                  />
+                </label>
+            </div>
+
+            <div className="mt-auto pt-4">
                 <button 
                     onClick={onClose}
                     className="w-full py-3.5 rounded-2xl bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold text-sm transition-all border border-gray-700 hover:border-gray-600 flex items-center justify-center gap-2"
@@ -238,7 +264,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           <div className="w-1/2 bg-black/20 p-8 flex flex-col">
             <div className="flex justify-between items-center mb-6">
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t('export.format')}</label>
-                <button onClick={onClose} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-800 transition-colors">
+                <button onClick={onClose} className="text-gray-500 hover:text-white p-3 -mr-2 rounded-full hover:bg-gray-800 transition-colors">
                     <Icons.X size={20} />
                 </button>
             </div>
@@ -247,7 +273,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 {formats.map((format) => (
                     <button 
                         key={format.id}
-                        onClick={() => onExport(format.id, quality)}
+                        onClick={() => onExport(format.id, quality, transparent)}
                         className="w-full group bg-gray-800/40 hover:bg-gray-800 border border-gray-700/30 hover:border-[#FF3B30] p-4 rounded-2xl flex items-center gap-4 transition-all hover:scale-[1.02] active:scale-[0.98] text-left"
                     >
                         <div className={`p-3 rounded-xl bg-gray-900 group-hover:scale-110 transition-transform ${format.color}`}>

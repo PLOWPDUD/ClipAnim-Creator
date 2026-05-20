@@ -12,6 +12,27 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.1',
+    date: '2026-05-20',
+    type: 'minor',
+    changes: [
+      'Added transparent background support for PNG, WebM, and GIF exports',
+      'Added static PNG image export format for paintings',
+      'Improved touch-friendly UI for Android and mobile: enhanced range sliders and larger tap targets',
+      'Implemented touch-safe text selection to prevent accidental canvas interaction blocks'
+    ]
+  },
+  {
+    version: '1.3.0',
+    date: '2026-05-18',
+    type: 'major',
+    changes: [
+      'Added "New Painting" mode for creating static artworks without animation timelines',
+      'Added visual badges (camera / brush) to project cards to differentiate between animations and paintings',
+      'Customized editor interface to hide timeline and animation tools when in painting mode'
+    ]
+  },
+  {
     version: '1.2.1',
     date: '2026-05-06',
     type: 'patch',

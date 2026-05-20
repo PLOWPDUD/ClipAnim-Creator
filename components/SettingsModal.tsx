@@ -10,6 +10,8 @@ interface SettingsModalProps {
   setFps: (fps: number) => void;
   projectName: string;
   setProjectName: (name: string) => void;
+  projectType: 'animation' | 'painting';
+  setProjectType: (type: 'animation' | 'painting') => void;
   canvasSize: { width: number, height: number };
   setCanvasSize: (size: { width: number, height: number }) => void;
   backgroundImage: string | null;
@@ -28,6 +30,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setFps,
   projectName,
   setProjectName,
+  projectType,
+  setProjectType,
   canvasSize,
   setCanvasSize,
   backgroundImage,
@@ -65,7 +69,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       <div className="bg-[#1e1e1e] w-[400px] max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border border-gray-700 p-6 flex flex-col no-scrollbar">
         <div className="flex justify-between items-center mb-6 shrink-0">
           <h2 className="text-xl font-bold text-white">{t('settings.title')}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-gray-800">
+          <button onClick={onClose} className="text-gray-400 hover:text-white p-3 -mr-2 rounded-full hover:bg-gray-800">
             <Icons.X size={24} />
           </button>
         </div>
@@ -83,24 +87,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
             </div>
 
-            {/* Playback */}
+            {/* Project Type */}
             <div>
-              <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
-                <span>{t('timeline.fps')}</span>
-                <span className="text-[#FF3B30]">{fps} {t('timeline.fps')}</span>
-              </div>
-              <input
-                  type="range"
-                  min="1"
-                  max="30"
-                  value={fps}
-                  onChange={(e) => setFps(Number(e.target.value))}
-                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#FF3B30]"
-              />
-              <div className="flex justify-between text-[10px] text-gray-500 font-mono mt-1">
-                <span>1</span><span>12</span><span>24</span><span>30</span>
-              </div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Project Type</label>
+                <div className="flex bg-gray-800 rounded-lg p-1 border border-gray-700">
+                    <button
+                        onClick={() => setProjectType('animation')}
+                        className={`flex-1 py-1.5 px-3 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-colors ${projectType === 'animation' ? 'bg-[#FF3B30] text-white' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        <Icons.Video size={16} /> Animation
+                    </button>
+                    <button
+                        onClick={() => setProjectType('painting')}
+                        className={`flex-1 py-1.5 px-3 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-colors ${projectType === 'painting' ? 'bg-purple-500 text-white' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        <Icons.Brush size={16} /> Painting
+                    </button>
+                </div>
             </div>
+
+            {/* Playback */}
+            {projectType === 'animation' && (
+              <div>
+                <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
+                  <span>{t('timeline.fps')}</span>
+                  <span className="text-[#FF3B30]">{fps} {t('timeline.fps')}</span>
+                </div>
+                <input
+                    type="range"
+                    min="1"
+                    max="30"
+                    value={fps}
+                    onChange={(e) => setFps(Number(e.target.value))}
+                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#FF3B30]"
+                />
+                <div className="flex justify-between text-[10px] text-gray-500 font-mono mt-1">
+                  <span>1</span><span>12</span><span>24</span><span>30</span>
+                </div>
+              </div>
+            )}
             
             <div className="w-full h-px bg-gray-700" />
 

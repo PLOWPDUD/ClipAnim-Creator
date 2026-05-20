@@ -233,7 +233,7 @@ export const FrameManagerModal: React.FC<FrameManagerModalProps> = ({
             </h2>
             <span className="text-sm text-gray-400">{t('frameManager.framesCount', { count: frames.length })}</span>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="p-3 -mr-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors">
             <Icons.X size={24} />
           </button>
         </div>

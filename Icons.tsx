@@ -58,6 +58,8 @@ import {
   GripVertical,
   Wand2,
   Share2,
+  Brush,
+  Video,
   Triangle,
   Star,
   Hexagon,
@@ -155,5 +157,7 @@ export const Icons = {
   Search,
   Camera,
   Bold,
-  Italic
+  Italic,
+  Brush,
+  Video
 };

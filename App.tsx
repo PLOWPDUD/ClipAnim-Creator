@@ -123,6 +123,7 @@ export default function App() {
 
   const [projectId, setProjectId] = useState<string>(crypto.randomUUID());
   const [projectName, setProjectName] = useState(t('app.defaultProjectName'));
+  const [projectType, setProjectType] = useState<'animation' | 'painting'>('animation');
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const [background, setBackground] = useState<BackgroundSettings>({ type: 'color', color: '#ffffff' });
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
@@ -865,7 +866,7 @@ export default function App() {
       setTool('pen');
   };
 
-  const handleExportStart = async (format: ExportFormat, quality: ExportQuality) => {
+  const handleExportStart = async (format: ExportFormat, quality: ExportQuality, transparent: boolean = false) => {
     setIsExporting(true);
     setExportProgress(0);
     isExportCancelledRef.current = false;
@@ -879,7 +880,7 @@ export default function App() {
           setIsExporting(false);
           return;
       }
-      const dataUrl = await compositeLayers(frames[i], layers, canvasSize.width, canvasSize.height, background, backgroundImage);
+      const dataUrl = await compositeLayers(frames[i], layers, canvasSize.width, canvasSize.height, background, backgroundImage, !transparent);
       compositeFrames.push(dataUrl);
       setExportProgress(Math.round(((i + 1) / total) * 30));
     }
@@ -1025,6 +1026,30 @@ export default function App() {
       setExportedFile({ url, name: `${projectName}_frames.zip`, blob: content });
       setIsExporting(false);
       setExportProgress(100);
+    } else if (format === 'png') {
+        const dataUrl = compositeFrames[0];
+        if (!dataUrl) {
+            setIsExporting(false);
+            return;
+        }
+        try {
+            const base64Data = dataUrl.split(',')[1];
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'image/png' });
+            const url = URL.createObjectURL(blob);
+            setExportedFile({ url, name: `${projectName}.png`, blob });
+            setIsExporting(false);
+            setExportProgress(100);
+        } catch(e) {
+            console.error("PNG export error", e);
+            alert("Export error");
+            setIsExporting(false);
+        }
     } else {
       // Fallback for WebM/AVI using MediaRecorder
       try {
@@ -1084,8 +1109,12 @@ export default function App() {
                   img.src = compositeFrames[i];
               });
               
-              ctx.fillStyle = '#ffffff';
-              ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+              if (transparent) {
+                ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
+              } else {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+              }
               ctx.drawImage(img, 0, 0);
               
               await new Promise(r => setTimeout(r, 1000 / fps));
@@ -1114,6 +1143,7 @@ export default function App() {
           name: projectName,
           lastModified: Date.now(),
           thumbnailUrl: thumb,
+          type: projectType,
           canvasSize,
           background,
           backgroundImage,
@@ -1157,6 +1187,7 @@ export default function App() {
 
         setProjectId(data.id);
         setProjectName(data.name);
+        setProjectType(data.type || 'animation');
         setCanvasSize(data.canvasSize);
         setBackground(data.background || { type: 'color', color: '#ffffff' });
         setBackgroundImage(data.backgroundImage || null);
@@ -1181,11 +1212,12 @@ export default function App() {
       }
   };
 
-  const createNewProject = async () => {
+  const createNewProject = async (type: 'animation' | 'painting' = 'animation') => {
       clearAudio();
       const pid = crypto.randomUUID();
       setProjectId(pid);
-      setProjectName(t('menu.newProject'));
+      setProjectName(type === 'animation' ? t('menu.newProject') : t('menu.newPainting', 'New Painting'));
+      setProjectType(type);
       setCanvasSize({ width: 800, height: 600 });
       setBackground({ type: 'color', color: '#ffffff' });
       const defaultL = [createDefaultLayer('1', `${t('layers.newLayer')} 1`)];
@@ -1957,7 +1989,7 @@ export default function App() {
           <div className="bg-[#1e1e1e] rounded-3xl p-10 max-w-lg w-full border border-gray-700 shadow-2xl text-center">
             <h2 className="text-3xl font-bold mb-4">{t('menu.welcome')}</h2>
             <p className="text-gray-400 mb-8">{t('menu.welcomeDesc')}</p>
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <button 
                 onClick={() => setDeviceType('mobile')}
                 className="flex flex-col items-center gap-4 p-8 bg-gray-800 hover:bg-gray-700 rounded-3xl border border-gray-700 transition-all group"
@@ -2021,9 +2053,13 @@ export default function App() {
                  <input ref={importFileRef} type="file" accept=".json" onChange={handleImportProjectFile} className="hidden" />
              </div>
              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-10">
-                 <button onClick={createNewProject} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-[#FF3B30] hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
+                 <button onClick={() => createNewProject('animation')} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-[#FF3B30] hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
                      <div className="w-16 h-16 rounded-full bg-[#FF3B30]/20 flex items-center justify-center text-[#FF3B30] mb-3 group-hover:scale-110 transition-transform"><Icons.Plus size={32} /></div>
                      <span className="font-bold text-gray-300 group-hover:text-white">{t('menu.newProject')}</span>
+                 </button>
+                 <button onClick={() => createNewProject('painting')} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-purple-500 hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
+                     <div className="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-500 mb-3 group-hover:scale-110 transition-transform"><Icons.Brush size={32} /></div>
+                     <span className="font-bold text-gray-300 group-hover:text-white">{t('menu.newPainting', 'New Painting')}</span>
                  </button>
                  <button onClick={() => importFileRef.current?.click()} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-blue-500 hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
                      <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-500 mb-3 group-hover:scale-110 transition-transform"><Icons.Upload size={32} /></div>
@@ -2032,6 +2068,9 @@ export default function App() {
                  {savedProjects.map(project => (
                      <div key={project.id} onClick={() => loadProject(project.id)} className="relative group aspect-[4/3] bg-[#1e1e1e] rounded-2xl overflow-hidden cursor-pointer hover:ring-2 ring-[var(--accent-color)] transition-all shadow-lg">
                          {project.thumbnailUrl ? ( <img src={project.thumbnailUrl} alt={project.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" /> ) : ( <div className="w-full h-full flex items-center justify-center text-gray-700"><Icons.Image size={48} /></div> )}
+                         <div className="absolute top-2 left-2 p-1.5 bg-black/60 backdrop-blur-sm rounded-lg text-white">
+                             {(project.type === 'painting') ? <Icons.Brush size={14} /> : <Icons.Video size={14} />}
+                         </div>
                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-4 pt-12">
                              <h3 className="font-bold truncate">{project.name}</h3>
                              <p className="text-[10px] text-gray-400">{new Date(project.lastModified).toLocaleDateString()}</p>
@@ -2117,13 +2156,13 @@ export default function App() {
                       <Icons.Trash2 size={20} />
                     </button>
                 </div>
-                <div className="flex items-center space-x-2">
-                    <button onClick={() => setIsBackpackOpen(true)} className={`p-2 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title={t('tooltips.backpack')}><Icons.Briefcase size={20} /></button>
-                    <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.layers')}><Icons.Layers size={20} /></button>
-                    <button onClick={saveProject} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.saveProject')}><Icons.Save size={20} /></button>
-                    <button onClick={() => setIsExportModalOpen(true)} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.export')}><Icons.Download size={20} /></button>
-                    <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.projectSettings')}><Icons.LayoutGrid size={20} /></button>
-                    <button onClick={() => setIsGlobalSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.globalSettings')}><Icons.Settings size={20} /></button>
+                <div className="flex items-center space-x-1 sm:space-x-2">
+                    <button onClick={() => setIsBackpackOpen(true)} className={`p-3 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title={t('tooltips.backpack')}><Icons.Briefcase size={20} /></button>
+                    <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.layers')}><Icons.Layers size={20} /></button>
+                    <button onClick={saveProject} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.saveProject')}><Icons.Save size={20} /></button>
+                    <button onClick={() => setIsExportModalOpen(true)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.export')}><Icons.Download size={20} /></button>
+                    <button onClick={() => setIsSettingsOpen(true)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.projectSettings')}><Icons.LayoutGrid size={20} /></button>
+                    <button onClick={() => setIsGlobalSettingsOpen(true)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.globalSettings')}><Icons.Settings size={20} /></button>
                 </div>
             </div>
         </header>
@@ -2148,6 +2187,7 @@ export default function App() {
             onToggleGrid={() => setShowGrid(!showGrid)} 
             isFocusMode={isFocusMode} 
             onToggleFocusMode={() => setIsFocusMode(!isFocusMode)} 
+            isPainting={projectType === 'painting'}
             onImportImage={handleImportImage} 
             onImportVideo={(file) => { setImportingVideoFile(file); setIsVideoImportOpen(true); }}
             hasSelection={!!selection} 
@@ -2229,34 +2269,36 @@ export default function App() {
                     }
                 }}
             />
-            <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <Timeline 
-                  frames={frames} 
-                  currentFrameIndex={currentFrameIndex} 
-                  onSelectFrame={handleSelectFrame} 
-                  onAddFrame={addFrame} 
-                  onDeleteFrame={deleteFrame} 
-                  onCopyFrame={copyFrame} 
-                  onTweenFrame={tweenFrame}
-                  isPlaying={isPlaying} 
-                  onTogglePlay={() => setIsPlaying(!isPlaying)} 
-                  isLooping={isLooping}
-                  onToggleLoop={() => setIsLooping(!isLooping)}
-                  audioTracks={audioTracks} 
-                  onAddAudioTrack={handleAddAudioTrack} 
-                  onRemoveAudioTrack={handleRemoveAudioTrack} 
-                  onUpdateAudioTrack={handleUpdateAudioTrack}
-                  onCutAudioTrack={handleCutAudioTrack}
-                  onUpdateFrameDuration={handleUpdateFrameDuration}
-                  fps={fps}
-                  isFocusMode={isFocusMode} 
-                  onOpenFrameManager={() => setIsFrameManagerOpen(true)} 
-                  onOpenRecorder={() => setIsAudioRecorderOpen(true)} 
-                  onOpenSoundLibrary={() => setIsSoundLibraryOpen(true)}
-                  background={background}
-                  backgroundImage={backgroundImage}
-                />
-            </div>
+            {projectType === 'animation' && (
+                <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
+                    <Timeline 
+                      frames={frames} 
+                      currentFrameIndex={currentFrameIndex} 
+                      onSelectFrame={handleSelectFrame} 
+                      onAddFrame={addFrame} 
+                      onDeleteFrame={deleteFrame} 
+                      onCopyFrame={copyFrame} 
+                      onTweenFrame={tweenFrame}
+                      isPlaying={isPlaying} 
+                      onTogglePlay={() => setIsPlaying(!isPlaying)} 
+                      isLooping={isLooping}
+                      onToggleLoop={() => setIsLooping(!isLooping)}
+                      audioTracks={audioTracks} 
+                      onAddAudioTrack={handleAddAudioTrack} 
+                      onRemoveAudioTrack={handleRemoveAudioTrack} 
+                      onUpdateAudioTrack={handleUpdateAudioTrack}
+                      onCutAudioTrack={handleCutAudioTrack}
+                      onUpdateFrameDuration={handleUpdateFrameDuration}
+                      fps={fps}
+                      isFocusMode={isFocusMode} 
+                      onOpenFrameManager={() => setIsFrameManagerOpen(true)} 
+                      onOpenRecorder={() => setIsAudioRecorderOpen(true)} 
+                      onOpenSoundLibrary={() => setIsSoundLibraryOpen(true)}
+                      background={background}
+                      backgroundImage={backgroundImage}
+                    />
+                </div>
+            )}
         </div>
       </main>
 
@@ -2305,6 +2347,7 @@ export default function App() {
               setProjectName(name);
               setHasUnsavedChanges(true);
           }}
+          projectType={projectType}
           frameCount={frames.length}
           fps={fps}
           exportedFile={exportedFile}
@@ -2430,6 +2473,8 @@ export default function App() {
         setFps={setFps} 
         projectName={projectName} 
         setProjectName={setProjectName} 
+        projectType={projectType}
+        setProjectType={setProjectType}
         canvasSize={canvasSize} 
         setCanvasSize={setCanvasSize} 
         background={background}
