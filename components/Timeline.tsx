@@ -21,6 +21,7 @@ interface TimelineProps {
   onRemoveAudioTrack: (id: string) => void;
   onUpdateAudioTrack: (id: string, updates: Partial<AudioTrack>) => void;
   onCutAudioTrack: (id: string, cutTime: number) => void;
+  onOpenAudioEditor: () => void;
   onUpdateFrameDuration: (index: number, multiplier: number) => void;
   fps: number;
   isFocusMode?: boolean;
@@ -45,9 +46,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   onToggleLoop,
   audioTracks,
   onAddAudioTrack,
-  onRemoveAudioTrack,
   onUpdateAudioTrack,
-  onCutAudioTrack,
+  onOpenAudioEditor,
   onUpdateFrameDuration,
   fps,
   isFocusMode = false,
@@ -258,10 +258,17 @@ export const Timeline: React.FC<TimelineProps> = ({
                     </button>
                     <button 
                         onClick={() => audioInputRef.current?.click()}
-                        className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 px-2"
+                        className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 px-2 border-r border-white/10 pr-3"
                     >
                         <Icons.Plus size={12} />
                         <span>{t('timeline.importAudio')}</span>
+                    </button>
+                    <button 
+                        onClick={onOpenAudioEditor}
+                        className="flex items-center space-x-1 text-green-400 hover:text-green-300 px-2"
+                    >
+                        <Icons.Maximize2 size={12} />
+                        <span>{t('common.advanced', 'Advanced')}</span>
                     </button>
                 </div>
                 <input ref={audioInputRef} type="file" accept="audio/*" className="hidden" onChange={onAddAudioTrack} />
@@ -274,27 +281,12 @@ export const Timeline: React.FC<TimelineProps> = ({
                             <div className="flex items-center mb-1">
                                 <Icons.Volume2 size={10} className="text-gray-300 mr-1" />
                                 <span className="text-[9px] text-gray-100 truncate flex-1">{track.name}</span>
-                                <button onClick={() => onRemoveAudioTrack(track.id)} className="text-gray-400 hover:text-red-400 transition-opacity">
-                                    <Icons.X size={10}/>
-                                </button>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <input 
-                                    type="range" 
-                                    min="0" 
-                                    max="1" 
-                                    step="0.01" 
-                                    value={track.volume} 
-                                    onChange={(e) => onUpdateAudioTrack(track.id, { volume: parseFloat(e.target.value) })}
-                                    className="w-full h-1 bg-gray-700 rounded-full appearance-none accent-[var(--accent-color)] cursor-pointer"
-                                />
-                                <button 
-                                    onClick={() => onCutAudioTrack(track.id, currentFrameIndex / fps)}
-                                    className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white"
-                                    title={t('timeline.cutAtPlayhead')}
-                                >
-                                    <Icons.Pencil size={10} />
-                                </button>
+                            <div className="flex items-center gap-1">
+                                <span className="text-[8px] text-gray-400 font-mono">{Math.round(track.volume * 100)}%</span>
+                                <div className="flex-1 h-1 bg-gray-800 rounded-full overflow-hidden">
+                                    <div className="h-full bg-[var(--accent-color)]" style={{ width: `${track.volume * 100}%` }} />
+                                </div>
                             </div>
                         </div>
                         <div className="flex-1 relative overflow-hidden"> 

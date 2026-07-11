@@ -76,7 +76,9 @@ import {
   Search,
   Camera,
   Bold,
-  Italic
+  Italic,
+  SkipBack,
+  SkipForward
 } from 'lucide-react';
 
 export const Icons = {
@@ -115,7 +117,10 @@ export const Icons = {
   Grid: Grid3X3,
   Square, 
   Circle, 
+  Minus,
   Line: Minus,
+  SkipBack,
+  SkipForward,
   Triangle,
   Star,
   Hexagon,

@@ -14,6 +14,7 @@ import gifshot from 'gifshot';
 import { parseGIF, decompressFrames } from 'gifuct-js';
 import { FrameManagerModal } from './components/FrameManagerModal';
 import { AudioRecorderModal } from './components/AudioRecorderModal';
+import { AudioEditorModal } from './components/AudioEditorModal';
 import { SoundLibraryModal } from './components/SoundLibraryModal';
 import { GlobalSettingsModal } from './components/GlobalSettingsModal';
 import { ChangelogModal } from './components/ChangelogModal';
@@ -179,6 +180,7 @@ export default function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isFrameManagerOpen, setIsFrameManagerOpen] = useState(false);
   const [isAudioRecorderOpen, setIsAudioRecorderOpen] = useState(false);
+  const [isAudioEditorOpen, setIsAudioEditorOpen] = useState(false);
   const [isSoundLibraryOpen, setIsSoundLibraryOpen] = useState(false);
   const [savedSounds, setSavedSounds] = useState<{ name: string; url: string }[]>(() => {
     const saved = localStorage.getItem('clipanim_saved_sounds');
@@ -2288,6 +2290,7 @@ export default function App() {
                       onRemoveAudioTrack={handleRemoveAudioTrack} 
                       onUpdateAudioTrack={handleUpdateAudioTrack}
                       onCutAudioTrack={handleCutAudioTrack}
+                      onOpenAudioEditor={() => setIsAudioEditorOpen(true)}
                       onUpdateFrameDuration={handleUpdateFrameDuration}
                       fps={fps}
                       isFocusMode={isFocusMode} 
@@ -2464,6 +2467,22 @@ export default function App() {
           setIsSelectingForBackpack(true);
         }}
         onImportItems={setBackpackItems}
+      />
+
+      <AudioEditorModal 
+        isOpen={isAudioEditorOpen}
+        onClose={() => setIsAudioEditorOpen(false)}
+        audioTracks={audioTracks}
+        onUpdateAudioTrack={handleUpdateAudioTrack}
+        onRemoveAudioTrack={handleRemoveAudioTrack}
+        onAddAudioTrack={handleAddAudioTrack}
+        onCutAudioTrack={handleCutAudioTrack}
+        fps={fps}
+        frames={frames}
+        currentFrameIndex={currentFrameIndex}
+        onSelectFrame={handleSelectFrame}
+        isPlaying={isPlaying}
+        onTogglePlay={() => setIsPlaying(!isPlaying)}
       />
 
       <SettingsModal 
