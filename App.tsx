@@ -248,6 +248,7 @@ export default function App() {
   const importIntoSelectionRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef<number | undefined>(undefined);
   const startTimeRef = useRef<number>(0);
+  const scrubTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const canvasRef = useRef<CanvasAreaHandle>(null);
 
   const currentStrokeWidth = tool === 'eraser' ? eraserSize : tool === 'shape' ? shapeSize : penSize;
@@ -1542,10 +1543,24 @@ export default function App() {
                 const trackEndTime = track.startTime + track.duration;
                 if (time >= track.startTime && time < trackEndTime) {
                     audio.currentTime = track.offset + (time - track.startTime);
-                    if (isPlaying && audio.paused) {
+                    if (isPlaying) {
+                        if (audio.paused) {
+                            audio.play().catch(e => {
+                                if (e.name !== 'AbortError') console.error(e);
+                            });
+                        }
+                    } else {
+                        // Audio Scrubbing: Play a short burst
                         audio.play().catch(e => {
                             if (e.name !== 'AbortError') console.error(e);
                         });
+                        
+                        if (scrubTimeoutRef.current) clearTimeout(scrubTimeoutRef.current);
+                        scrubTimeoutRef.current = setTimeout(() => {
+                           if (!isPlaying) {
+                               audioElementsRef.current.forEach(a => a.pause());
+                           }
+                        }, 100); // 100ms burst for scrubbing
                     }
                 } else {
                     if (!audio.paused) audio.pause();

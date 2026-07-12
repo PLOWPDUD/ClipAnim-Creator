@@ -67,6 +67,10 @@ export const Timeline: React.FC<TimelineProps> = ({
   const [draggingTrimId, setDraggingTrimId] = useState<string | null>(null);
   const [trimType, setTrimType] = useState<'start' | 'end' | null>(null);
   
+  const [isScrubbingFrames, setIsScrubbingFrames] = useState(false);
+  const scrubStartXRef = useRef<number>(0);
+  const scrubStartScrollLeftRef = useRef<number>(0);
+  
   const [dragStartX, setDragStartX] = useState(0);
   const [dragStartStartTime, setDragStartStartTime] = useState(0);
   const [dragStartFade, setDragStartFade] = useState(0);
@@ -77,13 +81,13 @@ export const Timeline: React.FC<TimelineProps> = ({
 
   // Auto scroll to active frame
   useEffect(() => {
-    if (scrollContainerRef.current) {
+    if (scrollContainerRef.current && !isScrubbingFrames) {
       const activeElement = scrollContainerRef.current.children[currentFrameIndex] as HTMLElement;
       if (activeElement) {
         activeElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
       }
     }
-  }, [currentFrameIndex]);
+  }, [currentFrameIndex, isScrubbingFrames]);
 
   const handleAudioPointerDown = (e: React.PointerEvent, track: AudioTrack) => {
     e.stopPropagation();
@@ -110,8 +114,40 @@ export const Timeline: React.FC<TimelineProps> = ({
     setDragStartDuration(track.duration);
   };
 
+  const handleFramesPointerDown = (e: React.PointerEvent) => {
+    if (isFocusMode) return;
+    
+    // Don't start scrubbing if we're clicking the "Add Frame" button
+    const target = e.target as HTMLElement;
+    if (target.closest('.add-frame-btn')) return;
+
+    setIsScrubbingFrames(true);
+    scrubStartXRef.current = e.clientX;
+    scrubStartScrollLeftRef.current = scrollContainerRef.current?.scrollLeft || 0;
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+    
+    // Calculate initial frame under pointer
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    const scrollLeft = (e.currentTarget as HTMLDivElement).scrollLeft;
+    const x = e.clientX - rect.left + scrollLeft - (rect.width / 2);
+    const frameIndex = Math.min(frames.length - 1, Math.max(0, Math.round(x / FRAME_WIDTH)));
+    onSelectFrame(frameIndex);
+  };
+
   const handleTimelinePointerMove = (e: React.PointerEvent) => {
-    if (draggingTrackId) {
+    if (isScrubbingFrames) {
+      const scrollContainer = scrollContainerRef.current;
+      if (!scrollContainer) return;
+
+      const dx = e.clientX - scrubStartXRef.current;
+      scrollContainer.scrollLeft = scrubStartScrollLeftRef.current - (dx * 1.5); // 1.5x sensitivity for mobile
+
+      // Calculate frame at center (red line)
+      const frameIndex = Math.min(frames.length - 1, Math.max(0, Math.round(scrollContainer.scrollLeft / FRAME_WIDTH)));
+      if (frameIndex !== currentFrameIndex) {
+        onSelectFrame(frameIndex);
+      }
+    } else if (draggingTrackId) {
       const dx = e.clientX - dragStartX;
       const startFrame = Math.round(dragStartStartTime * fps + dx / FRAME_WIDTH);
       const newStartTime = Math.max(0, startFrame / fps);
@@ -145,6 +181,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     setFadeType(null);
     setDraggingTrimId(null);
     setTrimType(null);
+    setIsScrubbingFrames(false);
   };
 
   return (
@@ -290,6 +327,8 @@ export const Timeline: React.FC<TimelineProps> = ({
                             </div>
                         </div>
                         <div className="flex-1 relative overflow-hidden"> 
+                            {/* Playhead line for audio section */}
+                            <div className="absolute top-0 bottom-0 left-1/2 w-px bg-[#FF3B30]/40 z-30 pointer-events-none transform -translate-x-1/2" />
                             <div 
                                 className="absolute inset-y-0 left-[50vw] flex items-center transition-transform duration-100"
                                 style={{ transform: `translateX(-${currentFrameIndex * FRAME_WIDTH}px)` }}
@@ -325,13 +364,17 @@ export const Timeline: React.FC<TimelineProps> = ({
 
                                     {/* Trim Handles */}
                                     <div 
-                                        className="absolute inset-y-0 left-0 w-2 hover:bg-white/30 cursor-col-resize z-20"
+                                        className="absolute inset-y-0 left-0 w-8 hover:bg-white/30 cursor-col-resize z-20 touch-none flex items-center justify-start group/handle"
                                         onPointerDown={(e) => handleTrimPointerDown(e, track, 'start')}
-                                    />
+                                    >
+                                        <div className="w-1.5 h-6 bg-white/40 rounded-full ml-1.5 group-hover/handle:bg-white/60 transition-colors" />
+                                    </div>
                                     <div 
-                                        className="absolute inset-y-0 right-0 w-2 hover:bg-white/30 cursor-col-resize z-20"
+                                        className="absolute inset-y-0 right-0 w-8 hover:bg-white/30 cursor-col-resize z-20 touch-none flex items-center justify-end group/handle"
                                         onPointerDown={(e) => handleTrimPointerDown(e, track, 'end')}
-                                    />
+                                    >
+                                        <div className="w-1.5 h-6 bg-white/40 rounded-full mr-1.5 group-hover/handle:bg-white/60 transition-colors" />
+                                    </div>
 
                                     {/* Fade Handles */}
                                     <div 
@@ -363,12 +406,12 @@ export const Timeline: React.FC<TimelineProps> = ({
       <div className={`relative w-full overflow-hidden h-24`}>
         <div 
             ref={scrollContainerRef}
-            className={`absolute inset-0 flex items-center px-[50vw] overflow-x-auto overflow-y-hidden no-scrollbar`}
+            className={`absolute inset-0 flex items-center px-[50vw] overflow-x-auto overflow-y-hidden no-scrollbar touch-none`}
+            onPointerDown={handleFramesPointerDown}
         >
             {frames.map((frame, index) => (
                 <div 
                     key={frame.id}
-                    onClick={() => !isFocusMode && onSelectFrame(index)}
                     className={`
                         relative flex-shrink-0 w-16 h-20 mx-0.5 rounded-[4px] overflow-hidden border transition-all duration-150 select-none
                         ${isFocusMode ? 'pointer-events-none opacity-20 border-gray-500' : 'cursor-pointer hover:opacity-100 border-gray-600 opacity-80 scale-95 shadow-md'}
@@ -397,7 +440,7 @@ export const Timeline: React.FC<TimelineProps> = ({
             
              <div 
                 onClick={onAddFrame}
-                className="flex-shrink-0 w-16 h-20 mx-0.5 flex items-center justify-center bg-[#FF3B30] border border-[#FF3B30] rounded-[4px] cursor-pointer hover:opacity-90 text-white shadow-lg transition-all scale-95 pointer-events-auto opacity-100 z-20"
+                className="add-frame-btn flex-shrink-0 w-16 h-20 mx-0.5 flex items-center justify-center bg-[#FF3B30] border border-[#FF3B30] rounded-[4px] cursor-pointer hover:opacity-90 text-white shadow-lg transition-all scale-95 pointer-events-auto opacity-100 z-20"
             >
                 <Icons.Plus size={32} strokeWidth={3} />
             </div>

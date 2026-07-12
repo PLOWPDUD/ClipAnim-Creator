@@ -41,6 +41,7 @@ export const AudioEditorModal: React.FC<AudioEditorModalProps> = ({
   const [fadeType, setFadeType] = useState<'in' | 'out' | null>(null);
   const [draggingTrimId, setDraggingTrimId] = useState<string | null>(null);
   const [trimType, setTrimType] = useState<'start' | 'end' | null>(null);
+  const [isScrubbingRuler, setIsScrubbingRuler] = useState(false);
   
   const [dragStartX, setDragStartX] = useState(0);
   const [dragStartStartTime, setDragStartStartTime] = useState(0);
@@ -114,6 +115,31 @@ export const AudioEditorModal: React.FC<AudioEditorModalProps> = ({
     setFadeType(null);
     setDraggingTrimId(null);
     setTrimType(null);
+  };
+
+  const handleRulerPointerDown = (e: React.PointerEvent) => {
+    setIsScrubbingRuler(true);
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    const x = e.clientX - rect.left + (e.currentTarget as HTMLDivElement).scrollLeft;
+    const time = x / (fps * FRAME_WIDTH);
+    const frameIndex = Math.min(frames.length - 1, Math.max(0, Math.floor(time * fps)));
+    onSelectFrame(frameIndex);
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+  };
+
+  const handleRulerPointerMove = (e: React.PointerEvent) => {
+    if (isScrubbingRuler) {
+      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+      const x = e.clientX - rect.left + (e.currentTarget as HTMLDivElement).scrollLeft;
+      const time = x / (fps * FRAME_WIDTH);
+      const frameIndex = Math.min(frames.length - 1, Math.max(0, Math.floor(time * fps)));
+      onSelectFrame(frameIndex);
+    }
+  };
+
+  const handleRulerPointerUp = (e: React.PointerEvent) => {
+    setIsScrubbingRuler(false);
+    (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
   };
 
   if (!isOpen) return null;
@@ -205,13 +231,9 @@ export const AudioEditorModal: React.FC<AudioEditorModalProps> = ({
                  scrollContainerRef.current.scrollLeft = (e.target as HTMLDivElement).scrollLeft;
                }
              }}
-             onPointerDown={(e) => {
-               const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-               const x = e.clientX - rect.left + (e.currentTarget as HTMLDivElement).scrollLeft;
-               const time = x / (fps * FRAME_WIDTH);
-               const frameIndex = Math.min(frames.length - 1, Math.max(0, Math.floor(time * fps)));
-               onSelectFrame(frameIndex);
-             }}
+             onPointerDown={handleRulerPointerDown}
+             onPointerMove={handleRulerPointerMove}
+             onPointerUp={handleRulerPointerUp}
            >
              <div style={{ width: `${totalDuration * fps * FRAME_WIDTH}px` }} className="h-full relative">
                {Array.from({ length: Math.ceil(totalDuration) + 1 }).map((_, i) => (
