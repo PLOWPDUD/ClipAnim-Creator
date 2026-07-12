@@ -902,6 +902,11 @@ export default function App() {
                     width: exportWidth,
                     height: exportHeight
                 },
+                audio: audioTracks.length > 0 ? {
+                    codec: 'aac',
+                    numberOfChannels: 2,
+                    sampleRate: 44100
+                } : undefined,
                 fastStart: 'in-memory',
                 firstTimestampBehavior: 'offset',
             });
@@ -910,6 +915,21 @@ export default function App() {
                 output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
                 error: (e) => { console.error(e); alert(t('errors.exportError', { message: e.message })); }
             });
+
+            let audioEncoder: AudioEncoder | null = null;
+            if (audioTracks.length > 0) {
+                audioEncoder = new AudioEncoder({
+                    output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+                    error: (e) => console.error("Audio encoding error", e)
+                });
+
+                audioEncoder.configure({
+                    codec: 'mp4a.40.2',
+                    numberOfChannels: 2,
+                    sampleRate: 44100,
+                    bitrate: 128_000,
+                });
+            }
 
             const bitrateMap = {
                 low: 1_000_000,
@@ -962,6 +982,68 @@ export default function App() {
             }
 
             await videoEncoder.flush();
+
+            if (audioEncoder) {
+                const totalDuration = frames.reduce((acc, f) => acc + (f.durationMultiplier || 1) / fps, 0);
+                const sampleRate = 44100;
+                const offlineCtx = new OfflineAudioContext(2, Math.max(1, Math.ceil(totalDuration * sampleRate)), sampleRate);
+                
+                for (const track of audioTracks) {
+                    try {
+                        const response = await fetch(track.url);
+                        const arrayBuffer = await response.arrayBuffer();
+                        const audioBuffer = await offlineCtx.decodeAudioData(arrayBuffer);
+                        
+                        const source = offlineCtx.createBufferSource();
+                        source.buffer = audioBuffer;
+                        
+                        const gainNode = offlineCtx.createGain();
+                        gainNode.gain.value = track.volume;
+                        
+                        if ((track.fadeIn ?? 0) > 0) {
+                            gainNode.gain.setValueAtTime(0, track.startTime);
+                            gainNode.gain.linearRampToValueAtTime(track.volume, track.startTime + (track.fadeIn ?? 0));
+                        }
+                        if ((track.fadeOut ?? 0) > 0) {
+                            gainNode.gain.setValueAtTime(track.volume, track.startTime + track.duration - (track.fadeOut ?? 0));
+                            gainNode.gain.linearRampToValueAtTime(0, track.startTime + track.duration);
+                        }
+                        
+                        source.connect(gainNode);
+                        gainNode.connect(offlineCtx.destination);
+                        source.start(track.startTime, track.offset, track.duration);
+                    } catch (e) {
+                        console.error("Audio mixing error", e);
+                    }
+                }
+                
+                const renderedBuffer = await offlineCtx.startRendering();
+                const channelData0 = renderedBuffer.getChannelData(0);
+                const channelData1 = renderedBuffer.getChannelData(1);
+                const bufferSize = 1024 * 8;
+                
+                for (let i = 0; i < renderedBuffer.length; i += bufferSize) {
+                    const size = Math.min(bufferSize, renderedBuffer.length - i);
+                    const interleaved = new Float32Array(size * 2);
+                    for (let j = 0; j < size; j++) {
+                        interleaved[j * 2] = channelData0[i + j];
+                        interleaved[j * 2 + 1] = channelData1[i + j];
+                    }
+                    
+                    const audioData = new AudioData({
+                        format: 'f32',
+                        sampleRate: 44100,
+                        numberOfFrames: size,
+                        numberOfChannels: 2,
+                        timestamp: (i / 44100) * 1000000,
+                        data: interleaved
+                    });
+                    audioEncoder.encode(audioData);
+                    audioData.close();
+                }
+                await audioEncoder.flush();
+            }
+
             muxer.finalize();
 
             const { buffer } = muxer.target;
@@ -1065,6 +1147,18 @@ export default function App() {
 
           const stream = exportCanvas.captureStream(fps);
           
+          let audioContext: AudioContext | null = null;
+          let destination: MediaStreamAudioDestinationNode | null = null;
+          
+          if (audioTracks.length > 0) {
+              audioContext = new AudioContext();
+              destination = audioContext.createMediaStreamDestination();
+              const audioTrack = destination.stream.getAudioTracks()[0];
+              if (audioTrack) {
+                stream.addTrack(audioTrack);
+              }
+          }
+
           const mimeTypes: Record<string, string[]> = {
             webm: ['video/webm;codecs=vp9', 'video/webm'],
             avi: ['video/webm'] // Hack: Browsers don't support AVI encoding
@@ -1099,6 +1193,37 @@ export default function App() {
           };
 
           mediaRecorder.start();
+
+          if (audioContext && destination) {
+              for (const track of audioTracks) {
+                  try {
+                      const response = await fetch(track.url);
+                      const arrayBuffer = await response.arrayBuffer();
+                      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                      const source = audioContext.createBufferSource();
+                      source.buffer = audioBuffer;
+                      const gain = audioContext.createGain();
+                      gain.gain.value = track.volume;
+                      
+                      const startTime = audioContext.currentTime;
+                      
+                      if ((track.fadeIn ?? 0) > 0) {
+                          gain.gain.setValueAtTime(0, startTime + track.startTime);
+                          gain.gain.linearRampToValueAtTime(track.volume, startTime + track.startTime + (track.fadeIn ?? 0));
+                      }
+                      if ((track.fadeOut ?? 0) > 0) {
+                          gain.gain.setValueAtTime(track.volume, startTime + track.startTime + track.duration - (track.fadeOut ?? 0));
+                          gain.gain.linearRampToValueAtTime(0, startTime + track.startTime + track.duration);
+                      }
+                      
+                      source.connect(gain);
+                      gain.connect(destination);
+                      source.start(startTime + track.startTime, track.offset, track.duration);
+                  } catch (e) {
+                      console.error("WebM Audio error", e);
+                  }
+              }
+          }
 
           for (let i = 0; i < compositeFrames.length; i++) {
               if (isExportCancelledRef.current) {
