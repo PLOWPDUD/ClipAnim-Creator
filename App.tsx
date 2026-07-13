@@ -190,6 +190,12 @@ export default function App() {
   const [cameraMode, setCameraMode] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   
+  // Auto-saver states (saves every 5 minutes = 300 seconds)
+  const [autoSaveTimer, setAutoSaveTimer] = useState<number>(300);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'warning' | 'saved'>('idle');
+  const saveProjectRef = useRef<(() => Promise<void>) | null>(null);
+  
+  
   useEffect(() => {
     localStorage.setItem('clipanim_saved_sounds', JSON.stringify(savedSounds));
   }, [savedSounds]);
@@ -1293,6 +1299,53 @@ export default function App() {
       }
   };
 
+  useEffect(() => {
+    saveProjectRef.current = saveProject;
+  }, [saveProject]);
+
+  useEffect(() => {
+    if (view !== 'editor') {
+      setAutoSaveTimer(300);
+      setAutoSaveStatus('idle');
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setAutoSaveTimer((prev) => {
+        if (prev <= 1) {
+          setAutoSaveStatus('saved');
+          
+          if (saveProjectRef.current) {
+            saveProjectRef.current()
+              .then(() => {
+                setTimeout(() => {
+                  setAutoSaveStatus('idle');
+                }, 3000);
+              })
+              .catch((err) => {
+                console.error("Auto-save failed:", err);
+                setAutoSaveStatus('idle');
+              });
+          } else {
+            setAutoSaveStatus('idle');
+          }
+
+          return 300; // Reset countdown to 5 minutes
+        }
+
+        const nextVal = prev - 1;
+        if (nextVal <= 5) {
+          setAutoSaveStatus('warning');
+        } else {
+          setAutoSaveStatus('idle');
+        }
+        return nextVal;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [view]);
+
   const clearAudio = () => {
       audioElementsRef.current.forEach(audio => {
           audio.pause();
@@ -2355,6 +2408,29 @@ export default function App() {
             onChangeSmoothing={setSmoothing}
         />
         <div className="flex-1 relative min-h-0 overflow-visible bg-[#2a2a2a]">
+            {/* Auto-save notification HUD */}
+            {autoSaveStatus === 'warning' && (
+                <div className="absolute top-4 left-4 z-[40] bg-[#1e1e1e]/90 border border-red-500/40 text-white px-4 py-2.5 rounded-xl shadow-2xl shadow-black/50 flex items-center gap-3 backdrop-blur-md pointer-events-none select-none animate-pulse">
+                    <span className="flex h-2.5 w-2.5 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                    </span>
+                    <span className="font-semibold text-xs tracking-wide text-gray-200">
+                        Saving animation in <span className="text-red-400 font-bold font-mono text-sm">{autoSaveTimer}</span>s...
+                    </span>
+                </div>
+            )}
+            {autoSaveStatus === 'saved' && (
+                <div className="absolute top-4 left-4 z-[40] bg-[#1e1e1e]/95 border border-emerald-500/40 text-white px-4 py-2.5 rounded-xl shadow-2xl shadow-black/50 flex items-center gap-2.5 backdrop-blur-md pointer-events-none select-none">
+                    <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                        <Icons.Check size={14} className="stroke-[3]" />
+                    </div>
+                    <span className="font-semibold text-xs tracking-wide text-gray-200">
+                        Saved successfully!
+                    </span>
+                </div>
+            )}
+
             <CanvasArea 
                 ref={canvasRef} 
                 currentFrame={frames[currentFrameIndex]} 
