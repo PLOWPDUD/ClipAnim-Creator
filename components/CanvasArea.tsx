@@ -1289,32 +1289,52 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 activeCtx.stroke();
             }
         } else if (tool === 'pen' || tool === 'eraser') {
-            if (smoothing > 0 && tool === 'pen') {
-                points.current.push({ x: drawX, y: drawY });
-                if (points.current.length === 2) {
-                    ctx.lineTo(drawX, drawY);
-                } else if (points.current.length > 2) {
-                    const lastPoint = points.current[points.current.length - 2];
-                    const midPoint = {
-                        x: (lastPoint.x + drawX) / 2,
-                        y: (lastPoint.y + drawY) / 2
-                    };
-                    ctx.quadraticCurveTo(lastPoint.x, lastPoint.y, midPoint.x, midPoint.y);
-                }
-            } else {
-                ctx.lineTo(drawX, drawY);
+            // Get the last registered smoothed point
+            const lastSmoothed = points.current[points.current.length - 1] || { x: drawX, y: drawY };
+            
+            // Calculate distance to current raw cursor
+            const dist = Math.sqrt((drawX - lastSmoothed.x) ** 2 + (drawY - lastSmoothed.y) ** 2);
+            
+            // Map the user-defined smoothing value (0-100) to a baseline stabilization strength
+            const userSFactor = smoothing / 100;
+            
+            // For fast drawing, calculate dynamic speed-based smoothing (larger distance = higher stabilization to round out jaggy lines)
+            // Distances over 25px get progressively more smoothed up to an extra 0.65 stabilization factor
+            const speedSFactor = Math.min(0.65, dist / 120);
+            
+            const effectiveSFactor = Math.max(userSFactor, speedSFactor);
+            
+            // Calculate exponential moving average interpolation weight (1.0 = raw input, lower = smoother stabilized curve)
+            // Even at 0 smoothing, we add a very small buffer for extremely fast strokes so they stay fluid
+            const baseMinWeight = 0.15;
+            const weight = Math.max(baseMinWeight, 1 - (effectiveSFactor * 0.85));
+            
+            const smoothedX = lastSmoothed.x + (drawX - lastSmoothed.x) * weight;
+            const smoothedY = lastSmoothed.y + (drawY - lastSmoothed.y) * weight;
+            
+            points.current.push({ x: smoothedX, y: smoothedY });
+            
+            if (points.current.length === 2) {
+                ctx.lineTo(smoothedX, smoothedY);
+            } else if (points.current.length > 2) {
+                const prevPoint = points.current[points.current.length - 2];
+                const midPoint = {
+                    x: (prevPoint.x + smoothedX) / 2,
+                    y: (prevPoint.y + smoothedY) / 2
+                };
+                ctx.quadraticCurveTo(prevPoint.x, prevPoint.y, midPoint.x, midPoint.y);
             }
-
+            
             if (symmetryMode !== 'none' && !isDrawingOnSelectionRef.current) {
                 if (symmetryMode === 'horizontal') {
-                    const symX = canvasWidth - drawX;
-                    const symY = drawY;
+                    const symX = canvasWidth - smoothedX;
+                    const symY = smoothedY;
                     symmetryPathPoints.current['h']?.push({ x: symX, y: symY });
                     
                     if (symmetryLastPoints.current['h']) {
                         ctx.moveTo(symmetryLastPoints.current['h'].x, symmetryLastPoints.current['h'].y);
-                        if (smoothing > 0 && tool === 'pen' && symmetryPathPoints.current['h']!.length > 2) {
-                            const lastSymPoint = symmetryPathPoints.current['h']![symmetryPathPoints.current['h']!.length - 2];
+                        if (symmetryPathPoints.current['h'] && symmetryPathPoints.current['h'].length > 2) {
+                            const lastSymPoint = symmetryPathPoints.current['h'][symmetryPathPoints.current['h'].length - 2];
                             const midSymPoint = {
                                 x: (lastSymPoint.x + symX) / 2,
                                 y: (lastSymPoint.y + symY) / 2
@@ -1326,14 +1346,14 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     }
                     symmetryLastPoints.current['h'] = { x: symX, y: symY };
                 } else if (symmetryMode === 'vertical') {
-                    const symX = drawX;
-                    const symY = canvasHeight - drawY;
+                    const symX = smoothedX;
+                    const symY = canvasHeight - smoothedY;
                     symmetryPathPoints.current['v']?.push({ x: symX, y: symY });
                     
                     if (symmetryLastPoints.current['v']) {
                         ctx.moveTo(symmetryLastPoints.current['v'].x, symmetryLastPoints.current['v'].y);
-                        if (smoothing > 0 && tool === 'pen' && symmetryPathPoints.current['v']!.length > 2) {
-                            const lastSymPoint = symmetryPathPoints.current['v']![symmetryPathPoints.current['v']!.length - 2];
+                        if (symmetryPathPoints.current['v'] && symmetryPathPoints.current['v'].length > 2) {
+                            const lastSymPoint = symmetryPathPoints.current['v'][symmetryPathPoints.current['v'].length - 2];
                             const midSymPoint = {
                                 x: (lastSymPoint.x + symX) / 2,
                                 y: (lastSymPoint.y + symY) / 2
@@ -1346,16 +1366,16 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     symmetryLastPoints.current['v'] = { x: symX, y: symY };
                 }
                 
-                // Move back to main path
-                if (smoothing > 0 && tool === 'pen' && points.current.length > 2) {
-                    const lastPoint = points.current[points.current.length - 2];
+                // Move back to main path so the next line segment continues correctly
+                if (points.current.length > 2) {
+                    const prevPoint = points.current[points.current.length - 2];
                     const midPoint = {
-                        x: (lastPoint.x + drawX) / 2,
-                        y: (lastPoint.y + drawY) / 2
+                        x: (prevPoint.x + smoothedX) / 2,
+                        y: (prevPoint.y + smoothedY) / 2
                     };
                     ctx.moveTo(midPoint.x, midPoint.y);
                 } else {
-                    ctx.moveTo(drawX, drawY);
+                    ctx.moveTo(smoothedX, smoothedY);
                 }
             }
             
