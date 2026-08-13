@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icons } from '../Icons';
+import { Frame, Layer, BackgroundSettings } from '../types';
+import { compositeLayers } from '../utils/drawingUtils';
 
 export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'png' | 'avi' | 'project-zip';
 export type ExportQuality = 'low' | 'medium' | 'high';
@@ -18,6 +20,11 @@ interface ExportModalProps {
   frameCount: number;
   fps: number;
   exportedFile?: { url: string, name: string, blob: Blob } | null;
+  frames?: Frame[];
+  layers?: Layer[];
+  canvasSize?: { width: number; height: number };
+  background?: BackgroundSettings;
+  backgroundImage?: string | null;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({ 
@@ -32,11 +39,111 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   projectType = 'animation',
   frameCount,
   fps,
-  exportedFile
+  exportedFile,
+  frames,
+  layers,
+  canvasSize,
+  background,
+  backgroundImage
 }) => {
   const { t } = useTranslation();
-  const [quality, setQuality] = React.useState<ExportQuality>('medium');
-  const [transparent, setTransparent] = React.useState(false);
+  const [quality, setQuality] = useState<ExportQuality>('medium');
+  const [transparent, setTransparent] = useState(false);
+
+  // Low-resolution 1-second loop preview states
+  const [showPreview, setShowPreview] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewFrames, setPreviewFrames] = useState<string[]>([]);
+  const [previewDurations, setPreviewDurations] = useState<number[]>([]);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(true);
+
+  const handleGeneratePreview = useCallback(async () => {
+    if (!frames || frames.length === 0 || !layers) return;
+    
+    setIsPreviewLoading(true);
+    setShowPreview(true);
+    setPreviewIndex(0);
+
+    try {
+      const origW = canvasSize?.width || 800;
+      const origH = canvasSize?.height || 600;
+      // Target low-resolution width = 320px for fast generation
+      const lowResW = 320;
+      const lowResH = Math.max(1, Math.round(320 * (origH / origW)));
+
+      // Target duration = 1.0 second
+      const targetDurationSec = 1.0;
+      let accumulatedSec = 0;
+
+      const selectedFrames: Frame[] = [];
+      const durationsSec: number[] = [];
+
+      let framePointer = 0;
+      const safeFps = fps > 0 ? fps : 12;
+
+      // Select frames to fill ~1 second loop duration
+      while (accumulatedSec < targetDurationSec && selectedFrames.length < 60) {
+        const frame = frames[framePointer % frames.length];
+        const dur = (frame.durationMultiplier || 1) / safeFps;
+        
+        selectedFrames.push(frame);
+        durationsSec.push(dur);
+        accumulatedSec += dur;
+
+        framePointer++;
+        if (framePointer % frames.length === 0 && accumulatedSec >= targetDurationSec) {
+          break;
+        }
+      }
+
+      // Render low-res composite data URLs
+      const compositedUrls: string[] = [];
+      for (const frame of selectedFrames) {
+        const url = await compositeLayers(
+          frame,
+          layers,
+          lowResW,
+          lowResH,
+          background || { type: 'color', color: '#ffffff' },
+          backgroundImage || null,
+          !transparent
+        );
+        compositedUrls.push(url);
+      }
+
+      setPreviewFrames(compositedUrls);
+      setPreviewDurations(durationsSec);
+      setIsPreviewPlaying(true);
+    } catch (e) {
+      console.error("Failed to generate preview loop", e);
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  }, [frames, layers, canvasSize, fps, background, backgroundImage, transparent]);
+
+  // Re-generate preview if transparent setting changes while preview is visible
+  useEffect(() => {
+    if (showPreview) {
+      handleGeneratePreview();
+    }
+  }, [transparent]);
+
+  // Animation loop interval for preview playback
+  useEffect(() => {
+    if (!showPreview || !isPreviewPlaying || previewFrames.length === 0 || isPreviewLoading) {
+      return;
+    }
+
+    const safeFps = fps > 0 ? fps : 12;
+    const currentDurationMs = (previewDurations[previewIndex] || (1 / safeFps)) * 1000;
+
+    const timer = setTimeout(() => {
+      setPreviewIndex((prev) => (prev + 1) % previewFrames.length);
+    }, currentDurationMs);
+
+    return () => clearTimeout(timer);
+  }, [showPreview, isPreviewPlaying, previewIndex, previewFrames, previewDurations, isPreviewLoading, fps]);
 
   if (!isOpen) return null;
 
@@ -189,22 +296,137 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         <div className="flex flex-1 min-h-0">
           {/* Left Panel: Settings */}
           <div className="w-1/2 p-8 border-r border-gray-700/50 flex flex-col">
-            <div className="mb-8">
+            <div className="mb-6">
               <h2 className="text-3xl font-bold text-white mb-2">{t('export.makeMovie')}</h2>
-              <div className="flex flex-wrap items-center gap-2 mb-4">
+              <div className="flex flex-wrap items-center gap-2 mb-3">
                   <input 
                       type="text" 
                       value={projectName}
                       onChange={(e) => setProjectName(e.target.value)}
-                      className="bg-gray-800 text-white rounded px-2 py-1 text-sm font-medium border border-gray-700 hover:border-gray-500 focus:border-[var(--accent-color)] focus:outline-none transition-colors w-full max-w-[200px]"
+                      className="bg-gray-800 text-white rounded px-2.5 py-1 text-sm font-medium border border-gray-700 hover:border-gray-500 focus:border-[var(--accent-color)] focus:outline-none transition-colors w-full max-w-[200px]"
                   />
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-gray-500 text-xs uppercase font-bold tracking-wider">{frameCount} {t('timeline.frames')}</span>
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                  <span className="text-gray-400 text-xs uppercase font-bold tracking-wider">{frameCount} {t('timeline.frames')}</span>
                   <span className="w-1 h-1 rounded-full bg-gray-600" />
-                  <span className="text-gray-500 text-xs uppercase font-bold tracking-wider">{(frameCount / fps).toFixed(1)}s</span>
+                  <span className="text-gray-400 text-xs uppercase font-bold tracking-wider">{(frameCount / fps).toFixed(1)}s</span>
               </div>
+
+              {/* Preview Button */}
+              <button
+                onClick={handleGeneratePreview}
+                disabled={isPreviewLoading}
+                className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border shadow-sm ${
+                  showPreview
+                    ? 'bg-[#FF3B30]/20 text-[#FF3B30] border-[#FF3B30]/40 hover:bg-[#FF3B30]/30'
+                    : 'bg-gray-800 hover:bg-gray-700 text-white border-gray-700 hover:border-gray-600'
+                }`}
+              >
+                {isPreviewLoading ? (
+                  <>
+                    <Icons.Loader2 size={16} className="animate-spin text-[#FF3B30]" />
+                    <span>{t('export.generatingPreview', 'Generating 1s Preview...')}</span>
+                  </>
+                ) : (
+                  <>
+                    <Icons.Eye size={16} className="text-[#FF3B30]" />
+                    <span>{showPreview ? t('export.refreshPreview', 'Refresh 1s Preview') : t('export.previewLoop', 'Preview (1s Low-Res Loop)')}</span>
+                  </>
+                )}
+              </button>
             </div>
+
+            {/* Live 1s Low-Res Loop Preview Player */}
+            {showPreview && (
+              <div className="mb-6 p-3.5 rounded-2xl bg-black/40 border border-gray-700/80 flex flex-col gap-2.5 relative overflow-hidden animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-xs font-bold text-gray-200 tracking-wide">
+                      {t('export.previewTitle', '1s Preview Loop')}
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">
+                      320px • {fps} FPS
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => setShowPreview(false)}
+                    className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
+                    title={t('common.close', 'Close')}
+                  >
+                    <Icons.X size={15} />
+                  </button>
+                </div>
+
+                {/* Viewport */}
+                <div className="relative w-full aspect-video max-h-[160px] bg-[radial-gradient(#333_1px,transparent_1px)] [background-size:10px_10px] bg-[#141414] rounded-xl overflow-hidden flex items-center justify-center border border-gray-800 shadow-inner group">
+                  {isPreviewLoading ? (
+                    <div className="flex flex-col items-center gap-2 text-gray-400 p-4">
+                      <Icons.Loader2 size={22} className="animate-spin text-[#FF3B30]" />
+                      <span className="text-xs font-medium">{t('export.renderingPreview', 'Rendering low-res loop...')}</span>
+                    </div>
+                  ) : previewFrames.length > 0 ? (
+                    <>
+                      <img 
+                        src={previewFrames[previewIndex]} 
+                        alt="Preview Frame" 
+                        className="max-w-full max-h-full object-contain select-none" 
+                      />
+                      
+                      {/* Hover Overlay Controls */}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-[2px]">
+                        <button 
+                          onClick={() => setPreviewIndex((prev) => (prev - 1 + previewFrames.length) % previewFrames.length)}
+                          className="p-1.5 rounded-full bg-black/70 hover:bg-black text-white transition-all transform hover:scale-110 border border-gray-700"
+                          title="Previous Frame"
+                        >
+                          <Icons.SkipBack size={14} />
+                        </button>
+                        <button 
+                          onClick={() => setIsPreviewPlaying(!isPreviewPlaying)}
+                          className="p-2.5 rounded-full bg-[#FF3B30] hover:bg-[#FF453A] text-white shadow-lg transition-all transform hover:scale-110"
+                          title={isPreviewPlaying ? "Pause" : "Play"}
+                        >
+                          {isPreviewPlaying ? <Icons.Pause size={16} /> : <Icons.Play size={16} className="ml-0.5" />}
+                        </button>
+                        <button 
+                          onClick={() => setPreviewIndex((prev) => (prev + 1) % previewFrames.length)}
+                          className="p-1.5 rounded-full bg-black/70 hover:bg-black text-white transition-all transform hover:scale-110 border border-gray-700"
+                          title="Next Frame"
+                        >
+                          <Icons.SkipForward size={14} />
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-xs text-gray-500">{t('export.noPreview', 'No preview available')}</span>
+                  )}
+                </div>
+
+                {/* Scrubber bar and frame info */}
+                {!isPreviewLoading && previewFrames.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden flex">
+                      {previewFrames.map((_, idx) => (
+                        <div 
+                          key={idx}
+                          className={`h-full flex-1 border-r border-gray-900/60 transition-colors ${
+                            idx === previewIndex ? 'bg-[#FF3B30] shadow-[0_0_6px_rgba(255,59,48,0.8)]' : 'bg-gray-700/40'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono pt-0.5">
+                      <span>Frame {previewIndex + 1} / {previewFrames.length}</span>
+                      <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                        <Icons.Repeat size={10} />
+                        1.0s Loop
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="mb-8">
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 block">{t('export.quality')}</label>

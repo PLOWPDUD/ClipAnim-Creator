@@ -50,15 +50,38 @@ export const getProjectList = async (): Promise<ProjectMeta[]> => {
     request.onsuccess = (event) => {
       const cursor = (event.target as IDBRequest).result;
       if (cursor) {
-        // Only extract the metadata fields
-        const { id, name, lastModified, thumbnailUrl } = cursor.value;
-        projects.push({ id, name, lastModified, thumbnailUrl });
+        // Extract the metadata fields
+        const { id, name, lastModified, thumbnailUrl, type, folderId, frames } = cursor.value;
+        const frameCount = Array.isArray(frames) ? frames.length : 1;
+        projects.push({ id, name, lastModified, thumbnailUrl, type, folderId, frameCount });
         cursor.continue();
       } else {
         resolve(projects);
       }
     };
     request.onerror = () => reject(request.error);
+  });
+};
+
+// Update folderId of a project without full reload
+export const updateProjectFolderInDB = async (projectId: string, folderId: string | null): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const getReq = store.get(projectId);
+    getReq.onsuccess = () => {
+      const project = getReq.result;
+      if (project) {
+        project.folderId = folderId;
+        const putReq = store.put(project);
+        putReq.onsuccess = () => resolve();
+        putReq.onerror = () => reject(putReq.error);
+      } else {
+        resolve();
+      }
+    };
+    getReq.onerror = () => reject(getReq.error);
   });
 };
 

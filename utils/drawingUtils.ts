@@ -107,7 +107,7 @@ export const compositeLayers = async (
           ctx.save();
           ctx.globalAlpha = layer.opacity;
           ctx.globalCompositeOperation = layer.blendMode;
-          ctx.drawImage(img, 0, 0); // Layers are drawn at 0,0 relative to canvas size
+          ctx.drawImage(img, 0, 0, width, height); // Layers are drawn scaled to target canvas size
           ctx.restore();
           resolve();
         };

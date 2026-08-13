@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point } from './types';
+import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
@@ -20,8 +20,10 @@ import { GlobalSettingsModal } from './components/GlobalSettingsModal';
 import { ChangelogModal } from './components/ChangelogModal';
 import { VideoImportModal } from './components/VideoImportModal';
 import { TweenModal } from './components/TweenModal';
+import { FolderModal } from './components/FolderModal';
+import { MoveToFolderModal } from './components/MoveToFolderModal';
 import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
-import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB } from './utils/db';
+import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB, updateProjectFolderInDB } from './utils/db';
 
 // @ts-ignore
 import JSZip from 'jszip';
@@ -125,6 +127,34 @@ export default function App() {
   const [projectId, setProjectId] = useState<string>(crypto.randomUUID());
   const [projectName, setProjectName] = useState(t('app.defaultProjectName'));
   const [projectType, setProjectType] = useState<'animation' | 'painting'>('animation');
+  const [folderId, setFolderId] = useState<string | null>(null);
+
+  // Folder system state
+  const [folders, setFolders] = useState<ProjectFolder[]>(() => {
+    try {
+      const saved = localStorage.getItem('clipanim_folders');
+      return saved ? JSON.parse(saved) : [
+        { id: 'folder-animations', name: 'Animations', color: '#FF3B30', createdAt: Date.now() - 1000 },
+        { id: 'folder-paintings', name: 'Paintings & Art', color: '#AF52DE', createdAt: Date.now() }
+      ];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('clipanim_folders', JSON.stringify(folders));
+  }, [folders]);
+
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [homeFilter, setHomeFilter] = useState<'all' | 'animations' | 'paintings' | 'folders'>('all');
+  const [homeSearchQuery, setHomeSearchQuery] = useState('');
+
+  // Folder Modals
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
+  const [editingFolder, setEditingFolder] = useState<ProjectFolder | null>(null);
+  const [movingProject, setMovingProject] = useState<{ id: string; name: string; folderId?: string | null } | null>(null);
+  const [folderToDelete, setFolderToDelete] = useState<ProjectFolder | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const [background, setBackground] = useState<BackgroundSettings>({ type: 'color', color: '#ffffff' });
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
@@ -189,6 +219,87 @@ export default function App() {
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [cameraMode, setCameraMode] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+
+  const handleCreateOrUpdateFolder = (name: string, color: string) => {
+    if (editingFolder) {
+      setFolders(prev => prev.map(f => f.id === editingFolder.id ? { ...f, name, color } : f));
+      setEditingFolder(null);
+    } else {
+      const newF: ProjectFolder = {
+        id: `folder-${crypto.randomUUID()}`,
+        name,
+        color,
+        createdAt: Date.now()
+      };
+      setFolders(prev => [...prev, newF]);
+    }
+  };
+
+  const handleDeleteFolder = async (folder: ProjectFolder) => {
+    setFolders(prev => prev.filter(f => f.id !== folder.id));
+    const affected = savedProjects.filter(p => p.folderId === folder.id);
+    for (const p of affected) {
+      await updateProjectFolderInDB(p.id, null);
+    }
+    const updatedList = await getProjectList();
+    setSavedProjects(updatedList);
+    if (currentFolderId === folder.id) {
+      setCurrentFolderId(null);
+    }
+    setFolderToDelete(null);
+  };
+
+  const handleMoveProjectToFolder = async (projectId: string, targetFolderId: string | null) => {
+    try {
+      await updateProjectFolderInDB(projectId, targetFolderId);
+      setSavedProjects(prev => prev.map(p => p.id === projectId ? { ...p, folderId: targetFolderId } : p));
+    } catch (e) {
+      console.error("Failed to move project", e);
+    }
+  };
+
+  const currentFolder = useMemo(() => {
+    return folders.find(f => f.id === currentFolderId) || null;
+  }, [folders, currentFolderId]);
+
+  const totalAnimationsCount = useMemo(() => savedProjects.filter(p => p.type !== 'painting').length, [savedProjects]);
+  const totalPaintingsCount = useMemo(() => savedProjects.filter(p => p.type === 'painting').length, [savedProjects]);
+
+  const displayProjects = useMemo(() => {
+    let list = savedProjects;
+
+    // Filter by current folder if inside one
+    if (currentFolderId !== null) {
+      list = list.filter(p => p.folderId === currentFolderId);
+    }
+
+    // Filter by category tab
+    if (homeFilter === 'animations') {
+      list = list.filter(p => p.type !== 'painting');
+    } else if (homeFilter === 'paintings') {
+      list = list.filter(p => p.type === 'painting');
+    }
+
+    // Search query
+    if (homeSearchQuery.trim()) {
+      const q = homeSearchQuery.toLowerCase();
+      list = list.filter(p => p.name.toLowerCase().includes(q));
+    }
+
+    return list;
+  }, [savedProjects, currentFolderId, homeFilter, homeSearchQuery]);
+
+  const displayFolders = useMemo(() => {
+    if (currentFolderId !== null && homeFilter !== 'folders') {
+      return [];
+    }
+    let list = folders;
+    if (homeSearchQuery.trim()) {
+      const q = homeSearchQuery.toLowerCase();
+      list = list.filter(f => f.name.toLowerCase().includes(q));
+    }
+    return list;
+  }, [folders, currentFolderId, homeFilter, homeSearchQuery]);
   
   // Auto-saver states (saves every 5 minutes = 300 seconds)
   const [autoSaveTimer, setAutoSaveTimer] = useState<number>(300);
@@ -895,176 +1006,399 @@ export default function App() {
     }
 
     if (format === 'mp4') {
-        try {
-            // Ensure even dimensions for H.264
-            const exportWidth = canvasSize.width % 2 === 0 ? canvasSize.width : canvasSize.width - 1;
-            const exportHeight = canvasSize.height % 2 === 0 ? canvasSize.height : canvasSize.height - 1;
+        const exportWidth = canvasSize.width % 2 === 0 ? canvasSize.width : canvasSize.width - 1;
+        const exportHeight = canvasSize.height % 2 === 0 ? canvasSize.height : canvasSize.height - 1;
+        const bitrateMap = {
+            low: 1_000_000,
+            medium: 4_000_000,
+            high: 10_000_000
+        };
 
-            // Using mp4-muxer for valid MP4 generation
-            const muxer = new Mp4Muxer.Muxer({
-                target: new Mp4Muxer.ArrayBufferTarget(),
-                video: {
-                    codec: 'avc',
-                    width: exportWidth,
-                    height: exportHeight
-                },
-                audio: audioTracks.length > 0 ? {
-                    codec: 'aac',
-                    numberOfChannels: 2,
-                    sampleRate: 44100
-                } : undefined,
-                fastStart: 'in-memory',
-                firstTimestampBehavior: 'offset',
-            });
+        let mp4ExportSuccess = false;
 
-            const videoEncoder = new VideoEncoder({
-                output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-                error: (e) => { console.error(e); alert(t('errors.exportError', { message: e.message })); }
-            });
+        // 1. Attempt WebCodecs + mp4-muxer with feature detection & codec fallback (supports Firefox, Chrome, Safari)
+        if (typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined') {
+            try {
+                // Determine supported video codec for WebCodecs
+                const videoCandidates = [
+                    { encoderCodec: 'avc1.42001f', muxerCodec: 'avc' as const },
+                    { encoderCodec: 'avc1.4d002a', muxerCodec: 'avc' as const },
+                    { encoderCodec: 'avc1.640028', muxerCodec: 'avc' as const },
+                    { encoderCodec: 'avc1.42e01f', muxerCodec: 'avc' as const },
+                    { encoderCodec: 'vp09.00.10.08', muxerCodec: 'vp9' as const },
+                    { encoderCodec: 'av01.0.04M.08', muxerCodec: 'av1' as const }
+                ];
 
-            let audioEncoder: AudioEncoder | null = null;
-            if (audioTracks.length > 0) {
-                audioEncoder = new AudioEncoder({
-                    output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
-                    error: (e) => console.error("Audio encoding error", e)
-                });
-
-                audioEncoder.configure({
-                    codec: 'mp4a.40.2',
-                    numberOfChannels: 2,
-                    sampleRate: 44100,
-                    bitrate: 128_000,
-                });
-            }
-
-            const bitrateMap = {
-                low: 1_000_000,
-                medium: 4_000_000,
-                high: 10_000_000
-            };
-
-            videoEncoder.configure({
-                codec: 'avc1.42001f', // Standard AVC
-                width: exportWidth,
-                height: exportHeight,
-                bitrate: bitrateMap[quality],
-                framerate: fps
-            });
-
-            // Loop frames
-            const canvas = document.createElement('canvas');
-            canvas.width = exportWidth;
-            canvas.height = exportHeight;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) throw new Error("No context");
-
-            for (let i = 0; i < compositeFrames.length; i++) {
-                 if (isExportCancelledRef.current) {
-                     setIsExporting(false);
-                     return;
-                 }
-                 const img = new Image();
-                 await new Promise<void>((resolve) => { img.onload = () => resolve(); img.src = compositeFrames[i]; });
-                 
-                 ctx.clearRect(0, 0, exportWidth, exportHeight);
-                 if (background.type === 'gradient3' && background.gradientColors) {
-                    const gradient = ctx.createLinearGradient(0, 0, exportWidth, exportHeight);
-                    gradient.addColorStop(0, background.gradientColors[0]);
-                    gradient.addColorStop(0.5, background.gradientColors[1]);
-                    gradient.addColorStop(1, background.gradientColors[2]);
-                    ctx.fillStyle = gradient;
-                    ctx.fillRect(0, 0, exportWidth, exportHeight);
-                 } else if (background.color !== 'transparent') {
-                    ctx.fillStyle = background.color;
-                    ctx.fillRect(0, 0, exportWidth, exportHeight);
-                 }
-                 ctx.drawImage(img, 0, 0, exportWidth, exportHeight);
-
-                 const frame = new VideoFrame(canvas, { timestamp: i * 1000000 / fps });
-                 videoEncoder.encode(frame);
-                 frame.close();
-
-                 setExportProgress(30 + Math.round(((i + 1) / total) * 60));
-            }
-
-            await videoEncoder.flush();
-
-            if (audioEncoder) {
-                const totalDuration = frames.reduce((acc, f) => acc + (f.durationMultiplier || 1) / fps, 0);
-                const sampleRate = 44100;
-                const offlineCtx = new OfflineAudioContext(2, Math.max(1, Math.ceil(totalDuration * sampleRate)), sampleRate);
-                
-                for (const track of audioTracks) {
+                let selectedVideo: { encoderCodec: string; muxerCodec: 'avc' | 'hevc' | 'vp9' | 'av1' } | null = null;
+                for (const cand of videoCandidates) {
                     try {
-                        const response = await fetch(track.url);
-                        const arrayBuffer = await response.arrayBuffer();
-                        const audioBuffer = await offlineCtx.decodeAudioData(arrayBuffer);
-                        
-                        const source = offlineCtx.createBufferSource();
-                        source.buffer = audioBuffer;
-                        
-                        const gainNode = offlineCtx.createGain();
-                        gainNode.gain.value = track.volume;
-                        
-                        if ((track.fadeIn ?? 0) > 0) {
-                            gainNode.gain.setValueAtTime(0, track.startTime);
-                            gainNode.gain.linearRampToValueAtTime(track.volume, track.startTime + (track.fadeIn ?? 0));
+                        const support = await VideoEncoder.isConfigSupported({
+                            codec: cand.encoderCodec,
+                            width: exportWidth,
+                            height: exportHeight,
+                            bitrate: bitrateMap[quality],
+                            framerate: fps
+                        });
+                        if (support.supported) {
+                            selectedVideo = cand;
+                            break;
                         }
-                        if ((track.fadeOut ?? 0) > 0) {
-                            gainNode.gain.setValueAtTime(track.volume, track.startTime + track.duration - (track.fadeOut ?? 0));
-                            gainNode.gain.linearRampToValueAtTime(0, track.startTime + track.duration);
-                        }
-                        
-                        source.connect(gainNode);
-                        gainNode.connect(offlineCtx.destination);
-                        source.start(track.startTime, track.offset, track.duration);
-                    } catch (e) {
-                        console.error("Audio mixing error", e);
+                    } catch {
+                        // ignore check error
                     }
                 }
-                
-                const renderedBuffer = await offlineCtx.startRendering();
-                const channelData0 = renderedBuffer.getChannelData(0);
-                const channelData1 = renderedBuffer.getChannelData(1);
-                const bufferSize = 1024 * 8;
-                
-                for (let i = 0; i < renderedBuffer.length; i += bufferSize) {
-                    const size = Math.min(bufferSize, renderedBuffer.length - i);
-                    const interleaved = new Float32Array(size * 2);
-                    for (let j = 0; j < size; j++) {
-                        interleaved[j * 2] = channelData0[i + j];
-                        interleaved[j * 2 + 1] = channelData1[i + j];
+
+                if (selectedVideo) {
+                    // Determine supported audio codec (if audio tracks exist)
+                    let selectedAudio: { encoderCodec: string; muxerCodec: 'aac' | 'opus'; sampleRate: number } | null = null;
+                    if (audioTracks.length > 0 && typeof AudioEncoder !== 'undefined') {
+                        const audioCandidates = [
+                            { encoderCodec: 'mp4a.40.2', muxerCodec: 'aac' as const, sampleRate: 44100 },
+                            { encoderCodec: 'opus', muxerCodec: 'opus' as const, sampleRate: 48000 }
+                        ];
+
+                        for (const cand of audioCandidates) {
+                            try {
+                                const support = await AudioEncoder.isConfigSupported({
+                                    codec: cand.encoderCodec,
+                                    numberOfChannels: 2,
+                                    sampleRate: cand.sampleRate,
+                                    bitrate: 128_000
+                                });
+                                if (support.supported) {
+                                    selectedAudio = cand;
+                                    break;
+                                }
+                            } catch {
+                                // ignore check error
+                            }
+                        }
                     }
-                    
-                    const audioData = new AudioData({
-                        format: 'f32',
-                        sampleRate: 44100,
-                        numberOfFrames: size,
-                        numberOfChannels: 2,
-                        timestamp: (i / 44100) * 1000000,
-                        data: interleaved
+
+                    const muxer = new Mp4Muxer.Muxer({
+                        target: new Mp4Muxer.ArrayBufferTarget(),
+                        video: {
+                            codec: selectedVideo.muxerCodec,
+                            width: exportWidth,
+                            height: exportHeight
+                        },
+                        audio: selectedAudio ? {
+                            codec: selectedAudio.muxerCodec,
+                            numberOfChannels: 2,
+                            sampleRate: selectedAudio.sampleRate
+                        } : undefined,
+                        fastStart: 'in-memory',
+                        firstTimestampBehavior: 'offset',
                     });
-                    audioEncoder.encode(audioData);
-                    audioData.close();
+
+                    const frameDurationMicroseconds = Math.round(1_000_000 / fps);
+
+                    const videoEncoder = new VideoEncoder({
+                        output: (chunk, meta) => {
+                            if (chunk.duration === null || chunk.duration === undefined || isNaN(chunk.duration) || chunk.duration <= 0) {
+                                const data = new Uint8Array(chunk.byteLength);
+                                chunk.copyTo(data);
+                                muxer.addVideoChunkRaw(
+                                    data,
+                                    chunk.type,
+                                    chunk.timestamp,
+                                    frameDurationMicroseconds,
+                                    meta
+                                );
+                            } else {
+                                muxer.addVideoChunk(chunk, meta);
+                            }
+                        },
+                        error: (e) => { console.error("VideoEncoder error", e); }
+                    });
+
+                    videoEncoder.configure({
+                        codec: selectedVideo.encoderCodec,
+                        width: exportWidth,
+                        height: exportHeight,
+                        bitrate: bitrateMap[quality],
+                        framerate: fps
+                    });
+
+                    let audioEncoder: AudioEncoder | null = null;
+                    if (selectedAudio) {
+                        const targetSampleRate = selectedAudio.sampleRate;
+                        audioEncoder = new AudioEncoder({
+                            output: (chunk, meta) => {
+                                if (chunk.duration === null || chunk.duration === undefined || isNaN(chunk.duration) || chunk.duration <= 0) {
+                                    const data = new Uint8Array(chunk.byteLength);
+                                    chunk.copyTo(data);
+                                    const fallbackDuration = Math.round((1024 / targetSampleRate) * 1_000_000);
+                                    muxer.addAudioChunkRaw(
+                                        data,
+                                        chunk.type,
+                                        chunk.timestamp,
+                                        fallbackDuration,
+                                        meta
+                                    );
+                                } else {
+                                    muxer.addAudioChunk(chunk, meta);
+                                }
+                            },
+                            error: (e) => console.error("AudioEncoder error", e)
+                        });
+
+                        audioEncoder.configure({
+                            codec: selectedAudio.encoderCodec,
+                            numberOfChannels: 2,
+                            sampleRate: selectedAudio.sampleRate,
+                            bitrate: 128_000,
+                        });
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = exportWidth;
+                    canvas.height = exportHeight;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) throw new Error("No context");
+
+                    for (let i = 0; i < compositeFrames.length; i++) {
+                         if (isExportCancelledRef.current) {
+                             setIsExporting(false);
+                             return;
+                         }
+                         const img = new Image();
+                         await new Promise<void>((resolve) => { img.onload = () => resolve(); img.src = compositeFrames[i]; });
+                         
+                         ctx.clearRect(0, 0, exportWidth, exportHeight);
+                         if (background.type === 'gradient3' && background.gradientColors) {
+                            const gradient = ctx.createLinearGradient(0, 0, exportWidth, exportHeight);
+                            gradient.addColorStop(0, background.gradientColors[0]);
+                            gradient.addColorStop(0.5, background.gradientColors[1]);
+                            gradient.addColorStop(1, background.gradientColors[2]);
+                            ctx.fillStyle = gradient;
+                            ctx.fillRect(0, 0, exportWidth, exportHeight);
+                         } else if (background.color !== 'transparent') {
+                            ctx.fillStyle = background.color;
+                            ctx.fillRect(0, 0, exportWidth, exportHeight);
+                         }
+                         ctx.drawImage(img, 0, 0, exportWidth, exportHeight);
+
+                         const frame = new VideoFrame(canvas, {
+                             timestamp: Math.round((i * 1_000_000) / fps),
+                             duration: frameDurationMicroseconds
+                         });
+                         videoEncoder.encode(frame);
+                         frame.close();
+
+                         setExportProgress(30 + Math.round(((i + 1) / total) * 50));
+                    }
+
+                    await videoEncoder.flush();
+
+                    if (audioEncoder && selectedAudio) {
+                        const totalDuration = frames.reduce((acc, f) => acc + (f.durationMultiplier || 1) / fps, 0);
+                        const sampleRate = selectedAudio.sampleRate;
+                        const offlineCtx = new OfflineAudioContext(2, Math.max(1, Math.ceil(totalDuration * sampleRate)), sampleRate);
+                        
+                        for (const track of audioTracks) {
+                            try {
+                                const response = await fetch(track.url);
+                                const arrayBuffer = await response.arrayBuffer();
+                                const audioBuffer = await offlineCtx.decodeAudioData(arrayBuffer);
+                                
+                                const source = offlineCtx.createBufferSource();
+                                source.buffer = audioBuffer;
+                                
+                                const gainNode = offlineCtx.createGain();
+                                gainNode.gain.value = track.volume;
+                                
+                                if ((track.fadeIn ?? 0) > 0) {
+                                    gainNode.gain.setValueAtTime(0, track.startTime);
+                                    gainNode.gain.linearRampToValueAtTime(track.volume, track.startTime + (track.fadeIn ?? 0));
+                                }
+                                if ((track.fadeOut ?? 0) > 0) {
+                                    gainNode.gain.setValueAtTime(track.volume, track.startTime + track.duration - (track.fadeOut ?? 0));
+                                    gainNode.gain.linearRampToValueAtTime(0, track.startTime + track.duration);
+                                }
+                                
+                                source.connect(gainNode);
+                                gainNode.connect(offlineCtx.destination);
+                                source.start(track.startTime, track.offset, track.duration);
+                            } catch (e) {
+                                console.error("Audio mixing error", e);
+                            }
+                        }
+                        
+                        const renderedBuffer = await offlineCtx.startRendering();
+                        const channelData0 = renderedBuffer.getChannelData(0);
+                        const channelData1 = renderedBuffer.getChannelData(1);
+                        const bufferSize = 1024 * 8;
+                        
+                        for (let i = 0; i < renderedBuffer.length; i += bufferSize) {
+                            const size = Math.min(bufferSize, renderedBuffer.length - i);
+                            const interleaved = new Float32Array(size * 2);
+                            for (let j = 0; j < size; j++) {
+                                interleaved[j * 2] = channelData0[i + j];
+                                interleaved[j * 2 + 1] = channelData1[i + j];
+                            }
+                            
+                            const audioData = new AudioData({
+                                format: 'f32',
+                                sampleRate: sampleRate,
+                                numberOfFrames: size,
+                                numberOfChannels: 2,
+                                timestamp: (i / sampleRate) * 1000000,
+                                data: interleaved
+                            });
+                            audioEncoder.encode(audioData);
+                            audioData.close();
+                        }
+                        await audioEncoder.flush();
+                    }
+
+                    muxer.finalize();
+
+                    const { buffer } = muxer.target;
+                    const blob = new Blob([buffer], { type: 'video/mp4' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    setExportedFile({ url, name: `${projectName}.mp4`, blob });
+                    setIsExporting(false);
+                    setExportProgress(100);
+                    mp4ExportSuccess = true;
                 }
-                await audioEncoder.flush();
+            } catch (webcodecsError) {
+                console.warn("WebCodecs MP4 export failed or unsupported in this browser environment, falling back to MediaRecorder", webcodecsError);
             }
+        }
 
-            muxer.finalize();
+        // 2. Universal Fallback using MediaRecorder if WebCodecs was unsupported or threw an error
+        if (!mp4ExportSuccess) {
+            try {
+                const exportCanvas = document.createElement('canvas');
+                exportCanvas.width = exportWidth;
+                exportCanvas.height = exportHeight;
+                const ctx = exportCanvas.getContext('2d');
+                
+                if (!ctx) throw new Error("Could not create canvas context");
 
-            const { buffer } = muxer.target;
-            const blob = new Blob([buffer], { type: 'video/mp4' });
-            const url = URL.createObjectURL(blob);
-            
-            setExportedFile({ url, name: `${projectName}.mp4`, blob });
-            setIsExporting(false);
-            setExportProgress(100);
+                const stream = exportCanvas.captureStream(fps);
+                
+                let audioContext: AudioContext | null = null;
+                let destination: MediaStreamAudioDestinationNode | null = null;
+                
+                if (audioTracks.length > 0) {
+                    audioContext = new AudioContext();
+                    destination = audioContext.createMediaStreamDestination();
+                    const audioTrack = destination.stream.getAudioTracks()[0];
+                    if (audioTrack) {
+                        stream.addTrack(audioTrack);
+                    }
+                }
 
-        } catch (e: any) {
-            console.error("MP4 Export failed", e);
-            alert(t('errors.mp4Error'));
-            setIsExporting(false);
-            setIsExportModalOpen(false);
+                const mp4MimeTypes = [
+                    'video/mp4;codecs=avc1',
+                    'video/mp4;codecs=h264',
+                    'video/mp4;codecs=vp9',
+                    'video/mp4',
+                    'video/webm;codecs=vp9',
+                    'video/webm'
+                ];
+
+                const selectedMimeType = mp4MimeTypes.find(type => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) || 'video/webm';
+
+                const mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: selectedMimeType,
+                    videoBitsPerSecond: bitrateMap[quality]
+                });
+
+                const chunks: BlobPart[] = [];
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) chunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'video/mp4' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    setExportedFile({ url, name: `${projectName}.mp4`, blob });
+                    setIsExporting(false);
+                    setExportProgress(100);
+                };
+
+                mediaRecorder.start();
+
+                if (audioContext && destination) {
+                    for (const track of audioTracks) {
+                        try {
+                            const response = await fetch(track.url);
+                            const arrayBuffer = await response.arrayBuffer();
+                            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                            const source = audioContext.createBufferSource();
+                            source.buffer = audioBuffer;
+                            const gain = audioContext.createGain();
+                            gain.gain.value = track.volume;
+                            
+                            const startTime = audioContext.currentTime;
+                            
+                            if ((track.fadeIn ?? 0) > 0) {
+                                gain.gain.setValueAtTime(0, startTime + track.startTime);
+                                gain.gain.linearRampToValueAtTime(track.volume, startTime + track.startTime + (track.fadeIn ?? 0));
+                            }
+                            if ((track.fadeOut ?? 0) > 0) {
+                                gain.gain.setValueAtTime(track.volume, startTime + track.startTime + track.duration - (track.fadeOut ?? 0));
+                                gain.gain.linearRampToValueAtTime(0, startTime + track.startTime + track.duration);
+                            }
+                            
+                            source.connect(gain);
+                            gain.connect(destination);
+                            source.start(startTime + track.startTime, track.offset, track.duration);
+                        } catch (e) {
+                            console.error("Audio mixing error in MP4 fallback", e);
+                        }
+                    }
+                }
+
+                for (let i = 0; i < compositeFrames.length; i++) {
+                    if (isExportCancelledRef.current) {
+                        mediaRecorder.stop();
+                        setIsExporting(false);
+                        return;
+                    }
+                    const img = new Image();
+                    await new Promise<void>((resolve) => {
+                        img.onload = () => resolve();
+                        img.src = compositeFrames[i];
+                    });
+                    
+                    ctx.clearRect(0, 0, exportWidth, exportHeight);
+                    if (transparent) {
+                        // transparent canvas
+                    } else if (background.type === 'gradient3' && background.gradientColors) {
+                        const gradient = ctx.createLinearGradient(0, 0, exportWidth, exportHeight);
+                        gradient.addColorStop(0, background.gradientColors[0]);
+                        gradient.addColorStop(0.5, background.gradientColors[1]);
+                        gradient.addColorStop(1, background.gradientColors[2]);
+                        ctx.fillStyle = gradient;
+                        ctx.fillRect(0, 0, exportWidth, exportHeight);
+                    } else if (background.color !== 'transparent') {
+                        ctx.fillStyle = background.color;
+                        ctx.fillRect(0, 0, exportWidth, exportHeight);
+                    } else {
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(0, 0, exportWidth, exportHeight);
+                    }
+                    ctx.drawImage(img, 0, 0, exportWidth, exportHeight);
+                    
+                    await new Promise(r => setTimeout(r, 1000 / fps));
+                    setExportProgress(30 + Math.round(((i + 1) / total) * 70));
+                }
+
+                await new Promise(r => setTimeout(r, 200));
+                mediaRecorder.stop();
+
+            } catch (fallbackErr: any) {
+                console.error("MP4 Fallback export failed", fallbackErr);
+                alert(t('errors.mp4Error'));
+                setIsExporting(false);
+                setIsExportModalOpen(false);
+            }
         }
     } else if (format === 'gif') {
       try {
@@ -1278,6 +1612,7 @@ export default function App() {
           lastModified: Date.now(),
           thumbnailUrl: thumb,
           type: projectType,
+          folderId: folderId,
           canvasSize,
           background,
           backgroundImage,
@@ -1369,6 +1704,7 @@ export default function App() {
         setProjectId(data.id);
         setProjectName(data.name);
         setProjectType(data.type || 'animation');
+        setFolderId(data.folderId || null);
         setCanvasSize(data.canvasSize);
         setBackground(data.background || { type: 'color', color: '#ffffff' });
         setBackgroundImage(data.backgroundImage || null);
@@ -1393,12 +1729,13 @@ export default function App() {
       }
   };
 
-  const createNewProject = async (type: 'animation' | 'painting' = 'animation') => {
+  const createNewProject = async (type: 'animation' | 'painting' = 'animation', targetFolderId: string | null = currentFolderId) => {
       clearAudio();
       const pid = crypto.randomUUID();
       setProjectId(pid);
       setProjectName(type === 'animation' ? t('menu.newProject') : t('menu.newPainting', 'New Painting'));
       setProjectType(type);
+      setFolderId(targetFolderId || null);
       setCanvasSize({ width: 800, height: 600 });
       setBackground({ type: 'color', color: '#ffffff' });
       const defaultL = [createDefaultLayer('1', `${t('layers.newLayer')} 1`)];
@@ -2222,65 +2559,492 @@ export default function App() {
       />
 
       {view === 'menu' ? (
-        <div className="flex flex-col h-full p-6 overflow-hidden">
-             <div className="mb-8 flex justify-between items-end">
-                  <div>
-                    <h1 className="text-3xl font-bold mb-2">{t('menu.myAnimations')}</h1>
-                    <p className="text-gray-400">{t('menu.myAnimationsDesc')}</p>
-                    <div className="flex gap-4 items-center mt-4">
-                         <button 
-                            onClick={() => setIsGlobalSettingsOpen(true)}
-                            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full transition-colors font-bold text-sm"
+        <div className="flex flex-col h-full p-6 md:p-8 overflow-hidden max-w-7xl mx-auto w-full">
+          {/* Header section */}
+          <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#FF3B30] to-purple-600 flex items-center justify-center text-white shadow-lg">
+                  <Icons.Clapperboard size={22} />
+                </div>
+                <div>
+                  <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+                    {t('menu.myAnimations', 'ClipAnim Workspace')}
+                  </h1>
+                  <p className="text-xs md:text-sm text-gray-400">
+                    {t('menu.myAnimationsDesc', 'Organize your animations, paintings, and creative folders')}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions & Search */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Search Bar */}
+              <div className="relative flex-1 min-w-[200px] max-w-xs">
+                <Icons.Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={homeSearchQuery}
+                  onChange={(e) => setHomeSearchQuery(e.target.value)}
+                  placeholder={t('menu.searchPlaceholder', 'Search projects & folders...')}
+                  className="w-full bg-gray-800/80 border border-gray-700/80 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-[var(--accent-color)] transition-colors"
+                />
+                {homeSearchQuery && (
+                  <button
+                    onClick={() => setHomeSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                  >
+                    <Icons.X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Create Folder Button */}
+              <button
+                onClick={() => {
+                  setEditingFolder(null);
+                  setIsFolderModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700/80 text-white px-3.5 py-2 rounded-xl transition-all font-bold text-xs shadow-sm hover:border-gray-600"
+              >
+                <Icons.FolderPlus size={16} className="text-blue-400" />
+                <span>{t('folders.newFolder', 'New Folder')}</span>
+              </button>
+
+              <button
+                onClick={() => setIsGlobalSettingsOpen(true)}
+                className="p-2 bg-gray-800 hover:bg-gray-700 border border-gray-700/80 rounded-xl text-gray-300 hover:text-white transition-colors"
+                title={t('timeline.settings')}
+              >
+                <Icons.Settings size={18} />
+              </button>
+
+              <button
+                onClick={() => setIsChangelogOpen(true)}
+                className="p-2 bg-gray-800 hover:bg-gray-700 border border-gray-700/80 rounded-xl text-gray-300 hover:text-white transition-colors"
+                title={t('changelog.fullChangelog')}
+              >
+                <Icons.FileJson size={18} />
+              </button>
+            </div>
+          </div>
+
+          {/* Breadcrumb Navigation Bar (when inside a folder) */}
+          {currentFolder ? (
+            <div className="mb-6 p-4 rounded-2xl bg-gray-800/60 border border-gray-700/80 flex items-center justify-between gap-4 backdrop-blur-md">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setCurrentFolderId(null)}
+                  className="p-2 rounded-xl bg-gray-700/60 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-bold"
+                >
+                  <Icons.ChevronLeft size={16} />
+                  <span>{t('folders.allFiles', 'All Workspace Items')}</span>
+                </button>
+                <span className="text-gray-600">/</span>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white shadow-sm"
+                    style={{ backgroundColor: `${currentFolder.color || '#007AFF'}30`, color: currentFolder.color || '#007AFF' }}
+                  >
+                    <Icons.FolderOpen size={16} />
+                  </div>
+                  <h2 className="font-bold text-base text-white">{currentFolder.name}</h2>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-300 font-mono">
+                    {displayProjects.length} {displayProjects.length === 1 ? 'item' : 'items'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setEditingFolder(currentFolder);
+                    setIsFolderModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-gray-700/60 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors text-xs font-medium flex items-center gap-1"
+                >
+                  <Icons.Edit2 size={14} />
+                  <span>Edit</span>
+                </button>
+                <button
+                  onClick={() => setFolderToDelete(currentFolder)}
+                  className="px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors text-xs font-medium flex items-center gap-1"
+                >
+                  <Icons.Trash2 size={14} />
+                  <span>Delete</span>
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Category Filter Tabs */}
+          <div className="mb-6 flex items-center gap-2 border-b border-gray-800 pb-3 overflow-x-auto">
+            <button
+              onClick={() => setHomeFilter('all')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                homeFilter === 'all'
+                  ? 'bg-white text-black shadow-md'
+                  : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+            >
+              <Icons.LayoutGrid size={14} />
+              <span>{t('menu.allTypes', 'All Items')}</span>
+              <span className="ml-1 text-[10px] opacity-70 bg-black/10 px-1.5 py-0.5 rounded-full font-mono">
+                {savedProjects.length + folders.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setHomeFilter('animations')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                homeFilter === 'animations'
+                  ? 'bg-[#FF3B30] text-white shadow-md'
+                  : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+            >
+              <Icons.Film size={14} className={homeFilter === 'animations' ? 'text-white' : 'text-[#FF3B30]'} />
+              <span>{t('menu.animations', 'Animations')}</span>
+              <span className="ml-1 text-[10px] opacity-70 bg-black/20 px-1.5 py-0.5 rounded-full font-mono">
+                {totalAnimationsCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setHomeFilter('paintings')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                homeFilter === 'paintings'
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+            >
+              <Icons.Palette size={14} className={homeFilter === 'paintings' ? 'text-white' : 'text-purple-400'} />
+              <span>{t('menu.paintings', 'Paintings & Art')}</span>
+              <span className="ml-1 text-[10px] opacity-70 bg-black/20 px-1.5 py-0.5 rounded-full font-mono">
+                {totalPaintingsCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setHomeFilter('folders')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                homeFilter === 'folders'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+            >
+              <Icons.Folder size={14} className={homeFilter === 'folders' ? 'text-white' : 'text-blue-400'} />
+              <span>{t('menu.folders', 'Folders')}</span>
+              <span className="ml-1 text-[10px] opacity-70 bg-black/20 px-1.5 py-0.5 rounded-full font-mono">
+                {folders.length}
+              </span>
+            </button>
+          </div>
+
+          <input ref={importFileRef} type="file" accept=".json" onChange={handleImportProjectFile} className="hidden" />
+
+          {/* Main Content Scroll Area */}
+          <div className="flex-1 overflow-y-auto pb-12 pr-1 space-y-8">
+            {/* FOLDERS SECTION */}
+            {displayFolders.length > 0 && (homeFilter === 'all' || homeFilter === 'folders') && currentFolderId === null && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                    <Icons.Folder size={14} className="text-blue-400" />
+                    <span>{t('menu.foldersHeader', 'Folders')} ({displayFolders.length})</span>
+                  </h3>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {displayFolders.map((folder) => {
+                    const itemsInFolder = savedProjects.filter(p => p.folderId === folder.id);
+                    const animsInFolder = itemsInFolder.filter(p => p.type !== 'painting').length;
+                    const paintingsInFolder = itemsInFolder.filter(p => p.type === 'painting').length;
+
+                    return (
+                      <div
+                        key={folder.id}
+                        onClick={() => setCurrentFolderId(folder.id)}
+                        className="group bg-[#1e1e1e] hover:bg-[#252525] border border-gray-800 hover:border-blue-500/50 rounded-2xl p-4 cursor-pointer transition-all shadow-md hover:shadow-xl relative flex flex-col justify-between min-h-[110px]"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md transition-transform group-hover:scale-110 shrink-0"
+                              style={{ backgroundColor: `${folder.color || '#007AFF'}25`, color: folder.color || '#007AFF' }}
+                            >
+                              <Icons.Folder size={22} />
+                            </div>
+                            <div className="overflow-hidden">
+                              <h4 className="font-bold text-white text-sm truncate group-hover:text-blue-400 transition-colors">
+                                {folder.name}
+                              </h4>
+                              <span className="text-[10px] text-gray-400 font-medium block">
+                                {itemsInFolder.length} {itemsInFolder.length === 1 ? 'item' : 'items'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Options dropdown */}
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingFolder(folder);
+                                setIsFolderModalOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white"
+                              title="Edit Folder"
+                            >
+                              <Icons.Edit2 size={13} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFolderToDelete(folder);
+                              }}
+                              className="p-1.5 rounded-lg bg-gray-800 hover:bg-red-600 text-gray-300 hover:text-white"
+                              title="Delete Folder"
+                            >
+                              <Icons.Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-3 border-t border-gray-800/80 text-[10px] text-gray-400">
+                          <span className="flex items-center gap-1 text-[#FF3B30]">
+                            <Icons.Film size={10} />
+                            {animsInFolder}
+                          </span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1 text-purple-400">
+                            <Icons.Palette size={10} />
+                            {paintingsInFolder}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* PROJECTS SECTION */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                  <Icons.LayoutGrid size={14} className="text-[var(--accent-color)]" />
+                  <span>{t('menu.projectsHeader', 'Projects')} ({displayProjects.length})</span>
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {/* Creation Quick Action Cards (only show if not searching) */}
+                {!homeSearchQuery && (
+                  <>
+                    {/* New Animation Button */}
+                    <button
+                      onClick={() => createNewProject('animation')}
+                      className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-800 hover:border-[#FF3B30] hover:bg-[#FF3B30]/5 flex flex-col items-center justify-center group transition-all p-4 text-center"
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-[#FF3B30]/20 flex items-center justify-center text-[#FF3B30] mb-2.5 group-hover:scale-110 transition-transform shadow-md">
+                        <Icons.Clapperboard size={24} />
+                      </div>
+                      <span className="font-bold text-xs text-gray-200 group-hover:text-white">{t('menu.newProject', 'New Animation')}</span>
+                      <span className="text-[10px] text-gray-500 mt-0.5">Multi-frame timeline</span>
+                    </button>
+
+                    {/* New Painting Button */}
+                    <button
+                      onClick={() => createNewProject('painting')}
+                      className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-800 hover:border-purple-500 hover:bg-purple-500/5 flex flex-col items-center justify-center group transition-all p-4 text-center"
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-purple-500/20 flex items-center justify-center text-purple-500 mb-2.5 group-hover:scale-110 transition-transform shadow-md">
+                        <Icons.Palette size={24} />
+                      </div>
+                      <span className="font-bold text-xs text-gray-200 group-hover:text-white">{t('menu.newPainting', 'New Painting')}</span>
+                      <span className="text-[10px] text-gray-500 mt-0.5">Single canvas artwork</span>
+                    </button>
+
+                    {/* Import Button */}
+                    <button
+                      onClick={() => importFileRef.current?.click()}
+                      className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-800 hover:border-blue-500 hover:bg-blue-500/5 flex flex-col items-center justify-center group transition-all p-4 text-center"
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-blue-500/20 flex items-center justify-center text-blue-500 mb-2.5 group-hover:scale-110 transition-transform shadow-md">
+                        <Icons.Upload size={24} />
+                      </div>
+                      <span className="font-bold text-xs text-gray-200 group-hover:text-white">{t('menu.importProject', 'Import File')}</span>
+                      <span className="text-[10px] text-gray-500 mt-0.5">JSON project file</span>
+                    </button>
+                  </>
+                )}
+
+                {/* PROJECT CARDS */}
+                {displayProjects.map((project) => {
+                  const isPainting = project.type === 'painting';
+                  const projectFolderObj = folders.find(f => f.id === project.folderId);
+
+                  return (
+                    <div
+                      key={project.id}
+                      onClick={() => loadProject(project.id)}
+                      className={`relative group aspect-[4/3] bg-[#1e1e1e] rounded-2xl overflow-hidden cursor-pointer border border-gray-800 hover:border-gray-600 transition-all shadow-lg hover:shadow-2xl ${
+                        isPainting ? 'hover:ring-2 ring-purple-500/80' : 'hover:ring-2 ring-[#FF3B30]/80'
+                      }`}
+                    >
+                      {/* Thumbnail Preview */}
+                      {project.thumbnailUrl ? (
+                        <img
+                          src={project.thumbnailUrl}
+                          alt={project.name}
+                          className="w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-opacity"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-[radial-gradient(#2a2a2a_1px,transparent_1px)] [background-size:12px_12px] bg-[#141414] flex items-center justify-center text-gray-700">
+                          {isPainting ? <Icons.Palette size={40} /> : <Icons.Clapperboard size={40} />}
+                        </div>
+                      )}
+
+                      {/* DISTINCT TYPE BADGE (Top Left) */}
+                      <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10">
+                        {isPainting ? (
+                          <span className="bg-purple-600/95 text-white font-bold text-[10px] px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md backdrop-blur-sm border border-purple-400/40">
+                            <Icons.Palette size={12} />
+                            <span>Painting</span>
+                          </span>
+                        ) : (
+                          <span className="bg-[#FF3B30]/95 text-white font-bold text-[10px] px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md backdrop-blur-sm border border-red-400/40">
+                            <Icons.Film size={12} />
+                            <span>Animation</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Top Right Action Buttons (Move Folder & Delete) */}
+                      <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 z-10 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMovingProject(project);
+                          }}
+                          className="p-1.5 bg-black/70 hover:bg-blue-600 text-white rounded-lg backdrop-blur-sm transition-colors shadow-md"
+                          title={t('folders.moveToFolder', 'Move to Folder')}
                         >
-                            <Icons.Settings size={16} />
-                            {t('timeline.settings')}
+                          <Icons.FolderOutput size={14} />
                         </button>
-                        <button 
-                            onClick={() => setIsChangelogOpen(true)}
-                            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full transition-colors font-bold text-sm"
+                        <button
+                          onClick={(e) => deleteProject(e, project.id)}
+                          className="p-1.5 bg-black/70 hover:bg-red-600 text-white rounded-lg backdrop-blur-sm transition-colors shadow-md"
+                          title={t('tooltips.deleteProject')}
                         >
-                            <Icons.FileJson size={16} />
-                            {t('changelog.fullChangelog')}
+                          <Icons.Trash2 size={14} />
                         </button>
-                        <a href="https://github.com/PLOWPDUD/ClipAnim-Creator" target="_blank" rel="noopener noreferrer" className="inline-block text-xs font-bold text-[var(--accent-color)] hover:opacity-80 transition-opacity bg-white/5 px-3 py-1.5 rounded-full border border-[var(--accent-color)]/20">{t('app.openSource')}</a>
+                      </div>
+
+                      {/* Bottom Info Gradient Bar */}
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-3.5 pt-10 flex flex-col justify-end">
+                        <h3 className="font-bold text-sm text-white truncate group-hover:text-[var(--accent-color)] transition-colors">
+                          {project.name}
+                        </h3>
+
+                        <div className="flex items-center justify-between text-[10px] text-gray-400 mt-1">
+                          <span>{new Date(project.lastModified).toLocaleDateString()}</span>
+
+                          {/* Details or Folder Tag */}
+                          {projectFolderObj && currentFolderId === null ? (
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCurrentFolderId(projectFolderObj.id);
+                              }}
+                              className="flex items-center gap-1 text-blue-400 hover:text-blue-300 font-medium px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20"
+                            >
+                              <Icons.Folder size={10} />
+                              <span className="truncate max-w-[80px]">{projectFolderObj.name}</span>
+                            </span>
+                          ) : isPainting ? (
+                            <span className="text-purple-300 font-mono">Single Frame</span>
+                          ) : (
+                            <span className="text-red-300 font-mono">
+                              {project.frameCount || 1} {project.frameCount === 1 ? 'frame' : 'frames'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                 </div>
-                 <input ref={importFileRef} type="file" accept=".json" onChange={handleImportProjectFile} className="hidden" />
-             </div>
-             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-10">
-                 <button onClick={() => createNewProject('animation')} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-[#FF3B30] hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
-                     <div className="w-16 h-16 rounded-full bg-[#FF3B30]/20 flex items-center justify-center text-[#FF3B30] mb-3 group-hover:scale-110 transition-transform"><Icons.Plus size={32} /></div>
-                     <span className="font-bold text-gray-300 group-hover:text-white">{t('menu.newProject')}</span>
-                 </button>
-                 <button onClick={() => createNewProject('painting')} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-purple-500 hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
-                     <div className="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-500 mb-3 group-hover:scale-110 transition-transform"><Icons.Brush size={32} /></div>
-                     <span className="font-bold text-gray-300 group-hover:text-white">{t('menu.newPainting', 'New Painting')}</span>
-                 </button>
-                 <button onClick={() => importFileRef.current?.click()} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-700 hover:border-blue-500 hover:bg-white/5 flex flex-col items-center justify-center group transition-all">
-                     <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-500 mb-3 group-hover:scale-110 transition-transform"><Icons.Upload size={32} /></div>
-                     <span className="font-bold text-gray-300 group-hover:text-white">{t('menu.importProject')}</span>
-                 </button>
-                 {savedProjects.map(project => (
-                     <div key={project.id} onClick={() => loadProject(project.id)} className="relative group aspect-[4/3] bg-[#1e1e1e] rounded-2xl overflow-hidden cursor-pointer hover:ring-2 ring-[var(--accent-color)] transition-all shadow-lg">
-                         {project.thumbnailUrl ? ( <img src={project.thumbnailUrl} alt={project.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" /> ) : ( <div className="w-full h-full flex items-center justify-center text-gray-700"><Icons.Image size={48} /></div> )}
-                         <div className="absolute top-2 left-2 p-1.5 bg-black/60 backdrop-blur-sm rounded-lg text-white">
-                             {(project.type === 'painting') ? <Icons.Brush size={14} /> : <Icons.Video size={14} />}
-                         </div>
-                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-4 pt-12">
-                             <h3 className="font-bold truncate">{project.name}</h3>
-                             <p className="text-[10px] text-gray-400">{new Date(project.lastModified).toLocaleDateString()}</p>
-                         </div>
-                         <button 
-                            onClick={(e) => deleteProject(e, project.id)} 
-                            className="absolute top-2 right-2 p-2 bg-black/60 hover:bg-red-600 text-white rounded-full opacity-100 transition-opacity z-10"
-                            title={t('tooltips.deleteProject')}
-                          >
-                            <Icons.Trash2 size={16} />
-                          </button>
-                     </div>
-                 ))}
-             </div>
-             {isLoading && <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center backdrop-blur-sm"><Icons.Loader2 className="w-12 h-12 text-[var(--accent-color)] animate-spin" /></div>}
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {isLoading && (
+            <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center backdrop-blur-sm">
+              <Icons.Loader2 className="w-12 h-12 text-[var(--accent-color)] animate-spin" />
+            </div>
+          )}
+
+          {/* Folder Modal for Create/Edit */}
+          <FolderModal
+            isOpen={isFolderModalOpen}
+            onClose={() => setIsFolderModalOpen(false)}
+            onSave={handleCreateOrUpdateFolder}
+            initialName={editingFolder?.name || ''}
+            initialColor={editingFolder?.color || '#007AFF'}
+            isEditing={!!editingFolder}
+          />
+
+          {/* Move Project to Folder Modal */}
+          <MoveToFolderModal
+            isOpen={movingProject !== null}
+            onClose={() => setMovingProject(null)}
+            projectName={movingProject?.name || ''}
+            currentFolderId={movingProject?.folderId || null}
+            folders={folders}
+            onMove={(targetFolderId) => {
+              if (movingProject) {
+                handleMoveProjectToFolder(movingProject.id, targetFolderId);
+              }
+            }}
+            onCreateNewFolder={() => {
+              setEditingFolder(null);
+              setIsFolderModalOpen(true);
+            }}
+          />
+
+          {/* Delete Folder Confirm Dialog */}
+          {folderToDelete && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
+              <div className="bg-[#1e1e1e] border border-gray-700/80 rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-500/20 text-red-500 flex items-center justify-center">
+                    <Icons.Trash2 size={22} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-white">Delete Folder?</h3>
+                    <p className="text-xs text-gray-400">Projects inside will be kept safely in your workspace home.</p>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-300 font-medium">
+                  Are you sure you want to delete <span className="text-white font-bold">"{folderToDelete.name}"</span>?
+                </p>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    onClick={() => setFolderToDelete(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-gray-300 bg-gray-800 hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleDeleteFolder(folderToDelete)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 shadow-md"
+                  >
+                    Delete Folder
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div key={projectId} className="flex flex-col h-full overflow-hidden relative">
@@ -2570,6 +3334,11 @@ export default function App() {
           frameCount={frames.length}
           fps={fps}
           exportedFile={exportedFile}
+          frames={frames}
+          layers={layers}
+          canvasSize={canvasSize}
+          background={background}
+          backgroundImage={backgroundImage}
         />
       )}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />

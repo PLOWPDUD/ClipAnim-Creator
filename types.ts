@@ -133,12 +133,21 @@ export interface AppState {
   motionPaths: MotionPath[];
 }
 
+export interface ProjectFolder {
+    id: string;
+    name: string;
+    color?: string;
+    createdAt: number;
+}
+
 export interface ProjectMeta {
     id: string;
     name: string;
     lastModified: number;
     thumbnailUrl: string;
     type?: 'animation' | 'painting';
+    folderId?: string | null;
+    frameCount?: number;
 }
 
 export interface ProjectData {
@@ -147,6 +156,7 @@ export interface ProjectData {
     lastModified: number;
     thumbnailUrl: string;
     type?: 'animation' | 'painting';
+    folderId?: string | null;
     canvasSize: { width: number; height: number };
     background: BackgroundSettings;
     backgroundImage: string | null;
