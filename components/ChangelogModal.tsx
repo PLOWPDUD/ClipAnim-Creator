@@ -12,6 +12,19 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.2',
+    date: '2026-08-13',
+    type: 'minor',
+    changes: [
+      'Workspace Folder System: Create, edit, rename, color-code, and delete custom folders to organize your projects',
+      'Move Projects to Folders: Easily organize animations and paintings into custom workspace folders',
+      'Distinct Visual Categorization: Dedicated badges, icons (Film vs Palette), and hover styling for multi-frame animations and single-frame paintings',
+      'Workspace Search & Category Filters: Real-time search bar and filter tabs (All Items, Animations, Paintings, Folders)',
+      'Firefox & Cross-Browser MP4 Export Fix: Multi-codec WebCodecs support (H.264, VP9, AV1) with Opus audio encoding fallback for Firefox',
+      'MP4 Encoder Stability Fix: Resolved WebCodecs chunk duration error for error-free MP4 exports across all browsers'
+    ]
+  },
+  {
     version: '1.3.1',
     date: '2026-05-20',
     type: 'minor',
