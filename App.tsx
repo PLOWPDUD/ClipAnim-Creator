@@ -133,12 +133,20 @@ export default function App() {
   const [folders, setFolders] = useState<ProjectFolder[]>(() => {
     try {
       const saved = localStorage.getItem('clipanim_folders');
-      return saved ? JSON.parse(saved) : [
+      const parsed = saved ? JSON.parse(saved) : [
         { id: 'folder-animations', name: 'Animations', color: '#FF3B30', createdAt: Date.now() - 1000 },
-        { id: 'folder-paintings', name: 'Paintings & Art', color: '#AF52DE', createdAt: Date.now() }
+        { id: 'folder-paintings', name: 'Paintings & Art', color: '#AF52DE', createdAt: Date.now() - 500 }
       ];
+      if (!parsed.some((f: any) => f.id === 'folder-paint-example')) {
+        parsed.push({ id: 'folder-paint-example', name: 'Paint Example', color: '#34C759', createdAt: Date.now() });
+      }
+      return parsed;
     } catch {
-      return [];
+      return [
+        { id: 'folder-animations', name: 'Animations', color: '#FF3B30', createdAt: Date.now() - 1000 },
+        { id: 'folder-paintings', name: 'Paintings & Art', color: '#AF52DE', createdAt: Date.now() - 500 },
+        { id: 'folder-paint-example', name: 'Paint Example', color: '#34C759', createdAt: Date.now() }
+      ];
     }
   });
 
@@ -149,6 +157,8 @@ export default function App() {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [homeFilter, setHomeFilter] = useState<'all' | 'animations' | 'paintings' | 'folders'>('all');
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
+  const [homeSortBy, setHomeSortBy] = useState<'date' | 'name' | 'type'>('date');
+  const [homeSortOrder, setHomeSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Folder Modals
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
@@ -266,7 +276,7 @@ export default function App() {
   const totalPaintingsCount = useMemo(() => savedProjects.filter(p => p.type === 'painting').length, [savedProjects]);
 
   const displayProjects = useMemo(() => {
-    let list = savedProjects;
+    let list = [...savedProjects];
 
     // Filter by current folder if inside one
     if (currentFolderId !== null) {
@@ -286,20 +296,52 @@ export default function App() {
       list = list.filter(p => p.name.toLowerCase().includes(q));
     }
 
+    // Sort
+    list.sort((a, b) => {
+      if (homeSortBy === 'date') {
+        const valA = a.lastModified || 0;
+        const valB = b.lastModified || 0;
+        return homeSortOrder === 'desc' ? valB - valA : valA - valB;
+      } else if (homeSortBy === 'name') {
+        const cmp = a.name.localeCompare(b.name);
+        return homeSortOrder === 'desc' ? -cmp : cmp;
+      } else if (homeSortBy === 'type') {
+        const typeA = a.type === 'painting' ? 'Painting' : 'Animation';
+        const typeB = b.type === 'painting' ? 'Painting' : 'Animation';
+        const cmp = typeA.localeCompare(typeB);
+        if (cmp !== 0) return homeSortOrder === 'desc' ? -cmp : cmp;
+        return a.name.localeCompare(b.name);
+      }
+      return 0;
+    });
+
     return list;
-  }, [savedProjects, currentFolderId, homeFilter, homeSearchQuery]);
+  }, [savedProjects, currentFolderId, homeFilter, homeSearchQuery, homeSortBy, homeSortOrder]);
 
   const displayFolders = useMemo(() => {
     if (currentFolderId !== null && homeFilter !== 'folders') {
       return [];
     }
-    let list = folders;
+    let list = [...folders];
     if (homeSearchQuery.trim()) {
       const q = homeSearchQuery.toLowerCase();
       list = list.filter(f => f.name.toLowerCase().includes(q));
     }
+
+    // Sort folders
+    list.sort((a, b) => {
+      if (homeSortBy === 'name') {
+        const cmp = a.name.localeCompare(b.name);
+        return homeSortOrder === 'desc' ? -cmp : cmp;
+      } else {
+        const valA = a.createdAt || 0;
+        const valB = b.createdAt || 0;
+        return homeSortOrder === 'desc' ? valB - valA : valA - valB;
+      }
+    });
+
     return list;
-  }, [folders, currentFolderId, homeFilter, homeSearchQuery]);
+  }, [folders, currentFolderId, homeFilter, homeSearchQuery, homeSortBy, homeSortOrder]);
   
   // Auto-saver states (saves every 5 minutes = 300 seconds)
   const [autoSaveTimer, setAutoSaveTimer] = useState<number>(300);
@@ -363,6 +405,7 @@ export default function App() {
 
   const importFileRef = useRef<HTMLInputElement>(null);
   const importIntoSelectionRef = useRef<HTMLInputElement>(null);
+  const importGeneralImageRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef<number | undefined>(undefined);
   const startTimeRef = useRef<number>(0);
   const scrubTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -394,6 +437,60 @@ export default function App() {
   useEffect(() => {
       const fetchProjects = async () => {
           try {
+              if (!localStorage.getItem('clipanim_seeded_paint_example_v3')) {
+                  const canvas = document.createElement('canvas');
+                  canvas.width = 800;
+                  canvas.height = 600;
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                      ctx.fillStyle = '#012169';
+                      ctx.fillRect(0, 0, 800, 600);
+                      ctx.strokeStyle = '#ffffff';
+                      ctx.lineWidth = 120;
+                      ctx.beginPath();
+                      ctx.moveTo(0, 0); ctx.lineTo(800, 600);
+                      ctx.moveTo(800, 0); ctx.lineTo(0, 600);
+                      ctx.stroke();
+                      ctx.strokeStyle = '#C8102E';
+                      ctx.lineWidth = 80;
+                      ctx.beginPath();
+                      ctx.moveTo(0, 0); ctx.lineTo(800, 600);
+                      ctx.moveTo(800, 0); ctx.lineTo(0, 600);
+                      ctx.stroke();
+                      ctx.strokeStyle = '#ffffff';
+                      ctx.lineWidth = 160;
+                      ctx.beginPath();
+                      ctx.moveTo(400, 0); ctx.lineTo(400, 600);
+                      ctx.moveTo(0, 300); ctx.lineTo(800, 300);
+                      ctx.stroke();
+                      ctx.strokeStyle = '#C8102E';
+                      ctx.lineWidth = 100;
+                      ctx.beginPath();
+                      ctx.moveTo(400, 0); ctx.lineTo(400, 600);
+                      ctx.moveTo(0, 300); ctx.lineTo(800, 300);
+                      ctx.stroke();
+                  }
+                  const dataUrl = canvas.toDataURL();
+                  const exampleProject = {
+                      id: "345b4349-9a37-4252-b6d1-44ead85c868e",
+                      name: "Union Jack - Painting Example",
+                      lastModified: Date.now(),
+                      thumbnailUrl: dataUrl,
+                      type: 'painting' as const,
+                      folderId: 'folder-paint-example',
+                      canvasSize: { width: 800, height: 600 },
+                      background: { type: 'color' as const, color: '#ffffff' },
+                      backgroundImage: null,
+                      layers: [{ id: '1', name: 'New Layer 1', isVisible: true, isLocked: false, opacity: 1, blendMode: 'source-over' as GlobalCompositeOperation }],
+                      frames: [{ id: '11fe5d90-9470-4bb6-95e3-7ed5f2db6fb9', layers: { '1': dataUrl } }],
+                      fps: 12,
+                      audioTracks: [],
+                      motionPaths: [],
+                      onionSkinSettings: { beforeColor: '#FF3B30', afterColor: '#34C759', beforeOpacity: 0.3, afterOpacity: 0.3, numBefore: 1, numAfter: 1 }
+                  };
+                  await saveProjectToDB(exampleProject);
+                  localStorage.setItem('clipanim_seeded_paint_example_v3', 'true');
+              }
               const projects = await getProjectList();
               setSavedProjects(projects);
           } catch (e) {
@@ -1848,6 +1945,83 @@ export default function App() {
       else { setShowExitConfirm(false); setView('menu'); }
   };
 
+  useEffect(() => {
+    const handleWindowPaste = async (e: ClipboardEvent) => {
+      if (view !== 'editor') return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            e.preventDefault();
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const dataUrl = event.target?.result as string;
+              if (!dataUrl) return;
+
+              const img = new Image();
+              img.onload = () => {
+                const width = img.width;
+                const height = img.height;
+                let targetWidth = width;
+                let targetHeight = height;
+                const maxW = canvasSize.width * 0.8;
+                const maxH = canvasSize.height * 0.8;
+                if (targetWidth > maxW || targetHeight > maxH) {
+                  const scale = Math.min(maxW / targetWidth, maxH / targetHeight);
+                  targetWidth = Math.round(targetWidth * scale);
+                  targetHeight = Math.round(targetHeight * scale);
+                }
+                let finalDataUrl = dataUrl;
+                if (targetWidth !== width || targetHeight !== height) {
+                  const offCanvas = document.createElement('canvas');
+                  offCanvas.width = targetWidth;
+                  offCanvas.height = targetHeight;
+                  const offCtx = offCanvas.getContext('2d');
+                  if (offCtx) {
+                    offCtx.drawImage(img, 0, 0, targetWidth, targetHeight);
+                    finalDataUrl = offCanvas.toDataURL();
+                  }
+                }
+                const newX = (canvasSize.width - targetWidth) / 2;
+                const newY = (canvasSize.height - targetHeight) / 2;
+
+                if (selection) {
+                  handleSelectionCommit();
+                }
+
+                setSelection({
+                  x: newX,
+                  y: newY,
+                  width: targetWidth,
+                  height: targetHeight,
+                  dataUrl: finalDataUrl,
+                  rotation: 0,
+                  scaleX: 1,
+                  scaleY: 1,
+                  type: 'image',
+                  selectionType: 'rectangle'
+                });
+                setTool('select');
+                setHasUnsavedChanges(true);
+              };
+              img.src = dataUrl;
+            };
+            reader.readAsDataURL(blob);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handleWindowPaste);
+    return () => {
+      window.removeEventListener('paste', handleWindowPaste);
+    };
+  }, [view, canvasSize, selection]);
+
   const handleCopy = () => { if (selection) setClipboard(selection); };
   const handleCut = () => {
     if (selection) {
@@ -1857,6 +2031,73 @@ export default function App() {
     }
   };
   const handlePaste = async () => {
+    if (view !== 'editor') return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const imageType = item.types.find(type => type.startsWith('image/'));
+          if (imageType) {
+            const blob = await item.getType(imageType);
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const dataUrl = event.target?.result as string;
+              if (!dataUrl) return;
+              const img = new Image();
+              img.onload = () => {
+                const width = img.width;
+                const height = img.height;
+                let targetWidth = width;
+                let targetHeight = height;
+                const maxW = canvasSize.width * 0.8;
+                const maxH = canvasSize.height * 0.8;
+                if (targetWidth > maxW || targetHeight > maxH) {
+                  const scale = Math.min(maxW / targetWidth, maxH / targetHeight);
+                  targetWidth = Math.round(targetWidth * scale);
+                  targetHeight = Math.round(targetHeight * scale);
+                }
+                let finalDataUrl = dataUrl;
+                if (targetWidth !== width || targetHeight !== height) {
+                  const offCanvas = document.createElement('canvas');
+                  offCanvas.width = targetWidth;
+                  offCanvas.height = targetHeight;
+                  const offCtx = offCanvas.getContext('2d');
+                  if (offCtx) {
+                    offCtx.drawImage(img, 0, 0, targetWidth, targetHeight);
+                    finalDataUrl = offCanvas.toDataURL();
+                  }
+                }
+                const newX = (canvasSize.width - targetWidth) / 2;
+                const newY = (canvasSize.height - targetHeight) / 2;
+                if (selection) {
+                  handleSelectionCommit();
+                }
+                setSelection({
+                  x: newX,
+                  y: newY,
+                  width: targetWidth,
+                  height: targetHeight,
+                  dataUrl: finalDataUrl,
+                  rotation: 0,
+                  scaleX: 1,
+                  scaleY: 1,
+                  type: 'image',
+                  selectionType: 'rectangle'
+                });
+                setTool('select');
+                setHasUnsavedChanges(true);
+              };
+              img.src = dataUrl;
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Could not read clipboard via API:", err);
+    }
+
     if (clipboard) {
       if (selection) {
         await handleSelectionCommit();
@@ -1866,7 +2107,70 @@ export default function App() {
       setSelection({ ...clipboard, x: newX, y: newY });
       setTool('select');
       setHasUnsavedChanges(true);
+      return;
     }
+
+    // Fallback for mobile / browsers where clipboard API requires manual file pick
+    if (importGeneralImageRef.current) {
+      importGeneralImageRef.current.click();
+    }
+  };
+
+  const handleImportGeneralImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (!dataUrl) return;
+      const img = new Image();
+      img.onload = () => {
+        const width = img.width;
+        const height = img.height;
+        let targetWidth = width;
+        let targetHeight = height;
+        const maxW = canvasSize.width * 0.8;
+        const maxH = canvasSize.height * 0.8;
+        if (targetWidth > maxW || targetHeight > maxH) {
+          const scale = Math.min(maxW / targetWidth, maxH / targetHeight);
+          targetWidth = Math.round(targetWidth * scale);
+          targetHeight = Math.round(targetHeight * scale);
+        }
+        let finalDataUrl = dataUrl;
+        if (targetWidth !== width || targetHeight !== height) {
+          const offCanvas = document.createElement('canvas');
+          offCanvas.width = targetWidth;
+          offCanvas.height = targetHeight;
+          const offCtx = offCanvas.getContext('2d');
+          if (offCtx) {
+            offCtx.drawImage(img, 0, 0, targetWidth, targetHeight);
+            finalDataUrl = offCanvas.toDataURL();
+          }
+        }
+        const newX = (canvasSize.width - targetWidth) / 2;
+        const newY = (canvasSize.height - targetHeight) / 2;
+        if (selection) {
+          handleSelectionCommit();
+        }
+        setSelection({
+          x: newX,
+          y: newY,
+          width: targetWidth,
+          height: targetHeight,
+          dataUrl: finalDataUrl,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          type: 'image',
+          selectionType: 'rectangle'
+        });
+        setTool('select');
+        setHasUnsavedChanges(true);
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+    if (importGeneralImageRef.current) importGeneralImageRef.current.value = '';
   };
 
   const handleImportIntoSelection = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2678,67 +2982,94 @@ export default function App() {
             </div>
           ) : null}
 
-          {/* Category Filter Tabs */}
-          <div className="mb-6 flex items-center gap-2 border-b border-gray-800 pb-3 overflow-x-auto">
-            <button
-              onClick={() => setHomeFilter('all')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                homeFilter === 'all'
-                  ? 'bg-white text-black shadow-md'
-                  : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
-            >
-              <Icons.LayoutGrid size={14} />
-              <span>{t('menu.allTypes', 'All Items')}</span>
-              <span className="ml-1 text-[10px] opacity-70 bg-black/10 px-1.5 py-0.5 rounded-full font-mono">
-                {savedProjects.length + folders.length}
-              </span>
-            </button>
+          {/* Category Filter Tabs & Sorting */}
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800 pb-3">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+              <button
+                onClick={() => setHomeFilter('all')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                  homeFilter === 'all'
+                    ? 'bg-white text-black shadow-md'
+                    : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+              >
+                <Icons.LayoutGrid size={14} />
+                <span>{t('menu.allTypes', 'All Items')}</span>
+                <span className="ml-1 text-[10px] opacity-70 bg-black/10 px-1.5 py-0.5 rounded-full font-mono">
+                  {savedProjects.length + folders.length}
+                </span>
+              </button>
 
-            <button
-              onClick={() => setHomeFilter('animations')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                homeFilter === 'animations'
-                  ? 'bg-[#FF3B30] text-white shadow-md'
-                  : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
-            >
-              <Icons.Film size={14} className={homeFilter === 'animations' ? 'text-white' : 'text-[#FF3B30]'} />
-              <span>{t('menu.animations', 'Animations')}</span>
-              <span className="ml-1 text-[10px] opacity-70 bg-black/20 px-1.5 py-0.5 rounded-full font-mono">
-                {totalAnimationsCount}
-              </span>
-            </button>
+              <button
+                onClick={() => setHomeFilter('animations')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                  homeFilter === 'animations'
+                    ? 'bg-[#FF3B30] text-white shadow-md'
+                    : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+              >
+                <Icons.Film size={14} className={homeFilter === 'animations' ? 'text-white' : 'text-[#FF3B30]'} />
+                <span>{t('menu.animations', 'Animations')}</span>
+                <span className="ml-1 text-[10px] opacity-70 bg-black/20 px-1.5 py-0.5 rounded-full font-mono">
+                  {totalAnimationsCount}
+                </span>
+              </button>
 
-            <button
-              onClick={() => setHomeFilter('paintings')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                homeFilter === 'paintings'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
-            >
-              <Icons.Palette size={14} className={homeFilter === 'paintings' ? 'text-white' : 'text-purple-400'} />
-              <span>{t('menu.paintings', 'Paintings & Art')}</span>
-              <span className="ml-1 text-[10px] opacity-70 bg-black/20 px-1.5 py-0.5 rounded-full font-mono">
-                {totalPaintingsCount}
-              </span>
-            </button>
+              <button
+                onClick={() => setHomeFilter('paintings')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                  homeFilter === 'paintings'
+                    ? 'bg-purple-600 text-white shadow-md'
+                    : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+              >
+                <Icons.Palette size={14} className={homeFilter === 'paintings' ? 'text-white' : 'text-purple-400'} />
+                <span>{t('menu.paintings', 'Paintings & Art')}</span>
+                <span className="ml-1 text-[10px] opacity-70 bg-black/20 px-1.5 py-0.5 rounded-full font-mono">
+                  {totalPaintingsCount}
+                </span>
+              </button>
 
-            <button
-              onClick={() => setHomeFilter('folders')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                homeFilter === 'folders'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
-            >
-              <Icons.Folder size={14} className={homeFilter === 'folders' ? 'text-white' : 'text-blue-400'} />
-              <span>{t('menu.folders', 'Folders')}</span>
-              <span className="ml-1 text-[10px] opacity-70 bg-black/20 px-1.5 py-0.5 rounded-full font-mono">
-                {folders.length}
-              </span>
-            </button>
+              <button
+                onClick={() => setHomeFilter('folders')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                  homeFilter === 'folders'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+              >
+                <Icons.Folder size={14} className={homeFilter === 'folders' ? 'text-white' : 'text-blue-400'} />
+                <span>{t('menu.folders', 'Folders')}</span>
+                <span className="ml-1 text-[10px] opacity-70 bg-black/20 px-1.5 py-0.5 rounded-full font-mono">
+                  {folders.length}
+                </span>
+              </button>
+            </div>
+
+            {/* Sorting Controls */}
+            <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto">
+              <div className="flex items-center gap-1.5 bg-gray-800/80 border border-gray-700/80 rounded-xl px-3 py-1.5">
+                <Icons.ArrowUpDown size={14} className="text-gray-400" />
+                <span className="text-xs text-gray-400 font-medium">Sort by:</span>
+                <select
+                  value={homeSortBy}
+                  onChange={(e) => setHomeSortBy(e.target.value as 'date' | 'name' | 'type')}
+                  className="bg-transparent text-white text-xs font-bold focus:outline-none cursor-pointer"
+                >
+                  <option value="date" className="bg-[#1e1e1e]">Date Modified</option>
+                  <option value="name" className="bg-[#1e1e1e]">Name</option>
+                  <option value="type" className="bg-[#1e1e1e]">Type</option>
+                </select>
+              </div>
+
+              <button
+                onClick={() => setHomeSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                className="p-2 bg-gray-800/80 hover:bg-gray-700 border border-gray-700/80 rounded-xl text-gray-300 hover:text-white transition-colors flex items-center justify-center"
+                title={homeSortOrder === 'asc' ? 'Ascending' : 'Descending'}
+              >
+                {homeSortOrder === 'asc' ? <Icons.ArrowUp size={14} /> : <Icons.ArrowDown size={14} />}
+              </button>
+            </div>
           </div>
 
           <input ref={importFileRef} type="file" accept=".json" onChange={handleImportProjectFile} className="hidden" />
@@ -3092,7 +3423,7 @@ export default function App() {
                     <button onClick={() => importIntoSelectionRef.current?.click()} disabled={!selection} className={`p-2 rounded-full ${selection ? 'text-gray-400 hover:text-white' : 'text-gray-600'}`} title={t('tooltips.importIntoSelection')}><Icons.Image size={20} /></button>
                     <button onClick={handleCut} disabled={!selection} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.cut')}><Icons.Scissors size={20} /></button>
                     <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.copy')}><Icons.Copy size={20} /></button>
-                    <button onClick={handlePaste} disabled={!clipboard} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.paste')}><Icons.Clipboard size={20} /></button>
+                    <button onClick={handlePaste} className="p-2 rounded-full text-gray-400 hover:text-white" title={t('tooltips.paste')}><Icons.Clipboard size={20} /></button>
                     <button 
                       onClick={handleSelectionCommit} 
                       disabled={!selection} 
@@ -3507,6 +3838,13 @@ export default function App() {
         accept="image/*" 
         className="hidden" 
         onChange={handleImportIntoSelection}
+      />
+      <input 
+        ref={importGeneralImageRef}
+        type="file" 
+        accept="image/*" 
+        className="hidden" 
+        onChange={handleImportGeneralImage}
       />
     </div>
   );

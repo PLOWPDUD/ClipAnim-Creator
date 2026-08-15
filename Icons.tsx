@@ -86,7 +86,10 @@ import {
   Bold,
   Italic,
   SkipBack,
-  SkipForward
+  SkipForward,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 
 export const Icons = {
@@ -180,5 +183,8 @@ export const Icons = {
   Film,
   Clapperboard,
   MoreVertical,
-  Edit2
+  Edit2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 };
