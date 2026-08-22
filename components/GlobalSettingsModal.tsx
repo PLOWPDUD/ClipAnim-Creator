@@ -14,6 +14,8 @@ interface GlobalSettingsModalProps {
   setShortcuts: (shortcuts: Shortcuts) => void;
   deviceType: 'mobile' | 'pc' | null;
   setDeviceType: (type: 'mobile' | 'pc') => void;
+  theme: 'dark' | 'light' | 'system';
+  setTheme: (theme: 'dark' | 'light' | 'system') => void;
 }
 
 export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
@@ -26,7 +28,9 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
   shortcuts,
   setShortcuts,
   deviceType,
-  setDeviceType
+  setDeviceType,
+  theme,
+  setTheme
 }) => {
   const { t, i18n } = useTranslation();
   const [recordingKey, setRecordingKey] = useState<keyof Shortcuts | null>(null);
@@ -140,6 +144,36 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
                   {i18n.language === lang.value && <Icons.Check size={14} />}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="w-full h-px bg-gray-700" />
+
+          {/* Theme Selection */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">{t('globalSettings.theme')}</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => setTheme('dark')}
+                className={`flex items-center justify-center gap-2 p-3 rounded-xl transition-colors ${theme === 'dark' ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+              >
+                <Icons.Moon size={16} />
+                <span className="text-sm font-medium">{t('globalSettings.dark')}</span>
+              </button>
+              <button
+                onClick={() => setTheme('light')}
+                className={`flex items-center justify-center gap-2 p-3 rounded-xl transition-colors ${theme === 'light' ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+              >
+                <Icons.Sun size={16} />
+                <span className="text-sm font-medium">{t('globalSettings.light')}</span>
+              </button>
+              <button
+                onClick={() => setTheme('system')}
+                className={`flex items-center justify-center gap-2 p-3 rounded-xl transition-colors ${theme === 'system' ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+              >
+                <Icons.Laptop size={16} />
+                <span className="text-sm font-medium">{t('globalSettings.system')}</span>
+              </button>
             </div>
           </div>
 

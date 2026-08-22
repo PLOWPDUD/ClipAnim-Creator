@@ -511,6 +511,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
 
             <div className="mt-6 pt-6 border-t border-gray-700/30">
+                <p className="text-[10px] text-gray-500 leading-relaxed mb-2">
+                  💡 <span className="font-bold text-gray-400">Tip:</span> MP4 uses H.264 (AVC). If your media player struggles to open MP4 files, exporting as <span className="text-emerald-400 font-bold">WebM</span> is universally supported by modern browsers, players, and social platforms.
+                </p>
                 <p className="text-[10px] text-gray-600 leading-relaxed">
                     {t('export.disclaimer')}
                     <br />

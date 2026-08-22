@@ -89,7 +89,10 @@ import {
   SkipForward,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Sun,
+  Moon,
+  Laptop
 } from 'lucide-react';
 
 export const Icons = {
@@ -186,5 +189,8 @@ export const Icons = {
   Edit2,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Sun,
+  Moon,
+  Laptop
 };

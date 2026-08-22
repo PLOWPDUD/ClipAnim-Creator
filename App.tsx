@@ -83,6 +83,33 @@ export default function App() {
   const [importingVideoFile, setImportingVideoFile] = useState<File | null>(null);
   const [accentColor, setAccentColor] = useState('#FF3B30');
   const [uiFont, setUiFont] = useState('ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif');
+  const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(() => {
+    const saved = localStorage.getItem('clipanim_theme');
+    return (saved as 'dark' | 'light' | 'system') || 'dark';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('clipanim_theme', theme);
+    const root = document.documentElement;
+    if (theme === 'light') {
+      root.setAttribute('data-theme', 'light');
+    } else if (theme === 'dark') {
+      root.setAttribute('data-theme', 'dark');
+    } else {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    if (theme !== 'system') return;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+    };
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [theme]);
   const [shortcuts, setShortcuts] = useState<Shortcuts>(() => {
     const defaultShortcuts: Shortcuts = {
       selectTool: 'v',
@@ -1118,10 +1145,10 @@ export default function App() {
             try {
                 // Determine supported video codec for WebCodecs
                 const videoCandidates = [
+                    { encoderCodec: 'avc1.42001e', muxerCodec: 'avc' as const },
                     { encoderCodec: 'avc1.42001f', muxerCodec: 'avc' as const },
+                    { encoderCodec: 'avc1.4d401f', muxerCodec: 'avc' as const },
                     { encoderCodec: 'avc1.4d002a', muxerCodec: 'avc' as const },
-                    { encoderCodec: 'avc1.640028', muxerCodec: 'avc' as const },
-                    { encoderCodec: 'avc1.42e01f', muxerCodec: 'avc' as const },
                     { encoderCodec: 'vp09.00.10.08', muxerCodec: 'vp9' as const },
                     { encoderCodec: 'av01.0.04M.08', muxerCodec: 'av1' as const }
                 ];
@@ -3831,6 +3858,8 @@ export default function App() {
         setShortcuts={setShortcuts}
         deviceType={deviceType}
         setDeviceType={setDeviceType}
+        theme={theme}
+        setTheme={setTheme}
       />
       <input 
         ref={importIntoSelectionRef}
