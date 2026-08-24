@@ -214,6 +214,8 @@
     "projectZipDesc": "Full project data and frames in a ZIP.",
     "avi": "AVI Video",
     "aviDesc": "Legacy format (Windows-friendly).",
+    "html": "Interactive Game (.html)",
+    "htmlDesc": "Self-contained playable HTML5 game that runs offline in any browser.",
     "rendering": "Rendering...",
     "renderingDesc": "Processing frames and encoding your movie.",
     "success": "Export Complete!",

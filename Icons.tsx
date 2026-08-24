@@ -103,7 +103,11 @@ import {
   GraduationCap,
   Compass,
   ChevronRight,
-  Library
+  Library,
+  Wind,
+  Zap,
+  VolumeX,
+  Gamepad
 } from 'lucide-react';
 
 export const Icons = {
@@ -129,6 +133,8 @@ export const Icons = {
   Music, 
   X, 
   Volume2, 
+  VolumeX,
+  Gamepad, 
   Ghost, 
   Maximize2, 
   Minimize2, 
@@ -214,5 +220,7 @@ export const Icons = {
   GraduationCap,
   Compass,
   ChevronRight,
-  Library
+  Library,
+  Wind,
+  Zap
 };

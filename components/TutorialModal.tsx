@@ -352,6 +352,11 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({
           title: '4. Dynamic Timeline Frame Branching',
           description: 'Trigger game over scenes or next stages by dynamically controlling the player timeline playhead inside event callbacks. Execute statements like gotoAndStop(frameNumber) or play() based on gameplay outcomes.',
           tip: 'Keep game-logic scripts cleanly separated from pure frame drawing layers.'
+        },
+        {
+          title: '5. Test Movie & Export Live .HTML Game',
+          description: 'Click the Gamepad icon in the top bar to test-play your game immediately with live input, audio, and physics. When ready, click "Export" and select "Interactive Game (.html)" (or click "Export Live .HTML" right inside the player) to export a standalone, offline-ready HTML5 file you can share or host anywhere!',
+          tip: 'The exported .html file is 100% self-contained with no external dependencies required.'
         }
       ]
     },

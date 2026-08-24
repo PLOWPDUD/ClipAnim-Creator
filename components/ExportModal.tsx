@@ -4,7 +4,7 @@ import { Icons } from '../Icons';
 import { Frame, Layer, BackgroundSettings } from '../types';
 import { compositeLayers } from '../utils/drawingUtils';
 
-export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'png' | 'avi' | 'project-zip';
+export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'png' | 'avi' | 'project-zip' | 'html';
 export type ExportQuality = 'low' | 'medium' | 'high';
 
 interface ExportModalProps {
@@ -223,6 +223,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     { id: 'png-seq', label: t('export.pngSeq'), icon: Icons.FileArchive, color: 'text-rose-400', desc: t('export.pngSeqDesc') },
     { id: 'png', label: t('export.png', 'PNG Image'), icon: Icons.Image, color: 'text-purple-400', desc: t('export.pngDesc', 'Export a static PNG image') },
     { id: 'project-zip', label: t('export.projectZip'), icon: Icons.FileArchive, color: 'text-purple-400', desc: t('export.projectZipDesc') },
+    { id: 'html', label: t('export.html', 'Interactive Game (.html)'), icon: Icons.Gamepad2, color: 'text-emerald-400', desc: t('export.htmlDesc', 'Self-contained playable HTML5 game that runs offline in any browser.') },
     { id: 'avi', label: t('export.avi'), icon: Icons.FileVideo, color: 'text-indigo-400', desc: t('export.aviDesc') },
   ];
 

@@ -30,6 +30,8 @@ import { TweenModal } from './components/TweenModal';
 import { FolderModal } from './components/FolderModal';
 import { MoveToFolderModal } from './components/MoveToFolderModal';
 import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
+import { getLayerStats, renderTweenLayer, renderMotionPathStep } from './utils/motionBlurUtils';
+import { generateLiveHtmlGame } from './utils/htmlGameExporter';
 import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB, updateProjectFolderInDB } from './utils/db';
 
 // @ts-ignore
@@ -1231,44 +1233,24 @@ export default function App() {
       setPendingMotionPath(path);
   };
 
-  const finalizeMotionPath = async (path: Point[], numFrames: number, easing: string) => {
+  const finalizeMotionPath = async (
+    path: Point[], 
+    numFrames: number, 
+    easing: string,
+    motionBlur: boolean = true,
+    motionBlurStrength: number = 0.75,
+    motionBlurSamples: number = 7,
+    motionBlurShutterAngle: number = 180
+  ) => {
       if (!selection || path.length < 5) return;
 
       const numFramesToAnimate = numFrames;
       const updatedFrames = [...frames];
-      const sampledPath: Point[] = [];
-      
-      const getEasingProgress = (t: number, type: string) => {
-        switch (type) {
-          case 'ease-in': return t * t;
-          case 'ease-out': return t * (2 - t);
-          case 'ease-in-out': return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-          default: return t; // linear
-        }
-      };
-
-      for (let i = 0; i < numFramesToAnimate; i++) {
-          const t = i / (numFramesToAnimate - 1);
-          const easedT = getEasingProgress(t, easing);
-          const index = easedT * (path.length - 1);
-          const low = Math.floor(index);
-          const high = Math.ceil(index);
-          const frac = index - low;
-          
-          if (low === high) {
-              sampledPath.push(path[low]);
-          } else {
-              sampledPath.push({
-                  x: path[low].x * (1 - frac) + path[high].x * frac,
-                  y: path[low].y * (1 - frac) + path[high].y * frac
-              });
-          }
-      }
 
       let frameIdx = currentFrameIndex;
       const initialLayerData = updatedFrames[currentFrameIndex].layers[activeLayerId];
       
-      for (let i = 0; i < sampledPath.length; i++) {
+      for (let i = 0; i < numFramesToAnimate; i++) {
           if (frameIdx >= updatedFrames.length) {
               const lastFrame = updatedFrames[updatedFrames.length - 1];
               const newFrame: Frame = {
@@ -1283,7 +1265,6 @@ export default function App() {
           }
 
           const frame = updatedFrames[frameIdx];
-          const point = sampledPath[i];
 
           const canvas = document.createElement('canvas');
           canvas.width = canvasSize.width;
@@ -1319,13 +1300,20 @@ export default function App() {
                   }
               }
 
-              const movedSelection = {
-                  ...selection,
-                  x: point.x - (selection.anchorX ?? selection.width / 2),
-                  y: point.y - (selection.anchorY ?? selection.height / 2)
-              };
+              await renderMotionPathStep(
+                ctx,
+                path,
+                selection,
+                drawSelectionOntoCanvas,
+                i,
+                numFramesToAnimate,
+                easing,
+                motionBlur,
+                motionBlurStrength,
+                motionBlurSamples,
+                motionBlurShutterAngle
+              );
 
-              await drawSelectionOntoCanvas(ctx, movedSelection);
               updatedFrames[frameIdx] = {
                   ...updatedFrames[frameIdx],
                   layers: {
@@ -1832,6 +1820,32 @@ export default function App() {
             alert("Export error");
             setIsExporting(false);
         }
+    } else if (format === 'html') {
+      try {
+        const { blob, url, filename } = await generateLiveHtmlGame({
+          projectName,
+          frames,
+          layers,
+          actors,
+          projectScript,
+          fps,
+          canvasSize,
+          background,
+          backgroundImage,
+          audioTracks,
+          transparent,
+          onProgress: (pct) => setExportProgress(pct)
+        });
+
+        setExportedFile({ url, name: filename, blob });
+        setIsExporting(false);
+        setExportProgress(100);
+      } catch (e: any) {
+        console.error("HTML Game export failed:", e);
+        alert(t('errors.exportError', { message: e.message || 'Failed to export HTML game' }));
+        setIsExporting(false);
+        setIsExportModalOpen(false);
+      }
     } else {
       // Fallback for WebM/AVI using MediaRecorder
       try {
@@ -2082,8 +2096,8 @@ export default function App() {
         loadedActors = loadedActors.map(a => {
             const name = a.name.toLowerCase();
             let tf = a.targetFrame;
-            if (name.includes('blue') && tf !== 0) { tf = 0; }
-            if ((name.includes('green') || name.includes('red')) && tf !== 1) { tf = 1; }
+            if ((name.includes('blue') || name.includes('playbutton') || name === 'play') && (tf === undefined || tf !== 0)) { tf = 0; }
+            if ((name.includes('green') || name.includes('correctbutton') || name.includes('red') || name.includes('wrongbutton')) && (tf === undefined || tf !== 1)) { tf = 1; }
             return { ...a, targetFrame: tf };
         });
         
@@ -2185,6 +2199,7 @@ export default function App() {
           scaleX: 1,
           scaleY: 1,
           opacity: 1,
+          targetFrame: 0,
           scripts: '// Click the play button to start the game\nthis.onClick = function() {\n  gotoAndStop(2);\n};\nthis.onUpdate = function() {\n  // Only show play button on Frame 1 and Frame 3\n  this.visible = (this.currentFrame === 1 || this.currentFrame === 3);\n};'
         };
 
@@ -2200,6 +2215,7 @@ export default function App() {
           scaleX: 1,
           scaleY: 1,
           opacity: 1,
+          targetFrame: 1,
           scripts: '// Click correct option to advance to victory screen\nthis.onClick = function() {\n  gotoAndStop(3);\n};\nthis.onUpdate = function() {\n  // Only show on Frame 2\n  this.visible = (this.currentFrame === 2);\n};'
         };
 
@@ -2215,6 +2231,7 @@ export default function App() {
           scaleX: 1,
           scaleY: 1,
           opacity: 1,
+          targetFrame: 1,
           scripts: '// Click wrong option to trigger reset and show message\nthis.onClick = function() {\n  alert("Wrong choice! Let\'s go back and try again.");\n  gotoAndStop(1);\n};\nthis.onUpdate = function() {\n  // Only show on Frame 2\n  this.visible = (this.currentFrame === 2);\n};'
         };
 
@@ -2876,7 +2893,11 @@ export default function App() {
     includeOnionSkin: boolean = true,
     interpolatePosition: boolean = true,
     interpolateScale: boolean = true,
-    interpolateRotation: boolean = true
+    interpolateRotation: boolean = true,
+    motionBlur: boolean = true,
+    motionBlurStrength: number = 0.75,
+    motionBlurSamples: number = 7,
+    motionBlurShutterAngle: number = 180
   ) => {
     if (index >= frames.length - 1) return; // Cannot tween the last frame
     
@@ -2898,70 +2919,6 @@ export default function App() {
         if (!includeOnionSkin) setOnionSkin(originalOnionSkin);
         return;
     }
-
-    const getEasingProgress = (t: number, type: string) => {
-      switch (type) {
-        case 'ease-in': return t * t;
-        case 'ease-out': return t * (2 - t);
-        case 'ease-in-out': return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-        default: return t; // linear
-      }
-    };
-
-    const getLayerStats = (img: HTMLImageElement, width: number, height: number) => {
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-      if (!tempCtx) return null;
-      tempCtx.drawImage(img, 0, 0);
-      const imageData = tempCtx.getImageData(0, 0, width, height);
-      const data = imageData.data;
-      
-      let minX = width, minY = height, maxX = -1, maxY = -1;
-      let m00 = 0, m10 = 0, m01 = 0, m11 = 0, m20 = 0, m02 = 0;
-      
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const alpha = data[(y * width + x) * 4 + 3];
-          if (alpha > 0) {
-            const weight = alpha / 255;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-            
-            m00 += weight;
-            m10 += x * weight;
-            m01 += y * weight;
-            m11 += x * y * weight;
-            m20 += x * x * weight;
-            m02 += y * y * weight;
-          }
-        }
-      }
-      
-      if (m00 < 0.1) return null;
-      
-      const centerX = m10 / m00;
-      const centerY = m01 / m00;
-      const mu20 = m20 / m00 - centerX * centerX;
-      const mu02 = m02 / m00 - centerY * centerY;
-      const mu11 = m11 / m00 - centerX * centerY;
-      
-      // Orientation angle in radians (principal axis)
-      const angle = 0.5 * Math.atan2(2 * mu11, mu20 - mu02);
-      
-      return { 
-        x: minX, 
-        y: minY, 
-        w: Math.max(1, maxX - minX + 1), 
-        h: Math.max(1, maxY - minY + 1),
-        centerX,
-        centerY,
-        angle
-      };
-    };
 
     const layerData: Record<string, { 
       imgA: HTMLImageElement | null, 
@@ -2997,10 +2954,10 @@ export default function App() {
     compositeCanvas.width = canvasSize.width;
     compositeCanvas.height = canvasSize.height;
     const compositeCtx = compositeCanvas.getContext('2d');
+    const deltaT = 1 / (numTweens + 1);
 
     for (let i = 1; i <= numTweens; i++) {
       const t = i / (numTweens + 1);
-      const progress = getEasingProgress(t, easing);
       const newLayers: Record<string, string> = {};
       
       if (compositeCtx) {
@@ -3014,52 +2971,24 @@ export default function App() {
         
         const { imgA, imgB, statsA, statsB } = layerData[layer.id];
 
-        if (imgA && imgB && statsA && statsB) {
-          // Interpolate stats
-          const centerX = interpolatePosition ? (statsA.centerX + (statsB.centerX - statsA.centerX) * progress) : statsA.centerX;
-          const centerY = interpolatePosition ? (statsA.centerY + (statsB.centerY - statsA.centerY) * progress) : statsA.centerY;
-          const width = interpolateScale ? (statsA.w + (statsB.w - statsA.w) * progress) : statsA.w;
-          const height = interpolateScale ? (statsA.h + (statsB.h - statsA.h) * progress) : statsA.h;
-          
-          // Shortest path for principal axis angle (-PI/2 to PI/2)
-          let angle = statsA.angle;
-          if (interpolateRotation) {
-            let diff = statsB.angle - statsA.angle;
-            while (diff > Math.PI / 2) diff -= Math.PI;
-            while (diff < -Math.PI / 2) diff += Math.PI;
-            angle = statsA.angle + diff * progress;
-          }
+        renderTweenLayer(
+          ctx,
+          imgA,
+          imgB,
+          statsA,
+          statsB,
+          t,
+          deltaT,
+          easing,
+          interpolatePosition,
+          interpolateScale,
+          interpolateRotation,
+          motionBlur,
+          motionBlurStrength,
+          motionBlurSamples,
+          motionBlurShutterAngle
+        );
 
-          // Cross-fade with smooth transformation
-          // Draw imgA
-          ctx.globalAlpha = 1 - progress;
-          ctx.save();
-          ctx.translate(centerX, centerY);
-          ctx.rotate(angle - statsA.angle);
-          ctx.scale(width / statsA.w, height / statsA.h);
-          ctx.translate(-statsA.centerX, -statsA.centerY);
-          ctx.drawImage(imgA, 0, 0);
-          ctx.restore();
-
-          // Draw imgB
-          ctx.globalAlpha = progress;
-          ctx.save();
-          ctx.translate(centerX, centerY);
-          ctx.rotate(angle - statsB.angle);
-          ctx.scale(width / statsB.w, height / statsB.h);
-          ctx.translate(-statsB.centerX, -statsB.centerY);
-          ctx.drawImage(imgB, 0, 0);
-          ctx.restore();
-        } else if (imgA || imgB) {
-          // Fade in or fade out if only one exists
-          ctx.globalAlpha = imgA ? (1 - progress) : progress;
-          const targetImg = imgA || imgB;
-          if (targetImg) {
-            ctx.drawImage(targetImg, 0, 0);
-          }
-        }
-
-        ctx.globalAlpha = 1.0;
         const layerDataUrl = canvas.toDataURL();
         newLayers[layer.id] = layerDataUrl;
         
@@ -4071,18 +4000,38 @@ export default function App() {
             <TweenModal
                 isOpen={tweenTargetIndex !== null}
                 onClose={() => setTweenTargetIndex(null)}
-                onGenerate={(numTweens, easing, includeOnionSkin, interpolatePosition, interpolateScale, interpolateRotation) => {
+                onGenerate={(numTweens, easing, includeOnionSkin, interpolatePosition, interpolateScale, interpolateRotation, motionBlur, motionBlurStrength, motionBlurSamples, motionBlurShutterAngle) => {
                     if (tweenTargetIndex !== null) {
-                        executeTween(tweenTargetIndex, numTweens, easing, includeOnionSkin, interpolatePosition, interpolateScale, interpolateRotation);
+                        executeTween(
+                          tweenTargetIndex, 
+                          numTweens, 
+                          easing, 
+                          includeOnionSkin, 
+                          interpolatePosition, 
+                          interpolateScale, 
+                          interpolateRotation,
+                          motionBlur,
+                          motionBlurStrength,
+                          motionBlurSamples,
+                          motionBlurShutterAngle
+                        );
                     }
                 }}
             />
             <TweenModal
                 isOpen={pendingMotionPath !== null}
                 onClose={() => setPendingMotionPath(null)}
-                onGenerate={(numTweens, easing) => {
+                onGenerate={(numTweens, easing, _includeOnionSkin, _interpolatePosition, _interpolateScale, _interpolateRotation, motionBlur, motionBlurStrength, motionBlurSamples, motionBlurShutterAngle) => {
                     if (pendingMotionPath) {
-                        finalizeMotionPath(pendingMotionPath, numTweens, easing);
+                        finalizeMotionPath(
+                          pendingMotionPath, 
+                          numTweens, 
+                          easing,
+                          motionBlur,
+                          motionBlurStrength,
+                          motionBlurSamples,
+                          motionBlurShutterAngle
+                        );
                         setPendingMotionPath(null);
                     }
                 }}
@@ -4189,12 +4138,16 @@ export default function App() {
       {isTestingMovie && (
         <InteractivePlayer
           frames={frames}
+          layers={layers}
           actors={actors}
           projectScript={projectScript}
           fps={fps}
           canvasWidth={canvasSize.width}
           canvasHeight={canvasSize.height}
           background={background}
+          backgroundImage={backgroundImage}
+          audioTracks={audioTracks}
+          projectName={projectName}
           onClose={() => setIsTestingMovie(false)}
         />
       )}
