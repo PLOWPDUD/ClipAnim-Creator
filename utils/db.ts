@@ -2,8 +2,26 @@
 import { ProjectData, ProjectMeta } from '../types';
 
 const DB_NAME = 'ClipAnimDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'projects';
+const ASSETS_STORE = 'assets';
+
+export interface LibraryAsset {
+  id: string;
+  name: string;
+  type: 'image' | 'sound' | 'symbol';
+  dataUrl: string; // Base64 data URI or object URL
+  fileType: string; // e.g. "image/png", "audio/mpeg"
+  size: number;
+  createdAt: number;
+  duration?: number; // for audio
+  // For symbols
+  isAnimated?: boolean;
+  symbolFrames?: any[];
+  symbolLayers?: any[];
+  symbolFps?: number;
+  scripts?: string;
+}
 
 // Open Database
 export const initDB = (): Promise<IDBDatabase> => {
@@ -19,7 +37,59 @@ export const initDB = (): Promise<IDBDatabase> => {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
         store.createIndex('lastModified', 'lastModified', { unique: false });
       }
+      if (!db.objectStoreNames.contains(ASSETS_STORE)) {
+        const store = db.createObjectStore(ASSETS_STORE, { keyPath: 'id' });
+        store.createIndex('type', 'type', { unique: false });
+        store.createIndex('createdAt', 'createdAt', { unique: false });
+      }
     };
+  });
+};
+
+// Assets DB Helpers
+export const saveAssetToDB = async (asset: LibraryAsset): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(ASSETS_STORE, 'readwrite');
+    const store = tx.objectStore(ASSETS_STORE);
+    const request = store.put(asset);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const getAssetsFromDB = async (): Promise<LibraryAsset[]> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(ASSETS_STORE, 'readonly');
+    const store = tx.objectStore(ASSETS_STORE);
+    const index = store.index('createdAt');
+    const request = index.openCursor(null, 'prev'); // Newest first
+    const assets: LibraryAsset[] = [];
+
+    request.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest).result;
+      if (cursor) {
+        assets.push(cursor.value);
+        cursor.continue();
+      } else {
+        resolve(assets);
+      }
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const deleteAssetFromDB = async (id: string): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(ASSETS_STORE, 'readwrite');
+    const store = tx.objectStore(ASSETS_STORE);
+    const request = store.delete(id);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
   });
 };
 

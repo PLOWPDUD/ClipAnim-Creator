@@ -92,7 +92,18 @@ import {
   ArrowDown,
   Sun,
   Moon,
-  Laptop
+  Laptop,
+  Box,
+  Gamepad2,
+  Code,
+  Clock,
+  BookOpen,
+  Sparkles,
+  Lightbulb,
+  GraduationCap,
+  Compass,
+  ChevronRight,
+  Library
 } from 'lucide-react';
 
 export const Icons = {
@@ -192,5 +203,16 @@ export const Icons = {
   ArrowDown,
   Sun,
   Moon,
-  Laptop
+  Laptop,
+  Box,
+  Gamepad2,
+  Code,
+  Clock,
+  BookOpen,
+  Sparkles,
+  Lightbulb,
+  GraduationCap,
+  Compass,
+  ChevronRight,
+  Library
 };

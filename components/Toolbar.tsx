@@ -32,6 +32,7 @@ interface ToolbarProps {
   shapeType: ShapeType;
   onSelectShapeType: (type: ShapeType) => void;
   onOpenHelp: () => void;
+  onOpenCodeEditor?: () => void;
   textToolFont: string;
   onSelectTextToolFont: (font: string) => void;
   textToolBold: boolean;
@@ -77,6 +78,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   shapeType,
   onSelectShapeType,
   onOpenHelp,
+  onOpenCodeEditor,
   textToolFont,
   onSelectTextToolFont,
   textToolBold,
@@ -223,7 +225,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   return (
     <>
-      <div className="w-16 min-w-[64px] bg-[#1e1e1e] flex flex-col h-full border-r border-gray-700 z-20 shadow-xl">
+      <div id="tour-toolbar" className="w-16 min-w-[64px] bg-[#1e1e1e] flex flex-col h-full border-r border-gray-700 z-20 shadow-xl">
         <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col items-center py-4 space-y-4">
             {tools.map((tool) => (
             <button key={tool.id} onClick={(e) => handleToolClick(e, tool.id)} className={`p-3 rounded-xl transition-all shrink-0 ${currentTool === tool.id ? 'bg-[var(--accent-color)] text-white shadow-lg' : 'text-gray-400 hover:bg-gray-800'}`}>
@@ -349,6 +351,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
         {/* Help Button - Pinned to bottom */}
         <div className="shrink-0 p-2 border-t border-gray-700 flex justify-center bg-[#1e1e1e]">
+            {onOpenCodeEditor && (
+                <button onClick={onOpenCodeEditor} className="p-3 rounded-xl text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 transition-colors" title="Script Editor">
+                    <Icons.Code size={20} />
+                </button>
+            )}
             <button onClick={onOpenHelp} className="p-3 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors" title={t('toolbar.help')}>
                 <Icons.Help size={24} />
             </button>

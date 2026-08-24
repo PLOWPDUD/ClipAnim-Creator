@@ -16,7 +16,7 @@ interface ExportModalProps {
   progress: number;
   projectName: string;
   setProjectName: (name: string) => void;
-  projectType?: 'animation' | 'painting';
+  projectType?: 'animation' | 'painting' | 'game';
   frameCount: number;
   fps: number;
   exportedFile?: { url: string, name: string, blob: Blob } | null;
@@ -25,6 +25,7 @@ interface ExportModalProps {
   canvasSize?: { width: number; height: number };
   background?: BackgroundSettings;
   backgroundImage?: string | null;
+  onOpenSpritesheetExport?: () => void;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({ 
@@ -44,7 +45,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   layers,
   canvasSize,
   background,
-  backgroundImage
+  backgroundImage,
+  onOpenSpritesheetExport
 }) => {
   const { t } = useTranslation();
   const [quality, setQuality] = useState<ExportQuality>('medium');
@@ -492,6 +494,28 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
             
             <div className="space-y-3 overflow-y-auto pr-2 no-scrollbar flex-1">
+                {onOpenSpritesheetExport && (
+                  <button 
+                      onClick={() => {
+                        onClose();
+                        onOpenSpritesheetExport();
+                      }}
+                      className="w-full group bg-gradient-to-r from-red-950/40 via-red-900/20 to-gray-800/40 hover:bg-gray-800 border border-red-500/30 hover:border-red-400 p-4 rounded-2xl flex items-center gap-4 transition-all hover:scale-[1.02] active:scale-[0.98] text-left relative overflow-hidden"
+                  >
+                      <div className="p-3 rounded-xl bg-gray-900 group-hover:scale-110 transition-transform text-red-400">
+                          <Icons.Sparkles size={28} />
+                      </div>
+                      <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white text-base group-hover:text-red-400 transition-colors">Spritesheet + XML</span>
+                            <span className="bg-red-500/20 text-red-300 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase border border-red-500/30">Adobe Animate / FNF</span>
+                          </div>
+                          <div className="text-xs text-gray-400 mt-0.5">Pack animated symbols into texture atlas with Sparrow / Starling XML</div>
+                      </div>
+                      <Icons.ChevronLeft size={20} className="text-gray-600 rotate-180 group-hover:text-white transition-colors" />
+                  </button>
+                )}
+
                 {formats.map((format) => (
                     <button 
                         key={format.id}

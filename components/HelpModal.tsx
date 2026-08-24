@@ -5,9 +5,10 @@ import { Icons } from '../Icons';
 interface HelpModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenTutorial?: () => void;
 }
 
-export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
+export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, onOpenTutorial }) => {
   const { t } = useTranslation();
   if (!isOpen) return null;
 
@@ -20,13 +21,50 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             <Icons.Help className="text-[#FF3B30]" />
             {t('help.title')}
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700 transition-colors">
-            <Icons.X size={24} />
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenTutorial && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenTutorial();
+                }}
+                className="px-3 py-1.5 bg-gradient-to-r from-[var(--accent-color)] to-orange-500 hover:opacity-90 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow"
+              >
+                <Icons.GraduationCap size={15} />
+                <span>Open Tutorial</span>
+              </button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700 transition-colors">
+              <Icons.X size={24} />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
         <div className="overflow-y-auto p-6 space-y-8 no-scrollbar">
+            {/* Interactive Tutorial Promo Banner */}
+            {onOpenTutorial && (
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-gray-800 to-gray-800/80 border border-gray-700 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[var(--accent-color)]/20 text-[var(--accent-color)] flex items-center justify-center shrink-0">
+                    <Icons.GraduationCap size={22} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Interactive Animation Tutorial</h4>
+                    <p className="text-[11px] text-gray-400">Step-by-step interactive lessons with live canvas simulations.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    onClose();
+                    onOpenTutorial();
+                  }}
+                  className="px-3.5 py-1.5 bg-[var(--accent-color)] hover:opacity-90 text-white rounded-xl text-xs font-bold shrink-0 transition-all shadow"
+                >
+                  Start Tutorial
+                </button>
+              </div>
+            )}
             
             {/* Tools Section */}
             <section>

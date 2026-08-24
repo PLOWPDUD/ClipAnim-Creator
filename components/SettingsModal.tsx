@@ -10,8 +10,8 @@ interface SettingsModalProps {
   setFps: (fps: number) => void;
   projectName: string;
   setProjectName: (name: string) => void;
-  projectType: 'animation' | 'painting';
-  setProjectType: (type: 'animation' | 'painting') => void;
+  projectType: 'animation' | 'painting' | 'game';
+  setProjectType: (type: 'animation' | 'painting' | 'game') => void;
   canvasSize: { width: number, height: number };
   setCanvasSize: (size: { width: number, height: number }) => void;
   backgroundImage: string | null;

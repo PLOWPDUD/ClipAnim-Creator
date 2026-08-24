@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } f
 import { useTranslation } from 'react-i18next';
 import { motion } from 'motion/react';
 import { Icons } from '../Icons';
-import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings, BackgroundSettings, Point, SymmetryMode } from '../types';
+import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings, BackgroundSettings, Point, SymmetryMode, Actor } from '../types';
 import { floodFill, magicWandSelect, lassoSelect } from '../utils/drawingUtils';
 
 export interface CanvasAreaHandle {
@@ -36,6 +36,7 @@ interface CanvasAreaProps {
   onSelectionUpdate: (data: SelectionState) => void;
   onSelectionCommit: () => void;
   onSelectionDelete: () => void;
+  onSelectionMakeSymbol?: () => void;
 
   // Canvas Settings
   canvasWidth: number;
@@ -56,6 +57,8 @@ interface CanvasAreaProps {
   onToggleCameraMode: () => void;
   symmetryMode: SymmetryMode;
   onApplyMotionPath: (points: Point[]) => void;
+  actors?: Actor[];
+  onSelectActor?: (actorId: string) => void;
 }
 
 const getMixBlendMode = (mode: GlobalCompositeOperation): any => {
@@ -127,6 +130,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   onSelectionUpdate,
   onSelectionCommit,
   onSelectionDelete,
+  onSelectionMakeSymbol,
   canvasWidth,
   canvasHeight,
   background,
@@ -140,7 +144,9 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   cameraMode,
   onToggleCameraMode,
   symmetryMode,
-  onApplyMotionPath
+  onApplyMotionPath,
+  actors = [],
+  onSelectActor
 }, ref) => {
   const { t } = useTranslation();
   console.log('CanvasArea render', { layers, activeLayerId });
@@ -1703,6 +1709,35 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 );
             })}
 
+            {actors.map(actor => (
+                <div
+                    key={actor.id}
+                    className="absolute z-[190]"
+                    style={{
+                        left: actor.x,
+                        top: actor.y,
+                        width: actor.width,
+                        height: actor.height,
+                        transform: `rotate(${actor.rotation}deg) scale(${actor.scaleX}, ${actor.scaleY})`,
+                        opacity: actor.opacity,
+                        pointerEvents: tool === 'select' && (!selection || selection.actorId !== actor.id) ? 'auto' : 'none',
+                        cursor: tool === 'select' ? 'pointer' : 'default'
+                    }}
+                    onPointerDown={(e) => {
+                        if (tool === 'select' && onSelectActor) {
+                            e.stopPropagation();
+                            onSelectActor(actor.id);
+                        }
+                    }}
+                >
+                    <img 
+                        src={actor.dataUrl} 
+                        className="w-full h-full" 
+                        alt={actor.name} 
+                    />
+                </div>
+            ))}
+
             {selection && (
                 <div 
                     ref={selectionOverlayRef}
@@ -1730,7 +1765,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     <div className="absolute inset-0 border-4 border-[#007AFF] pointer-events-none shadow-[0_0_15px_rgba(0,122,255,0.3)]"></div>
 
                     {/* Commit/Delete Buttons */}
-                    <div className="absolute -top-14 left-1/2 -translate-x-1/2 flex gap-2 pointer-events-auto z-50 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className={`absolute -top-14 left-1/2 -translate-x-1/2 flex gap-2 pointer-events-auto z-50 transition-opacity ${deviceType === 'mobile' ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                         <motion.button 
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
@@ -1747,6 +1782,16 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         >
                             <Icons.Trash2 size={16} /> {t('canvas.delete')}
                         </motion.button>
+                        {onSelectionMakeSymbol && (
+                          <motion.button 
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={(e) => { e.stopPropagation(); onSelectionMakeSymbol(); }}
+                              className="bg-amber-500 text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-2xl flex items-center gap-2 hover:brightness-110 whitespace-nowrap"
+                          >
+                              <Icons.Box size={16} /> Make Symbol
+                          </motion.button>
+                        )}
                     </div>
                     
                     {/* Bigger Corner Handles */}
@@ -1859,6 +1904,41 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 <span className="flex items-center gap-1 opacity-70"><Icons.RotateCw size={12} /> {Math.round(transform.current.rotation)}°</span>
             </div>
         </div>
+
+        {/* Floating Mobile/Touch-Friendly Selection Actions Dock */}
+        {selection && (
+            <div className="absolute top-4 right-4 flex items-center gap-2 z-[120] bg-black/60 p-1.5 rounded-xl border border-white/10 shadow-2xl backdrop-blur-md">
+                <motion.button
+                    whileTap={{ scale: 0.92 }}
+                    onClick={(e) => { e.stopPropagation(); onSelectionCommit(); }}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition-colors"
+                    title={t('canvas.commit')}
+                >
+                    <Icons.Check size={14} />
+                    <span>Commit</span>
+                </motion.button>
+                {onSelectionMakeSymbol && (
+                    <motion.button
+                        whileTap={{ scale: 0.92 }}
+                        onClick={(e) => { e.stopPropagation(); onSelectionMakeSymbol(); }}
+                        className="bg-amber-500 hover:bg-amber-400 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition-colors border border-amber-400/20"
+                        title="Convert Selection to Symbol"
+                    >
+                        <Icons.Box size={14} />
+                        <span className="font-extrabold uppercase tracking-tight text-[10px]">Make Symbol</span>
+                    </motion.button>
+                )}
+                <motion.button
+                    whileTap={{ scale: 0.92 }}
+                    onClick={(e) => { e.stopPropagation(); onSelectionDelete(); }}
+                    className="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition-colors"
+                    title={t('canvas.delete')}
+                >
+                    <Icons.Trash2 size={14} />
+                    <span>Delete</span>
+                </motion.button>
+            </div>
+        )}
 
         {/* Pan Sliders */}
         {deviceType !== 'mobile' && (

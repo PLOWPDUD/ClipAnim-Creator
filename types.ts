@@ -41,6 +41,7 @@ export interface Frame {
   durationMultiplier?: number; // Multiplier for frame duration (default 1)
   background?: BackgroundSettings;
   backgroundImage?: string | null;
+  script?: string; // Custom frame-specific action script (like in Macromedia Flash)
 }
 
 export interface AudioTrack {
@@ -58,6 +59,7 @@ export interface AudioTrack {
 
 // Selection state
 export interface SelectionState {
+  actorId?: string;
   x: number;
   y: number;
   width: number;
@@ -116,6 +118,38 @@ export interface BackgroundSettings {
   gradientColors?: [string, string, string];
 }
 
+export interface Actor {
+  id: string;
+  name: string; // Used in scripts as the variable name
+  dataUrl: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  scaleX: number;
+  scaleY: number;
+  opacity: number;
+  scripts: string; // Custom JS for this actor
+  targetFrame?: number; // The specific frame index this actor belongs to (if any)
+  isAnimated?: boolean;
+  symbolFrames?: Frame[];
+  symbolLayers?: Layer[];
+  symbolFps?: number;
+}
+
+export interface SavedSymbol {
+  id: string;
+  name: string;
+  dataUrl: string;
+  scripts: string;
+  createdAt: number;
+  isAnimated?: boolean;
+  symbolFrames?: Frame[];
+  symbolLayers?: Layer[];
+  symbolFps?: number;
+}
+
 export interface AppState {
   frames: Frame[];
   currentFrameIndex: number;
@@ -145,7 +179,7 @@ export interface ProjectMeta {
     name: string;
     lastModified: number;
     thumbnailUrl: string;
-    type?: 'animation' | 'painting';
+    type?: 'animation' | 'painting' | 'game';
     folderId?: string | null;
     frameCount?: number;
 }
@@ -155,7 +189,7 @@ export interface ProjectData {
     name: string;
     lastModified: number;
     thumbnailUrl: string;
-    type?: 'animation' | 'painting';
+    type?: 'animation' | 'painting' | 'game';
     folderId?: string | null;
     canvasSize: { width: number; height: number };
     background: BackgroundSettings;
@@ -166,4 +200,6 @@ export interface ProjectData {
     audioTracks: AudioTrack[];
     motionPaths: MotionPath[];
     onionSkinSettings?: OnionSkinSettings;
+    actors?: Actor[]; // New: interactive symbols
+    projectScript?: string; // New: global project script
 }

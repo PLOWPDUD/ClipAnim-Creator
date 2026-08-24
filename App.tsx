@@ -1,14 +1,20 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point } from './types';
+import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point, Actor } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
 import { Icons } from './Icons';
+import { ScriptEditorModal } from './components/ScriptEditorModal';
+import { InteractivePlayer } from './components/InteractivePlayer';
 import { SettingsModal } from './components/SettingsModal';
 import { LayerPanel } from './components/LayerPanel';
+import { SymbolPanel } from './components/SymbolPanel';
+import { SpritesheetExportModal } from './components/SpritesheetExportModal';
 import { ExportModal, ExportFormat, ExportQuality } from './components/ExportModal';
 import { HelpModal } from './components/HelpModal';
+import { TutorialModal } from './components/TutorialModal';
+import { InteractiveTour } from './components/InteractiveTour';
 import { BackpackModal } from './components/BackpackModal';
 import gifshot from 'gifshot';
 import { parseGIF, decompressFrames } from 'gifuct-js';
@@ -17,6 +23,7 @@ import { AudioRecorderModal } from './components/AudioRecorderModal';
 import { AudioEditorModal } from './components/AudioEditorModal';
 import { SoundLibraryModal } from './components/SoundLibraryModal';
 import { GlobalSettingsModal } from './components/GlobalSettingsModal';
+import { AssetLibraryModal } from './components/AssetLibraryModal';
 import { ChangelogModal } from './components/ChangelogModal';
 import { VideoImportModal } from './components/VideoImportModal';
 import { TweenModal } from './components/TweenModal';
@@ -142,7 +149,7 @@ export default function App() {
   }, [shortcuts]);
 
   useEffect(() => {
-    const CURRENT_VERSION = '1.3.2';
+    const CURRENT_VERSION = '1.3.3';
     const lastSeenVersion = localStorage.getItem('clipanim_last_seen_version');
     
     if (lastSeenVersion !== CURRENT_VERSION) {
@@ -153,7 +160,7 @@ export default function App() {
 
   const [projectId, setProjectId] = useState<string>(crypto.randomUUID());
   const [projectName, setProjectName] = useState(t('app.defaultProjectName'));
-  const [projectType, setProjectType] = useState<'animation' | 'painting'>('animation');
+  const [projectType, setProjectType] = useState<'animation' | 'painting' | 'game'>('animation');
   const [folderId, setFolderId] = useState<string | null>(null);
 
   // Folder system state
@@ -182,7 +189,7 @@ export default function App() {
   }, [folders]);
 
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
-  const [homeFilter, setHomeFilter] = useState<'all' | 'animations' | 'paintings' | 'folders'>('all');
+  const [homeFilter, setHomeFilter] = useState<'all' | 'animations' | 'paintings' | 'folders' | 'games'>('all');
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
   const [homeSortBy, setHomeSortBy] = useState<'date' | 'name' | 'type'>('date');
   const [homeSortOrder, setHomeSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -199,8 +206,14 @@ export default function App() {
   const [layers, setLayers] = useState<Layer[]>([createDefaultLayer()]);
   const [activeLayerId, setActiveLayerId] = useState<string>('1');
   const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(false);
+  const [isSymbolPanelOpen, setIsSymbolPanelOpen] = useState(false);
+
+  const [mainProjectBackup, setMainProjectBackup] = useState<any>(null);
+  const [editingSymbolId, setEditingSymbolId] = useState<string | null>(null);
 
   const [frames, setFrames] = useState<Frame[]>([]);
+  const [actors, setActors] = useState<Actor[]>([]);
+  const [projectScript, setProjectScript] = useState<string>('');
   const [history, setHistory] = useState<Frame[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
@@ -245,6 +258,10 @@ export default function App() {
   const [fps, setFps] = useState(12);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isScriptEditorOpen, setIsScriptEditorOpen] = useState(false);
+  const [isTestingMovie, setIsTestingMovie] = useState(false);
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [isInteractiveTourActive, setIsInteractiveTourActive] = useState(false);
   const [isFrameManagerOpen, setIsFrameManagerOpen] = useState(false);
   const [isAudioRecorderOpen, setIsAudioRecorderOpen] = useState(false);
   const [isAudioEditorOpen, setIsAudioEditorOpen] = useState(false);
@@ -299,8 +316,9 @@ export default function App() {
     return folders.find(f => f.id === currentFolderId) || null;
   }, [folders, currentFolderId]);
 
-  const totalAnimationsCount = useMemo(() => savedProjects.filter(p => p.type !== 'painting').length, [savedProjects]);
+  const totalAnimationsCount = useMemo(() => savedProjects.filter(p => p.type === 'animation' || !p.type).length, [savedProjects]);
   const totalPaintingsCount = useMemo(() => savedProjects.filter(p => p.type === 'painting').length, [savedProjects]);
+  const totalGamesCount = useMemo(() => savedProjects.filter(p => p.type === 'game').length, [savedProjects]);
 
   const displayProjects = useMemo(() => {
     let list = [...savedProjects];
@@ -312,9 +330,11 @@ export default function App() {
 
     // Filter by category tab
     if (homeFilter === 'animations') {
-      list = list.filter(p => p.type !== 'painting');
+      list = list.filter(p => p.type === 'animation' || !p.type);
     } else if (homeFilter === 'paintings') {
       list = list.filter(p => p.type === 'painting');
+    } else if (homeFilter === 'games') {
+      list = list.filter(p => p.type === 'game');
     }
 
     // Search query
@@ -424,6 +444,8 @@ export default function App() {
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isSpritesheetExportOpen, setIsSpritesheetExportOpen] = useState(false);
+  const [isAssetLibraryOpen, setIsAssetLibraryOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportedFile, setExportedFile] = useState<{ url: string, name: string, blob: Blob } | null>(null);
@@ -732,6 +754,34 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
+  const handleInsertLibraryImage = (url: string) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxWidth = canvasSize.width * 0.8;
+      const ratio = img.width / img.height;
+      const width = Math.min(img.width, maxWidth);
+      const height = width / ratio;
+      const x = (canvasSize.width - width) / 2;
+      const y = (canvasSize.height - height) / 2;
+      setSelection({
+        x,
+        y,
+        width,
+        height,
+        dataUrl: url,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        anchorX: width / 2,
+        anchorY: height / 2
+      });
+      setTool('select');
+      setHasUnsavedChanges(true);
+      setIsAssetLibraryOpen(false);
+    };
+    img.src = url;
+  };
+
   const handleImportVideo = async (extractedFrames: string[], importAudio: boolean, trimStart: number, trimEnd: number) => {
     const file = importingVideoFile;
     setIsVideoImportOpen(false);
@@ -967,8 +1017,191 @@ export default function App() {
     }
   };
 
+  const handleUpdateActorScript = (id: string, script: string) => {
+    setActors(prev => prev.map(a => a.id === id ? { ...a, scripts: script } : a));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleUpdateFrameScript = (index: number, script: string) => {
+    setFrames(prev => prev.map((f, i) => i === index ? { ...f, script } : f));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleUpdateProjectScript = (script: string) => {
+    setProjectScript(script);
+    setHasUnsavedChanges(true);
+  };
+
+  const enterSymbolEditMode = (actorId: string) => {
+      const actor = actors.find(a => a.id === actorId);
+      if (!actor) return;
+
+      // Backup main project
+      setMainProjectBackup({
+          frames,
+          layers,
+          activeLayerId,
+          actors,
+          projectScript,
+          history,
+          historyIndex,
+          currentFrameIndex,
+          fps,
+          projectId,
+          projectName,
+          canvasSize,
+          background,
+          onionSkinSettings
+      });
+
+      // Load symbol data
+      setEditingSymbolId(actorId);
+      setProjectName(`Editing: ${actor.name}`);
+      setProjectId(`symbol-${crypto.randomUUID()}`); // prevent overwriting main project
+      
+      // Crucial: Set canvas to match symbol dimensions so it draws perfectly
+      setCanvasSize({ width: actor.width, height: actor.height });
+      setBackground({ type: 'color', color: 'transparent' });
+
+      // If symbol has frames, load them, otherwise create one from dataUrl
+      if (actor.isAnimated && actor.symbolFrames && actor.symbolFrames.length > 0) {
+          setFrames(actor.symbolFrames);
+          setLayers(actor.symbolLayers || [createDefaultLayer()]);
+          setActiveLayerId(actor.symbolLayers ? actor.symbolLayers[0].id : '1');
+          setFps(actor.symbolFps || fps);
+      } else {
+          // Static or uninitialized animated symbol
+          const defaultLayer = createDefaultLayer();
+          const frame: Frame = {
+              id: crypto.randomUUID(),
+              layers: { [defaultLayer.id]: actor.dataUrl },
+              script: ''
+          };
+          setFrames([frame]);
+          setLayers([defaultLayer]);
+          setActiveLayerId(defaultLayer.id);
+          // Keep current fps
+      }
+
+      setActors([]); // Symbols don't have nested actors yet
+      setProjectScript(actor.scripts);
+      setCurrentFrameIndex(0);
+      setHistory([]);
+      setHistoryIndex(-1);
+      setSelection(null);
+      setHasUnsavedChanges(false);
+  };
+
+  const exitSymbolEditMode = async () => {
+      if (!editingSymbolId || !mainProjectBackup) return;
+
+      // Ensure current changes are committed to the actor
+      // The current canvas state is in `frames[currentFrameIndex].layers`
+      // We need to capture the current frame as the main `dataUrl` of the symbol 
+      // (or let's say frame 0's active layer for now, or compile all layers)
+      // Actually, flattening frames is complex without rendering.
+      // But we can just use the thumbnail or layer data.
+      const currentLayerData = frames[0]?.thumbnailUrl || frames[0]?.layers[layers[0].id] || '';
+
+      const updatedActors = mainProjectBackup.actors.map((a: Actor) => {
+          if (a.id === editingSymbolId) {
+              return {
+                  ...a,
+                  isAnimated: frames.length > 1,
+                  symbolFrames: frames,
+                  symbolLayers: layers,
+                  symbolFps: fps,
+                  scripts: projectScript,
+                  dataUrl: currentLayerData // update preview/dataUrl
+              };
+          }
+          return a;
+      });
+
+      // Restore main project
+      setFrames(mainProjectBackup.frames);
+      setLayers(mainProjectBackup.layers);
+      setActiveLayerId(mainProjectBackup.activeLayerId);
+      setActors(updatedActors);
+      setProjectScript(mainProjectBackup.projectScript);
+      setHistory(mainProjectBackup.history);
+      setHistoryIndex(mainProjectBackup.historyIndex);
+      setCurrentFrameIndex(mainProjectBackup.currentFrameIndex);
+      setFps(mainProjectBackup.fps);
+      setProjectId(mainProjectBackup.projectId);
+      setProjectName(mainProjectBackup.projectName);
+      setCanvasSize(mainProjectBackup.canvasSize);
+      setBackground(mainProjectBackup.background);
+      setOnionSkinSettings(mainProjectBackup.onionSkinSettings);
+
+      setEditingSymbolId(null);
+      setMainProjectBackup(null);
+      setHasUnsavedChanges(true);
+  };
+
+  const handleMakeSymbol = () => {
+      if (!selection) return;
+      const isAnimated = window.confirm("Do you want to make this an animated symbol?");
+      const newActor: Actor = {
+          id: crypto.randomUUID(),
+          name: `Symbol_${actors.length + 1}`,
+          dataUrl: selection.dataUrl,
+          x: selection.x,
+          y: selection.y,
+          width: selection.width,
+          height: selection.height,
+          rotation: selection.rotation,
+          scaleX: selection.scaleX,
+          scaleY: selection.scaleY,
+          opacity: 1,
+          targetFrame: currentFrameIndex,
+          isAnimated: isAnimated,
+          scripts: `// Code runs when game starts\nthis.onUpdate = function() {\n  // Runs every frame\n};\n\nthis.onClick = function() {\n  // To control this symbol's timeline:\n  // this.play();\n  // this.gotoAndStop(2);\n\n  // To control the main game timeline:\n  // gotoAndStop(2);\n};`
+      };
+      setActors(prev => [...prev, newActor]);
+      setSelection(null);
+  };
+
+  const handleSelectActor = (actorId: string) => {
+      const actor = actors.find(a => a.id === actorId);
+      if (!actor) return;
+      setSelection({
+          actorId: actor.id,
+          x: actor.x,
+          y: actor.y,
+          width: actor.width,
+          height: actor.height,
+          dataUrl: actor.dataUrl,
+          rotation: actor.rotation,
+          scaleX: actor.scaleX,
+          scaleY: actor.scaleY,
+          type: 'image',
+          selectionType: 'rectangle'
+      });
+  };
+
   const handleSelectionCommit = async () => {
       if (!selection) return;
+
+      if (selection.actorId) {
+          setActors(prev => prev.map(a => 
+              a.id === selection.actorId 
+                  ? { 
+                      ...a, 
+                      x: selection.x, 
+                      y: selection.y, 
+                      width: selection.width, 
+                      height: selection.height, 
+                      rotation: selection.rotation, 
+                      scaleX: selection.scaleX, 
+                      scaleY: selection.scaleY 
+                    }
+                  : a
+          ));
+          setSelection(null);
+          setHasUnsavedChanges(true);
+          return;
+      }
 
       const canvas = document.createElement('canvas');
       canvas.width = canvasSize.width;
@@ -1726,6 +1959,10 @@ export default function App() {
   };
 
   const saveProject = async () => {
+      if (editingSymbolId) {
+          exitSymbolEditMode();
+          return;
+      }
       let thumb = '';
       if (frames.length > 0) {
           thumb = await compositeLayers(frames[0], layers, canvasSize.width, canvasSize.height, background, backgroundImage);
@@ -1745,7 +1982,9 @@ export default function App() {
           fps,
           audioTracks,
           motionPaths: [],
-          onionSkinSettings
+          onionSkinSettings,
+          actors,
+          projectScript
       };
       try {
         await saveProjectToDB(projectData);
@@ -1837,6 +2076,19 @@ export default function App() {
         setFps(data.fps);
         setAudioTracks(data.audioTracks || []);
         if (data.onionSkinSettings) setOnionSkinSettings(data.onionSkinSettings);
+        
+        // AI Assistant Auto-Migration based on user request
+        let loadedActors = data.actors || [];
+        loadedActors = loadedActors.map(a => {
+            const name = a.name.toLowerCase();
+            let tf = a.targetFrame;
+            if (name.includes('blue') && tf !== 0) { tf = 0; }
+            if ((name.includes('green') || name.includes('red')) && tf !== 1) { tf = 1; }
+            return { ...a, targetFrame: tf };
+        });
+        
+        setActors(loadedActors);
+        setProjectScript(data.projectScript || '');
         setCurrentFrameIndex(0);
         setHistory([data.frames]);
         setHistoryIndex(0);
@@ -1853,22 +2105,130 @@ export default function App() {
       }
   };
 
-  const createNewProject = async (type: 'animation' | 'painting' = 'animation', targetFolderId: string | null = currentFolderId) => {
+  const createNewProject = async (type: 'animation' | 'painting' | 'game' = 'animation', targetFolderId: string | null = currentFolderId) => {
       clearAudio();
       const pid = crypto.randomUUID();
       setProjectId(pid);
-      setProjectName(type === 'animation' ? t('menu.newProject') : t('menu.newPainting', 'New Painting'));
+      
+      let projName = t('menu.newProject');
+      if (type === 'painting') {
+        projName = t('menu.newPainting', 'New Painting');
+      } else if (type === 'game') {
+        projName = 'New Interactive Game';
+      }
+      setProjectName(projName);
       setProjectType(type);
       setFolderId(targetFolderId || null);
       setCanvasSize({ width: 800, height: 600 });
       setBackground({ type: 'color', color: '#ffffff' });
+      
       const defaultL = [createDefaultLayer('1', `${t('layers.newLayer')} 1`)];
       setLayers(defaultL);
       setActiveLayerId(defaultL[0].id);
-      const initialFrame = createBlankFrame(defaultL, 800, 600);
-      initialFrame.thumbnailUrl = await compositeLayers(initialFrame, defaultL, 800, 600, { type: 'color', color: '#ffffff' }, null, false);
-      setFrames([initialFrame]);
-      setHistory([[initialFrame]]);
+
+      if (type === 'game') {
+        const drawTextOnLayer = (text: string, subtitle: string, color: string = '#1e293b'): string => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 800;
+          canvas.height = 600;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = color;
+            ctx.font = 'bold 36px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 400, 180);
+
+            ctx.fillStyle = '#64748b';
+            ctx.font = 'bold 18px system-ui, sans-serif';
+            ctx.fillText(subtitle, 400, 240);
+          }
+          return canvas.toDataURL();
+        };
+
+        const frame1: Frame = {
+          id: crypto.randomUUID(),
+          layers: { '1': drawTextOnLayer('MY INTERACTIVE FLASH GAME', 'Click the Blue Play Button to Start the Quiz!') },
+          script: '// === Frame 1: Main Menu ===\nstop();\nconsole.log("Game started! Waiting on Frame 1.");',
+          thumbnailUrl: ''
+        };
+        const frame2: Frame = {
+          id: crypto.randomUUID(),
+          layers: { '1': drawTextOnLayer('CHALLENGE: CHOOSE WISELY', 'Click the Correct Symbol (Green Check) to win, or Incorrect (Red Cross) to fail!') },
+          script: '// === Frame 2: Level 1 Quiz ===\nstop();\nconsole.log("On Level 1. Waiting for user response.");',
+          thumbnailUrl: ''
+        };
+        const frame3: Frame = {
+          id: crypto.randomUUID(),
+          layers: { '1': drawTextOnLayer('CONGRATULATIONS - YOU WIN!', 'You successfully answered the quiz! Press play button to replay.') },
+          script: '// === Frame 3: Victory Screen ===\nstop();\nconsole.log("Player succeeded!");',
+          thumbnailUrl: ''
+        };
+
+        frame1.thumbnailUrl = await compositeLayers(frame1, defaultL, 800, 600, { type: 'color', color: '#ffffff' }, null, false);
+        frame2.thumbnailUrl = await compositeLayers(frame2, defaultL, 800, 600, { type: 'color', color: '#ffffff' }, null, false);
+        frame3.thumbnailUrl = await compositeLayers(frame3, defaultL, 800, 600, { type: 'color', color: '#ffffff' }, null, false);
+
+        setFrames([frame1, frame2, frame3]);
+        setHistory([[frame1, frame2, frame3]]);
+        
+        // Setup initial Symbols (Actors)
+        const playBtn: Actor = {
+          id: crypto.randomUUID(),
+          name: 'playButton',
+          dataUrl: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><rect width="120" height="120" rx="24" fill="%23007AFF"/><polygon points="48,36 48,84 84,60" fill="white"/></svg>`,
+          x: 340,
+          y: 350,
+          width: 120,
+          height: 120,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          opacity: 1,
+          scripts: '// Click the play button to start the game\nthis.onClick = function() {\n  gotoAndStop(2);\n};\nthis.onUpdate = function() {\n  // Only show play button on Frame 1 and Frame 3\n  this.visible = (this.currentFrame === 1 || this.currentFrame === 3);\n};'
+        };
+
+        const correctBtn: Actor = {
+          id: crypto.randomUUID(),
+          name: 'correctButton',
+          dataUrl: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><rect width="120" height="120" rx="24" fill="%2334C759"/><path d="M36,60 L50,74 L84,40" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`,
+          x: 240,
+          y: 350,
+          width: 120,
+          height: 120,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          opacity: 1,
+          scripts: '// Click correct option to advance to victory screen\nthis.onClick = function() {\n  gotoAndStop(3);\n};\nthis.onUpdate = function() {\n  // Only show on Frame 2\n  this.visible = (this.currentFrame === 2);\n};'
+        };
+
+        const wrongBtn: Actor = {
+          id: crypto.randomUUID(),
+          name: 'wrongButton',
+          dataUrl: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><rect width="120" height="120" rx="24" fill="%23FF3B30"/><path d="M38,38 L82,82 M82,38 L38,82" stroke="white" stroke-width="12" stroke-linecap="round" fill="none"/></svg>`,
+          x: 440,
+          y: 350,
+          width: 120,
+          height: 120,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          opacity: 1,
+          scripts: '// Click wrong option to trigger reset and show message\nthis.onClick = function() {\n  alert("Wrong choice! Let\'s go back and try again.");\n  gotoAndStop(1);\n};\nthis.onUpdate = function() {\n  // Only show on Frame 2\n  this.visible = (this.currentFrame === 2);\n};'
+        };
+
+        setActors([playBtn, correctBtn, wrongBtn]);
+        setProjectScript('// Global script runs on startup');
+      } else {
+        const initialFrame = createBlankFrame(defaultL, 800, 600);
+        initialFrame.thumbnailUrl = await compositeLayers(initialFrame, defaultL, 800, 600, { type: 'color', color: '#ffffff' }, null, false);
+        setFrames([initialFrame]);
+        setHistory([[initialFrame]]);
+        setActors([]);
+        setProjectScript('');
+      }
+
       setHistoryIndex(0);
       setFps(12);
       setAudioTracks([]);
@@ -1884,6 +2244,17 @@ export default function App() {
       setSelection(null);
       setHasUnsavedChanges(false);
       setView('editor');
+  };
+
+  const handleStartTour = () => {
+    setIsTutorialOpen(false);
+    setIsHelpOpen(false);
+    if (view === 'menu') {
+      createNewProject('animation');
+    }
+    setTimeout(() => {
+      setIsInteractiveTourActive(true);
+    }, 300);
   };
 
   const deleteProject = async (e: React.MouseEvent, id: string) => {
@@ -2822,6 +3193,9 @@ export default function App() {
         case shortcuts.deleteFrame: 
         case 'Delete':
           if (selection) {
+            if (selection.actorId) {
+                setActors(prev => prev.filter(a => a.id !== selection.actorId));
+            }
             setSelection(null);
             handled = true;
           } else if (finalKey === shortcuts.deleteFrame) {
@@ -2834,6 +3208,12 @@ export default function App() {
         case 'Ctrl+c': handleCopy(); handled = true; break;
         case 'Ctrl+v': handlePaste(); handled = true; break;
         case 'Ctrl+x': handleCut(); handled = true; break;
+        case 'h':
+        case 'H':
+        case '?':
+          setIsTutorialOpen(prev => !prev);
+          handled = true;
+          break;
       }
 
       if (handled) {
@@ -2941,6 +3321,15 @@ export default function App() {
               >
                 <Icons.FolderPlus size={16} className="text-blue-400" />
                 <span>{t('folders.newFolder', 'New Folder')}</span>
+              </button>
+
+              <button
+                onClick={() => setIsTutorialOpen(true)}
+                className="flex items-center gap-1.5 bg-gradient-to-r from-[var(--accent-color)] to-orange-500 hover:opacity-90 text-white px-3.5 py-2 rounded-xl transition-all font-bold text-xs shadow-md"
+                title={t('tutorial.title', 'ClipAnim Academy & Tutorial')}
+              >
+                <Icons.GraduationCap size={16} />
+                <span>{t('tutorial.button', 'Tutorial')}</span>
               </button>
 
               <button
@@ -3054,6 +3443,21 @@ export default function App() {
                 <span>{t('menu.paintings', 'Paintings & Art')}</span>
                 <span className="ml-1 text-[10px] opacity-70 bg-black/20 px-1.5 py-0.5 rounded-full font-mono">
                   {totalPaintingsCount}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setHomeFilter('games')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                  homeFilter === 'games'
+                    ? 'bg-cyan-600 text-white shadow-md'
+                    : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+              >
+                <Icons.Gamepad2 size={14} className={homeFilter === 'games' ? 'text-white' : 'text-cyan-400'} />
+                <span>Games</span>
+                <span className="ml-1 text-[10px] opacity-70 bg-black/20 px-1.5 py-0.5 rounded-full font-mono">
+                  {totalGamesCount}
                 </span>
               </button>
 
@@ -3223,6 +3627,18 @@ export default function App() {
                       <span className="text-[10px] text-gray-500 mt-0.5">Single canvas artwork</span>
                     </button>
 
+                    {/* New Game Button */}
+                    <button
+                      onClick={() => createNewProject('game')}
+                      className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-800 hover:border-cyan-500 hover:bg-cyan-500/5 flex flex-col items-center justify-center group transition-all p-4 text-center"
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 flex items-center justify-center text-cyan-400 mb-2.5 group-hover:scale-110 transition-transform shadow-md">
+                        <Icons.Gamepad2 size={24} />
+                      </div>
+                      <span className="font-bold text-xs text-gray-200 group-hover:text-white">New Game</span>
+                      <span className="text-[10px] text-gray-500 mt-0.5">Interactive scripted quiz</span>
+                    </button>
+
                     {/* Import Button */}
                     <button
                       onClick={() => importFileRef.current?.click()}
@@ -3234,21 +3650,36 @@ export default function App() {
                       <span className="font-bold text-xs text-gray-200 group-hover:text-white">{t('menu.importProject', 'Import File')}</span>
                       <span className="text-[10px] text-gray-500 mt-0.5">JSON project file</span>
                     </button>
+
+                    {/* Interactive Tutorial Button */}
+                    <button
+                      onClick={() => setIsTutorialOpen(true)}
+                      className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-800 hover:border-amber-500 hover:bg-amber-500/5 flex flex-col items-center justify-center group transition-all p-4 text-center"
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-amber-500/20 flex items-center justify-center text-amber-400 mb-2.5 group-hover:scale-110 transition-transform shadow-md">
+                        <Icons.GraduationCap size={24} />
+                      </div>
+                      <span className="font-bold text-xs text-gray-200 group-hover:text-white">{t('tutorial.button', 'Tutorial')}</span>
+                      <span className="text-[10px] text-gray-500 mt-0.5">Interactive guide & tips</span>
+                    </button>
                   </>
                 )}
 
                 {/* PROJECT CARDS */}
                 {displayProjects.map((project) => {
                   const isPainting = project.type === 'painting';
+                  const isGame = project.type === 'game';
                   const projectFolderObj = folders.find(f => f.id === project.folderId);
+
+                  let ringClass = 'hover:ring-2 ring-[#FF3B30]/80';
+                  if (isPainting) ringClass = 'hover:ring-2 ring-purple-500/80';
+                  else if (isGame) ringClass = 'hover:ring-2 ring-cyan-500/80';
 
                   return (
                     <div
                       key={project.id}
                       onClick={() => loadProject(project.id)}
-                      className={`relative group aspect-[4/3] bg-[#1e1e1e] rounded-2xl overflow-hidden cursor-pointer border border-gray-800 hover:border-gray-600 transition-all shadow-lg hover:shadow-2xl ${
-                        isPainting ? 'hover:ring-2 ring-purple-500/80' : 'hover:ring-2 ring-[#FF3B30]/80'
-                      }`}
+                      className={`relative group aspect-[4/3] bg-[#1e1e1e] rounded-2xl overflow-hidden cursor-pointer border border-gray-800 hover:border-gray-600 transition-all shadow-lg hover:shadow-2xl ${ringClass}`}
                     >
                       {/* Thumbnail Preview */}
                       {project.thumbnailUrl ? (
@@ -3259,7 +3690,13 @@ export default function App() {
                         />
                       ) : (
                         <div className="w-full h-full bg-[radial-gradient(#2a2a2a_1px,transparent_1px)] [background-size:12px_12px] bg-[#141414] flex items-center justify-center text-gray-700">
-                          {isPainting ? <Icons.Palette size={40} /> : <Icons.Clapperboard size={40} />}
+                          {isPainting ? (
+                            <Icons.Palette size={40} />
+                          ) : isGame ? (
+                            <Icons.Gamepad2 size={40} className="text-cyan-400/60" />
+                          ) : (
+                            <Icons.Clapperboard size={40} />
+                          )}
                         </div>
                       )}
 
@@ -3269,6 +3706,11 @@ export default function App() {
                           <span className="bg-purple-600/95 text-white font-bold text-[10px] px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md backdrop-blur-sm border border-purple-400/40">
                             <Icons.Palette size={12} />
                             <span>Painting</span>
+                          </span>
+                        ) : isGame ? (
+                          <span className="bg-cyan-600/95 text-white font-bold text-[10px] px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md backdrop-blur-sm border border-cyan-400/40">
+                            <Icons.Gamepad2 size={12} />
+                            <span>Game</span>
                           </span>
                         ) : (
                           <span className="bg-[#FF3B30]/95 text-white font-bold text-[10px] px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md backdrop-blur-sm border border-red-400/40">
@@ -3410,7 +3852,14 @@ export default function App() {
         <header className="h-14 bg-[#1e1e1e] border-b border-gray-700 shrink-0 z-30 overflow-x-auto overflow-y-hidden">
             <div className="flex items-center justify-between px-4 h-full min-w-max space-x-8">
                 <div className="flex items-center space-x-2">
-                    <button onClick={handleGoHome} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white relative"><Icons.Home size={24} />{hasUnsavedChanges && <span className="absolute top-2 right-2 w-2 h-2 bg-[var(--accent-color)] rounded-full ring-2 ring-[#1e1e1e]" />}</button>
+                    {editingSymbolId ? (
+                        <button onClick={exitSymbolEditMode} className="flex items-center space-x-2 px-3 py-1.5 bg-[#007AFF] hover:bg-blue-600 rounded-lg text-white font-medium text-sm transition-colors shadow-lg">
+                            <Icons.ChevronLeft size={16} />
+                            <span>Return to Main Scene</span>
+                        </button>
+                    ) : (
+                        <button onClick={handleGoHome} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white relative"><Icons.Home size={24} />{hasUnsavedChanges && <span className="absolute top-2 right-2 w-2 h-2 bg-[var(--accent-color)] rounded-full ring-2 ring-[#1e1e1e]" />}</button>
+                    )}
                     <input 
                         type="text"
                         value={projectName}
@@ -3472,10 +3921,25 @@ export default function App() {
                     >
                       <Icons.Trash2 size={20} />
                     </button>
+                    {selection?.actorId && (
+                      <button 
+                        onClick={() => enterSymbolEditMode(selection.actorId!)} 
+                        className="p-2 ml-2 rounded-full text-[#007AFF] hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20" 
+                        title="Edit Symbol Timeline"
+                      >
+                        <Icons.Film size={20} />
+                      </button>
+                    )}
                 </div>
-                <div className="flex items-center space-x-1 sm:space-x-2">
+                <div id="tour-right-actions" className="flex items-center space-x-1 sm:space-x-2">
+                    <button onClick={() => setIsTutorialOpen(true)} className="p-3 text-amber-400 hover:text-amber-300" title={t('tutorial.title', 'Tutorial')}><Icons.GraduationCap size={20} /></button>
+                    {actors.length > 0 && (
+                      <button onClick={() => setIsTestingMovie(true)} className="p-3 text-emerald-400 hover:text-emerald-300" title="Test Interactive Movie"><Icons.Gamepad2 size={20} /></button>
+                    )}
                     <button onClick={() => setIsBackpackOpen(true)} className={`p-3 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title={t('tooltips.backpack')}><Icons.Briefcase size={20} /></button>
-                    <button onClick={() => setIsLayerPanelOpen(!isLayerPanelOpen)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.layers')}><Icons.Layers size={20} /></button>
+                    <button onClick={() => { setIsLayerPanelOpen(!isLayerPanelOpen); setIsSymbolPanelOpen(false); }} className={`p-3 rounded-full ${isLayerPanelOpen ? 'text-[#FF3B30]' : 'text-gray-400 hover:text-white'}`} title={t('tooltips.layers')}><Icons.Layers size={20} /></button>
+                    <button onClick={() => { setIsSymbolPanelOpen(!isSymbolPanelOpen); setIsLayerPanelOpen(false); }} className={`p-3 rounded-full ${isSymbolPanelOpen ? 'text-[#007AFF]' : 'text-gray-400 hover:text-white'}`} title="Symbol Library"><Icons.Library size={20} /></button>
+                    <button onClick={() => setIsAssetLibraryOpen(true)} className="p-3 text-indigo-400 hover:text-indigo-300 rounded-full transition-colors" title="Asset Library"><Icons.Library size={20} /></button>
                     <button onClick={saveProject} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.saveProject')}><Icons.Save size={20} /></button>
                     <button onClick={() => setIsExportModalOpen(true)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.export')}><Icons.Download size={20} /></button>
                     <button onClick={() => setIsSettingsOpen(true)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.projectSettings')}><Icons.LayoutGrid size={20} /></button>
@@ -3512,10 +3976,16 @@ export default function App() {
             onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)} 
             onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)} 
             onSelectionCommit={handleSelectionCommit}
-            onSelectionDelete={() => setSelection(null)}
+            onSelectionDelete={() => {
+                if (selection?.actorId) {
+                    setActors(prev => prev.filter(a => a.id !== selection?.actorId));
+                }
+                setSelection(null);
+            }}
             shapeType={shapeType} 
             onSelectShapeType={setShapeType} 
             onOpenHelp={() => setIsHelpOpen(true)} 
+            onOpenCodeEditor={() => setIsScriptEditorOpen(true)}
             textToolFont={textToolFont}
             onSelectTextToolFont={setTextToolFont}
             textToolBold={textToolBold}
@@ -3529,7 +3999,7 @@ export default function App() {
             smoothing={smoothing}
             onChangeSmoothing={setSmoothing}
         />
-        <div className="flex-1 relative min-h-0 overflow-visible bg-[#2a2a2a]">
+        <div id="tour-canvas" className="flex-1 relative min-h-0 overflow-visible bg-[#2a2a2a]">
             {/* Auto-save notification HUD */}
             {autoSaveStatus === 'warning' && (
                 <div className="absolute top-4 left-4 z-[40] bg-[#1e1e1e]/90 border border-red-500/40 text-white px-4 py-2.5 rounded-xl shadow-2xl shadow-black/50 flex items-center gap-3 backdrop-blur-md pointer-events-none select-none animate-pulse">
@@ -3574,7 +4044,13 @@ export default function App() {
                 onSelectionCreate={handleSelectionCreate} 
                 onSelectionUpdate={setSelection} 
                 onSelectionCommit={handleSelectionCommit} 
-                onSelectionDelete={() => setSelection(null)}
+                onSelectionDelete={() => {
+                    if (selection?.actorId) {
+                        setActors(prev => prev.filter(a => a.id !== selection?.actorId));
+                    }
+                    setSelection(null);
+                }}
+                onSelectionMakeSymbol={handleMakeSymbol}
                 canvasWidth={canvasSize.width} 
                 canvasHeight={canvasSize.height} 
                 background={background}
@@ -3589,6 +4065,8 @@ export default function App() {
                 onToggleCameraMode={() => setCameraMode(!cameraMode)}
                 symmetryMode={symmetryMode}
                 onApplyMotionPath={handleApplyMotionPath}
+                actors={actors.filter(a => a.targetFrame === undefined || a.targetFrame === currentFrameIndex)}
+                onSelectActor={handleSelectActor}
             />
             <TweenModal
                 isOpen={tweenTargetIndex !== null}
@@ -3609,8 +4087,8 @@ export default function App() {
                     }
                 }}
             />
-            {projectType === 'animation' && (
-                <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
+            {(projectType === 'animation' || projectType === 'game') && (
+                <div id="tour-timeline" className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
                     <Timeline 
                       frames={frames} 
                       currentFrameIndex={currentFrameIndex} 
@@ -3697,11 +4175,78 @@ export default function App() {
           canvasSize={canvasSize}
           background={background}
           backgroundImage={backgroundImage}
+          onOpenSpritesheetExport={() => setIsSpritesheetExportOpen(true)}
         />
       )}
-      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      {isSpritesheetExportOpen && (
+        <SpritesheetExportModal
+          isOpen={isSpritesheetExportOpen}
+          onClose={() => setIsSpritesheetExportOpen(false)}
+          actors={actors}
+          projectName={projectName}
+        />
+      )}
+      {isTestingMovie && (
+        <InteractivePlayer
+          frames={frames}
+          actors={actors}
+          projectScript={projectScript}
+          fps={fps}
+          canvasWidth={canvasSize.width}
+          canvasHeight={canvasSize.height}
+          background={background}
+          onClose={() => setIsTestingMovie(false)}
+        />
+      )}
+
+      <ScriptEditorModal
+        isOpen={isScriptEditorOpen}
+        onClose={() => setIsScriptEditorOpen(false)}
+        actors={actors}
+        onUpdateActorScript={handleUpdateActorScript}
+        projectScript={projectScript}
+        onUpdateProjectScript={handleUpdateProjectScript}
+        frames={frames}
+        onUpdateFrameScript={handleUpdateFrameScript}
+      />
+
+      <HelpModal 
+        isOpen={isHelpOpen} 
+        onClose={() => setIsHelpOpen(false)} 
+        onOpenTutorial={() => setIsTutorialOpen(true)}
+      />
+      
+      <TutorialModal 
+        isOpen={isTutorialOpen} 
+        onClose={() => setIsTutorialOpen(false)} 
+        onStartInteractiveTour={handleStartTour}
+      />
+
+      <InteractiveTour 
+        isActive={isInteractiveTourActive} 
+        onComplete={() => setIsInteractiveTourActive(false)} 
+      />
       
       {isLayerPanelOpen && view === 'editor' && <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onDuplicateLayer={duplicateLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onRenameLayer={renameLayer} onReorderLayers={reorderLayers} onClose={() => setIsLayerPanelOpen(false)} />}
+
+      {isSymbolPanelOpen && view === 'editor' && (
+        <SymbolPanel
+          actors={actors}
+          onAddActor={(newActor) => {
+            setActors(prev => [...prev, newActor]);
+            setHasUnsavedChanges(true);
+          }}
+          onRemoveActor={(id) => {
+            setActors(prev => prev.filter(a => a.id !== id));
+            setHasUnsavedChanges(true);
+          }}
+          canvasWidth={canvasSize.width}
+          canvasHeight={canvasSize.height}
+          onClose={() => setIsSymbolPanelOpen(false)}
+          onOpenSpritesheetExport={() => setIsSpritesheetExportOpen(true)}
+          onOpenAssetLibrary={() => { setIsAssetLibraryOpen(true); setIsSymbolPanelOpen(false); }}
+        />
+      )}
 
       {projectToDelete && (
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -3860,6 +4405,20 @@ export default function App() {
         setDeviceType={setDeviceType}
         theme={theme}
         setTheme={setTheme}
+      />
+      
+      <AssetLibraryModal
+        isOpen={isAssetLibraryOpen}
+        onClose={() => setIsAssetLibraryOpen(false)}
+        canvasWidth={canvasSize.width}
+        canvasHeight={canvasSize.height}
+        onAddActor={(newActor) => {
+          setActors(prev => [...prev, newActor]);
+          setHasUnsavedChanges(true);
+        }}
+        onAddSoundTrack={handleAddSoundLibraryTrack}
+        onSetBackgroundImage={setBackgroundImage}
+        onInsertImageToLayer={handleInsertLibraryImage}
       />
       <input 
         ref={importIntoSelectionRef}

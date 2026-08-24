@@ -352,5 +352,17 @@
     "latest": "Latest",
     "gotIt": "Got it!",
     "fullChangelog": "Changelog"
+  },
+  "tutorial": {
+    "title": "ClipAnim Academy & Tutorial",
+    "subtitle": "Learn animation fundamentals, digital drawing mastery, and pro production workflows.",
+    "button": "Tutorial",
+    "startTour": "Start Live UI Tour",
+    "welcomeTitle": "Interactive Animation Tutorial",
+    "welcomeDesc": "Master frame-by-frame animation, multi-layer drawing, audio foley, and smooth motion tweening.",
+    "tabLessons": "Guided Lessons",
+    "tabShortcuts": "Hotkeys & Gestures",
+    "tabFaq": "Animation FAQ & Tips",
+    "quickStart": "Quickstart Guide"
   }
 }

@@ -12,6 +12,18 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.3',
+    date: '2026-08-24',
+    type: 'major',
+    changes: [
+      'Interactive Frame Scripting: Attach play(), stop(), and frame-navigation commands to specific timeline frames to create interactive stories, games, or quiz structures.',
+      'Flash-style Navigation APIs: Full runtime support for play(), stop(), gotoAndStop(frameNum), and gotoAndPlay(frameNum) script actions.',
+      'Persistent Symbol Library Sidebar: Save active symbols to a persistent Global Library using local storage. Filter, search, and import/export symbol collections as JSON.',
+      'Interactive Project Templates: Launch game concepts immediately using the "New Game" starter project featuring custom preset frame scripts and interactive SVG actors.',
+      'Multi-Language Tutorials: Expanded interactive guides and tutorials on creating reusable symbols and frame scripts.'
+    ]
+  },
+  {
     version: '1.3.2',
     date: '2026-08-13',
     type: 'minor',
