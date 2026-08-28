@@ -264,6 +264,7 @@ export default function App() {
   const [isTestingMovie, setIsTestingMovie] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [isInteractiveTourActive, setIsInteractiveTourActive] = useState(false);
+  const [interactiveTourMode, setInteractiveTourMode] = useState<'all' | 'painting' | 'games'>('all');
   const [isFrameManagerOpen, setIsFrameManagerOpen] = useState(false);
   const [isAudioRecorderOpen, setIsAudioRecorderOpen] = useState(false);
   const [isAudioEditorOpen, setIsAudioEditorOpen] = useState(false);
@@ -2263,11 +2264,18 @@ export default function App() {
       setView('editor');
   };
 
-  const handleStartTour = () => {
+  const handleStartTour = (mode: 'all' | 'painting' | 'games' = 'all') => {
     setIsTutorialOpen(false);
     setIsHelpOpen(false);
+    setInteractiveTourMode(mode);
     if (view === 'menu') {
-      createNewProject('animation');
+      if (mode === 'painting') {
+        createNewProject('painting');
+      } else if (mode === 'games') {
+        createNewProject('game');
+      } else {
+        createNewProject('animation');
+      }
     }
     setTimeout(() => {
       setIsInteractiveTourActive(true);
@@ -3861,18 +3869,16 @@ export default function App() {
                     )}
                 </div>
                 <div id="tour-right-actions" className="flex items-center space-x-1 sm:space-x-2">
-                    <button onClick={() => setIsTutorialOpen(true)} className="p-3 text-amber-400 hover:text-amber-300" title={t('tutorial.title', 'Tutorial')}><Icons.GraduationCap size={20} /></button>
-                    {actors.length > 0 && (
-                      <button onClick={() => setIsTestingMovie(true)} className="p-3 text-emerald-400 hover:text-emerald-300" title="Test Interactive Movie"><Icons.Gamepad2 size={20} /></button>
-                    )}
-                    <button onClick={() => setIsBackpackOpen(true)} className={`p-3 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title={t('tooltips.backpack')}><Icons.Briefcase size={20} /></button>
-                    <button onClick={() => { setIsLayerPanelOpen(!isLayerPanelOpen); setIsSymbolPanelOpen(false); }} className={`p-3 rounded-full ${isLayerPanelOpen ? 'text-[#FF3B30]' : 'text-gray-400 hover:text-white'}`} title={t('tooltips.layers')}><Icons.Layers size={20} /></button>
-                    <button onClick={() => { setIsSymbolPanelOpen(!isSymbolPanelOpen); setIsLayerPanelOpen(false); }} className={`p-3 rounded-full ${isSymbolPanelOpen ? 'text-[#007AFF]' : 'text-gray-400 hover:text-white'}`} title="Symbol Library"><Icons.Library size={20} /></button>
-                    <button onClick={() => setIsAssetLibraryOpen(true)} className="p-3 text-indigo-400 hover:text-indigo-300 rounded-full transition-colors" title="Asset Library"><Icons.Library size={20} /></button>
-                    <button onClick={saveProject} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.saveProject')}><Icons.Save size={20} /></button>
-                    <button onClick={() => setIsExportModalOpen(true)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.export')}><Icons.Download size={20} /></button>
-                    <button onClick={() => setIsSettingsOpen(true)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.projectSettings')}><Icons.LayoutGrid size={20} /></button>
-                    <button onClick={() => setIsGlobalSettingsOpen(true)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.globalSettings')}><Icons.Settings size={20} /></button>
+                    <button id="tour-btn-tutorial" onClick={() => setIsTutorialOpen(true)} className="p-3 text-amber-400 hover:text-amber-300" title={t('tutorial.title', 'Tutorial')}><Icons.GraduationCap size={20} /></button>
+                    <button id="tour-btn-test-movie" onClick={() => setIsTestingMovie(true)} className={`p-3 rounded-full transition-colors ${actors.length > 0 ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10' : 'text-gray-400 hover:text-emerald-400 hover:bg-emerald-500/10'}`} title="Test Interactive Movie"><Icons.Gamepad2 size={20} /></button>
+                    <button id="tour-btn-backpack" onClick={() => setIsBackpackOpen(true)} className={`p-3 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title={t('tooltips.backpack')}><Icons.Briefcase size={20} /></button>
+                    <button id="tour-btn-layers" onClick={() => { setIsLayerPanelOpen(!isLayerPanelOpen); setIsSymbolPanelOpen(false); }} className={`p-3 rounded-full ${isLayerPanelOpen ? 'text-[#FF3B30]' : 'text-gray-400 hover:text-white'}`} title={t('tooltips.layers')}><Icons.Layers size={20} /></button>
+                    <button id="tour-btn-symbols" onClick={() => { setIsSymbolPanelOpen(!isSymbolPanelOpen); setIsLayerPanelOpen(false); }} className={`p-3 rounded-full ${isSymbolPanelOpen ? 'text-[#007AFF]' : 'text-gray-400 hover:text-white'}`} title="Symbol Library"><Icons.Library size={20} /></button>
+                    <button id="tour-btn-assets" onClick={() => setIsAssetLibraryOpen(true)} className="p-3 text-indigo-400 hover:text-indigo-300 rounded-full transition-colors" title="Asset Library"><Icons.Library size={20} /></button>
+                    <button id="tour-btn-save" onClick={saveProject} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.saveProject')}><Icons.Save size={20} /></button>
+                    <button id="tour-btn-export" onClick={() => setIsExportModalOpen(true)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.export')}><Icons.Download size={20} /></button>
+                    <button id="tour-btn-settings" onClick={() => setIsSettingsOpen(true)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.projectSettings')}><Icons.LayoutGrid size={20} /></button>
+                    <button id="tour-btn-global-settings" onClick={() => setIsGlobalSettingsOpen(true)} className="p-3 text-gray-400 hover:text-white" title={t('tooltips.globalSettings')}><Icons.Settings size={20} /></button>
                 </div>
             </div>
         </header>
@@ -4177,7 +4183,13 @@ export default function App() {
 
       <InteractiveTour 
         isActive={isInteractiveTourActive} 
+        initialMode={interactiveTourMode}
         onComplete={() => setIsInteractiveTourActive(false)} 
+        onOpenLayers={() => { setIsLayerPanelOpen(true); setIsSymbolPanelOpen(false); }}
+        onOpenSymbols={() => { setIsSymbolPanelOpen(true); setIsLayerPanelOpen(false); }}
+        onOpenScripts={() => setIsScriptEditorOpen(true)}
+        onOpenTestMovie={() => setIsTestingMovie(true)}
+        onOpenExport={() => setIsExportModalOpen(true)}
       />
       
       {isLayerPanelOpen && view === 'editor' && <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onDuplicateLayer={duplicateLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onRenameLayer={renameLayer} onReorderLayers={reorderLayers} onClose={() => setIsLayerPanelOpen(false)} />}

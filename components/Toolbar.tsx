@@ -226,7 +226,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   return (
     <>
       <div id="tour-toolbar" className="w-16 min-w-[64px] bg-[#1e1e1e] flex flex-col h-full border-r border-gray-700 z-20 shadow-xl">
-        <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col items-center py-4 space-y-4">
+        <div id="tour-toolbar-tools" className="flex-1 overflow-y-auto no-scrollbar flex flex-col items-center py-4 space-y-4">
             {tools.map((tool) => (
             <button key={tool.id} onClick={(e) => handleToolClick(e, tool.id)} className={`p-3 rounded-xl transition-all shrink-0 ${currentTool === tool.id ? 'bg-[var(--accent-color)] text-white shadow-lg' : 'text-gray-400 hover:bg-gray-800'}`}>
                 <tool.icon size={24} />
@@ -234,7 +234,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             ))}
             
             {/* Symmetry */}
-            <div className="flex flex-col items-center gap-2">
+            <div id="tour-toolbar-symmetry" className="flex flex-col items-center gap-2">
                 <button onClick={() => onSelectSymmetryMode('none')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'none' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>{t('globalSettings.systemDefault')}</button>
                 <button onClick={() => onSelectSymmetryMode('horizontal')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'horizontal' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>H</button>
                 <button onClick={() => onSelectSymmetryMode('vertical')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'vertical' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>V</button>
@@ -306,6 +306,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
             {/* Color / Transforms */}
             <button 
+                id="tour-toolbar-color"
                 onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPopoverPos({ top: r.top + r.height/2, left: r.right+12 }); setActivePopover(activePopover === 'color' ? null : 'color'); }} 
                 className="w-10 h-10 rounded-full border-2 border-white/20 shrink-0" 
                 style={{ backgroundColor: currentColor }} 
@@ -352,7 +353,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         {/* Help Button - Pinned to bottom */}
         <div className="shrink-0 p-2 border-t border-gray-700 flex justify-center bg-[#1e1e1e]">
             {onOpenCodeEditor && (
-                <button onClick={onOpenCodeEditor} className="p-3 rounded-xl text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 transition-colors" title="Script Editor">
+                <button id="tour-toolbar-script" onClick={onOpenCodeEditor} className="p-3 rounded-xl text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 transition-colors" title="Script Editor">
                     <Icons.Code size={20} />
                 </button>
             )}

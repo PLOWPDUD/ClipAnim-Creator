@@ -5,7 +5,7 @@ import { Icons } from '../Icons';
 export interface TutorialModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onStartInteractiveTour: () => void;
+  onStartInteractiveTour: (mode?: 'all' | 'painting' | 'games') => void;
 }
 
 interface Lesson {
@@ -483,17 +483,41 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({
           </div>
 
           {/* Top Actions & Mode Navigation */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => {
                 onClose();
-                onStartInteractiveTour();
+                onStartInteractiveTour('painting');
               }}
-              className="flex items-center gap-2 px-3.5 py-2 bg-[var(--accent-color)] hover:opacity-90 text-white rounded-xl text-xs font-bold transition-all shadow-md hover:scale-[1.02] active:scale-[0.98]"
-              title="Launch on-screen spotlight tour in the editor"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/30 rounded-xl text-xs font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+              title="Launch on-screen spotlight tour for Painting & Drawing"
             >
-              <Icons.Compass size={16} />
-              <span>{t('tutorial.startTour', 'Start Live UI Tour')}</span>
+              <Icons.Brush size={14} className="text-pink-400" />
+              <span>Painting Tour</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onClose();
+                onStartInteractiveTour('games');
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+              title="Launch on-screen spotlight tour for New Games & Scripting"
+            >
+              <Icons.Gamepad2 size={14} className="text-emerald-400" />
+              <span>Game Dev Tour</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onClose();
+                onStartInteractiveTour('all');
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--accent-color)] hover:opacity-90 text-white rounded-xl text-xs font-bold transition-all shadow-md hover:scale-[1.02] active:scale-[0.98]"
+              title="Launch complete on-screen spotlight tour"
+            >
+              <Icons.Compass size={14} />
+              <span>Full UI Tour</span>
             </button>
 
             <button
@@ -669,12 +693,38 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({
                 <button
                   onClick={() => {
                     onClose();
-                    onStartInteractiveTour();
+                    if (currentLesson.id === 'games-guide' || currentLesson.id === 'quizzes-guide' || currentLesson.id === 'spritesheet-xml-guide') {
+                      onStartInteractiveTour('games');
+                    } else if (currentLesson.category === 'drawing' || currentLesson.category === 'basics') {
+                      onStartInteractiveTour('painting');
+                    } else {
+                      onStartInteractiveTour('all');
+                    }
                   }}
-                  className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold transition-all border border-gray-600"
+                  className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-bold transition-all border shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
+                    currentLesson.id === 'games-guide' || currentLesson.id === 'quizzes-guide' || currentLesson.id === 'spritesheet-xml-guide'
+                      ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-500/50'
+                      : currentLesson.category === 'drawing'
+                      ? 'bg-pink-600 hover:bg-pink-500 border-pink-500/50'
+                      : 'bg-gray-700 hover:bg-gray-600 border-gray-600'
+                  }`}
                 >
-                  <Icons.Compass size={15} />
-                  <span>Try in Live Editor</span>
+                  {currentLesson.id === 'games-guide' || currentLesson.id === 'quizzes-guide' || currentLesson.id === 'spritesheet-xml-guide' ? (
+                    <>
+                      <Icons.Gamepad2 size={15} />
+                      <span>Try in Game Tour</span>
+                    </>
+                  ) : currentLesson.category === 'drawing' ? (
+                    <>
+                      <Icons.Brush size={15} />
+                      <span>Try in Painting Tour</span>
+                    </>
+                  ) : (
+                    <>
+                      <Icons.Compass size={15} />
+                      <span>Try in Live Tour</span>
+                    </>
+                  )}
                 </button>
               </div>
 
@@ -1101,21 +1151,43 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({
             <span>Need more help? Press <kbd className="bg-black/50 border border-gray-700 px-1.5 py-0.5 rounded text-gray-300 font-mono font-bold">H</kbd> anytime to reopen this guide.</span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => {
                 onClose();
-                onStartInteractiveTour();
+                onStartInteractiveTour('painting');
               }}
-              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-2 border border-gray-700"
+              className="px-3 py-1.5 bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 border border-pink-500/30"
             >
-              <Icons.Compass size={15} />
-              <span>Launch Live Spotlight Tour</span>
+              <Icons.Brush size={14} className="text-pink-400" />
+              <span>Painting Tour</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onClose();
+                onStartInteractiveTour('games');
+              }}
+              className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 border border-emerald-500/30"
+            >
+              <Icons.Gamepad2 size={14} className="text-emerald-400" />
+              <span>Game Dev Tour</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onClose();
+                onStartInteractiveTour('all');
+              }}
+              className="px-3.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 border border-gray-700"
+            >
+              <Icons.Compass size={14} />
+              <span>Full UI Tour</span>
             </button>
             
             <button
               onClick={onClose}
-              className="px-6 py-2 bg-[var(--accent-color)] hover:opacity-90 text-white font-bold text-xs rounded-xl transition-all shadow-md"
+              className="px-5 py-1.5 bg-[var(--accent-color)] hover:opacity-90 text-white font-bold text-xs rounded-xl transition-all shadow-md ml-2"
             >
               {t('help.gotIt', 'Got it, Let\'s Animate!')}
             </button>
