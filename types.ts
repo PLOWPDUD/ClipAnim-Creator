@@ -25,6 +25,15 @@ export interface BackpackItem {
   name?: string;
 }
 
+export interface LayerFolder {
+  id: string;
+  name: string;
+  isExpanded: boolean;
+  isVisible: boolean;
+  isLocked: boolean;
+  color?: string; // Color badge
+}
+
 export interface Layer {
   id: string;
   name: string;
@@ -32,6 +41,7 @@ export interface Layer {
   isLocked: boolean;
   opacity: number; // 0 to 1
   blendMode: GlobalCompositeOperation;
+  folderId?: string | null; // Id of parent LayerFolder
 }
 
 export interface Frame {
@@ -42,6 +52,8 @@ export interface Frame {
   background?: BackgroundSettings;
   backgroundImage?: string | null;
   script?: string; // Custom frame-specific action script (like in Macromedia Flash)
+  label?: string; // Frame marker / label name
+  colorTag?: string; // Frame color tag (e.g. #FF3B30, #34C759, etc.)
 }
 
 export interface AudioTrack {
@@ -135,6 +147,7 @@ export interface Actor {
   isAnimated?: boolean;
   symbolFrames?: Frame[];
   symbolLayers?: Layer[];
+  symbolLayerFolders?: LayerFolder[];
   symbolFps?: number;
 }
 
@@ -147,6 +160,7 @@ export interface SavedSymbol {
   isAnimated?: boolean;
   symbolFrames?: Frame[];
   symbolLayers?: Layer[];
+  symbolLayerFolders?: LayerFolder[];
   symbolFps?: number;
 }
 
@@ -195,6 +209,7 @@ export interface ProjectData {
     background: BackgroundSettings;
     backgroundImage: string | null;
     layers: Layer[];
+    layerFolders?: LayerFolder[];
     frames: Frame[];
     fps: number;
     audioTracks: AudioTrack[];

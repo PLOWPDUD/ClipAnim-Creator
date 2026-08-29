@@ -409,9 +409,23 @@ export const Timeline: React.FC<TimelineProps> = ({
             className={`absolute inset-0 flex items-center px-[50vw] overflow-x-auto overflow-y-hidden no-scrollbar touch-none`}
             onPointerDown={handleFramesPointerDown}
         >
-            {frames.map((frame, index) => (
+            {frames.map((frame, index) => {
+                const tagColor = frame.colorTag ? (
+                    frame.colorTag.startsWith('#') ? frame.colorTag : 
+                    frame.colorTag === 'red' ? '#FF3B30' :
+                    frame.colorTag === 'orange' ? '#FF9500' :
+                    frame.colorTag === 'yellow' ? '#FFCC00' :
+                    frame.colorTag === 'green' ? '#34C759' :
+                    frame.colorTag === 'cyan' ? '#5AC8FA' :
+                    frame.colorTag === 'blue' ? '#007AFF' :
+                    frame.colorTag === 'purple' ? '#AF52DE' :
+                    frame.colorTag === 'pink' ? '#FF2D55' : undefined
+                ) : undefined;
+
+                return (
                 <div 
                     key={frame.id}
+                    onClick={() => onSelectFrame(index)}
                     className={`
                         relative flex-shrink-0 w-16 h-20 mx-0.5 rounded-[4px] overflow-hidden border transition-all duration-150 select-none
                         ${isFocusMode ? 'pointer-events-none opacity-20 border-gray-500' : 'cursor-pointer hover:opacity-100 border-gray-600 opacity-80 scale-95 shadow-md'}
@@ -419,6 +433,10 @@ export const Timeline: React.FC<TimelineProps> = ({
                         ${isFocusMode && currentFrameIndex === index ? 'opacity-50 scale-100 border-white' : ''}
                     `}
                 >
+                    {tagColor && (
+                        <div className="absolute top-0 left-0 right-0 h-1.5 z-20" style={{ backgroundColor: tagColor }} />
+                    )}
+
                     <div 
                         className="absolute inset-0"
                         style={{ 
@@ -432,11 +450,28 @@ export const Timeline: React.FC<TimelineProps> = ({
                             <img src={frame.thumbnailUrl} alt={`Frame ${index + 1}`} className="relative w-full h-full object-contain pointer-events-none" />
                         )}
                     </div>
-                    <span className="absolute bottom-0.5 right-0.5 text-[8px] font-bold text-[#121212] bg-white/90 px-1 rounded-sm">
+
+                    {frame.label && (
+                        <span 
+                            className="absolute top-1 left-0.5 max-w-[50px] truncate text-[7px] font-bold text-white px-1 rounded-sm z-10 shadow"
+                            style={{ backgroundColor: tagColor || '#4b5563' }}
+                        >
+                            {frame.label}
+                        </span>
+                    )}
+
+                    {(frame.durationMultiplier && frame.durationMultiplier > 1) && (
+                        <span className="absolute bottom-0.5 left-0.5 text-[7px] font-bold text-black bg-amber-400 px-0.5 rounded-sm z-10">
+                            {frame.durationMultiplier}x
+                        </span>
+                    )}
+
+                    <span className="absolute bottom-0.5 right-0.5 text-[8px] font-bold text-[#121212] bg-white/90 px-1 rounded-sm z-10">
                         {index + 1}
                     </span>
                 </div>
-            ))}
+            );
+            })}
             
              <div 
                 onClick={onAddFrame}

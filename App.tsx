@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Frame, ToolType, Layer, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point, Actor } from './types';
+import { Frame, ToolType, Layer, LayerFolder, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point, Actor } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
@@ -206,6 +206,7 @@ export default function App() {
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
 
   const [layers, setLayers] = useState<Layer[]>([createDefaultLayer()]);
+  const [layerFolders, setLayerFolders] = useState<LayerFolder[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string>('1');
   const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(false);
   const [isSymbolPanelOpen, setIsSymbolPanelOpen] = useState(false);
@@ -552,9 +553,12 @@ export default function App() {
       fetchProjects();
   }, []);
 
-  const addLayer = () => {
+  const addLayer = (folderId?: string | null) => {
     const newLayerId = crypto.randomUUID();
-    const newLayer = createDefaultLayer(newLayerId, `${t('layers.newLayer')} ${layers.length + 1}`);
+    const newLayer: Layer = {
+      ...createDefaultLayer(newLayerId, `${t('layers.newLayer')} ${layers.length + 1}`),
+      folderId: folderId || null
+    };
     const newLayers = [...layers, newLayer];
     setLayers(newLayers);
     setActiveLayerId(newLayerId);
@@ -569,6 +573,83 @@ export default function App() {
       };
     });
     updateFramesWithHistory(updatedFrames);
+    setHasUnsavedChanges(true);
+  };
+
+  const addLayerFolder = (name?: string) => {
+    const newFolderId = crypto.randomUUID();
+    const folderColors = ['#007AFF', '#34C759', '#FF9500', '#FF3B30', '#AF52DE', '#5856D6', '#FF2D55', '#5AC8FA'];
+    const assignedColor = folderColors[layerFolders.length % folderColors.length];
+    const newFolder: LayerFolder = {
+      id: newFolderId,
+      name: name || `Folder ${layerFolders.length + 1}`,
+      isExpanded: true,
+      isVisible: true,
+      isLocked: false,
+      color: assignedColor
+    };
+    setLayerFolders([...layerFolders, newFolder]);
+    setHasUnsavedChanges(true);
+  };
+
+  const removeLayerFolder = (folderId: string, deleteLayers: boolean = false) => {
+    if (deleteLayers) {
+      const remainingLayers = layers.filter(l => l.folderId !== folderId);
+      if (remainingLayers.length === 0) {
+        const fallbackLayer = createDefaultLayer(crypto.randomUUID(), `${t('layers.newLayer')} 1`);
+        setLayers([fallbackLayer]);
+        setActiveLayerId(fallbackLayer.id);
+      } else {
+        setLayers(remainingLayers);
+        if (!remainingLayers.some(l => l.id === activeLayerId)) {
+          setActiveLayerId(remainingLayers[remainingLayers.length - 1].id);
+        }
+      }
+      const deletedLayerIds = new Set(layers.filter(l => l.folderId === folderId).map(l => l.id));
+      const updatedFrames = frames.map(frame => {
+        const newFrameLayers = { ...frame.layers };
+        deletedLayerIds.forEach(id => delete newFrameLayers[id]);
+        return { ...frame, layers: newFrameLayers };
+      });
+      updateFramesWithHistory(updatedFrames);
+    } else {
+      setLayers(layers.map(l => l.folderId === folderId ? { ...l, folderId: null } : l));
+    }
+    setLayerFolders(layerFolders.filter(f => f.id !== folderId));
+    setHasUnsavedChanges(true);
+  };
+
+  const toggleLayerFolderVisibility = (folderId: string) => {
+    setLayerFolders(layerFolders.map(f => f.id === folderId ? { ...f, isVisible: !f.isVisible } : f));
+    setHasUnsavedChanges(true);
+  };
+
+  const toggleLayerFolderLock = (folderId: string) => {
+    setLayerFolders(layerFolders.map(f => f.id === folderId ? { ...f, isLocked: !f.isLocked } : f));
+    setHasUnsavedChanges(true);
+  };
+
+  const toggleLayerFolderExpanded = (folderId: string) => {
+    setLayerFolders(layerFolders.map(f => f.id === folderId ? { ...f, isExpanded: !f.isExpanded } : f));
+  };
+
+  const renameLayerFolder = (folderId: string, name: string) => {
+    setLayerFolders(layerFolders.map(f => f.id === folderId ? { ...f, name } : f));
+    setHasUnsavedChanges(true);
+  };
+
+  const setLayerFolderColor = (folderId: string, color?: string) => {
+    setLayerFolders(layerFolders.map(f => f.id === folderId ? { ...f, color } : f));
+    setHasUnsavedChanges(true);
+  };
+
+  const moveLayerToFolder = (layerId: string, folderId: string | null) => {
+    setLayers(layers.map(l => l.id === layerId ? { ...l, folderId } : l));
+    setHasUnsavedChanges(true);
+  };
+
+  const reorderLayerFolders = (newFolders: LayerFolder[]) => {
+    setLayerFolders(newFolders);
     setHasUnsavedChanges(true);
   };
 
@@ -957,20 +1038,48 @@ export default function App() {
 
   const handleAddSoundLibraryTrack = async (url: string, name: string) => {
     try {
-      const response = await fetch(url);
-      const blob = await response.blob();
+      let blob: Blob;
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        blob = await response.blob();
+      } catch (directErr) {
+        console.warn("Direct sound fetch failed, using server proxy:", directErr);
+        const proxyRes = await fetch(`/api/proxy-audio?url=${encodeURIComponent(url)}`);
+        if (!proxyRes.ok) throw new Error(`Proxy error ${proxyRes.status}`);
+        blob = await proxyRes.blob();
+      }
+
       const objectUrl = URL.createObjectURL(blob);
-      
       const audio = new Audio(objectUrl);
+      
       audio.onloadedmetadata = () => {
+        const trackDuration = isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 1;
         const newTrack: AudioTrack = {
           id: crypto.randomUUID(),
           url: objectUrl,
           name: name,
-          color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+          color: `hsl(${Math.floor(Math.random() * 360)}, 75%, 55%)`,
           volume: 1,
           startTime: currentFrameIndex / fps,
-          duration: audio.duration,
+          duration: trackDuration,
+          offset: 0
+        };
+        setAudioTracks(prev => [...prev, newTrack]);
+        audioElementsRef.current.set(newTrack.id, audio);
+        setHasUnsavedChanges(true);
+      };
+
+      audio.onerror = () => {
+        // Fallback track creation in case metadata load event fails
+        const newTrack: AudioTrack = {
+          id: crypto.randomUUID(),
+          url: objectUrl,
+          name: name,
+          color: `hsl(${Math.floor(Math.random() * 360)}, 75%, 55%)`,
+          volume: 1,
+          startTime: currentFrameIndex / fps,
+          duration: 2,
           offset: 0
         };
         setAudioTracks(prev => [...prev, newTrack]);
@@ -1043,6 +1152,7 @@ export default function App() {
       setMainProjectBackup({
           frames,
           layers,
+          layerFolders,
           activeLayerId,
           actors,
           projectScript,
@@ -1070,6 +1180,7 @@ export default function App() {
       if (actor.isAnimated && actor.symbolFrames && actor.symbolFrames.length > 0) {
           setFrames(actor.symbolFrames);
           setLayers(actor.symbolLayers || [createDefaultLayer()]);
+          setLayerFolders(actor.symbolLayerFolders || []);
           setActiveLayerId(actor.symbolLayers ? actor.symbolLayers[0].id : '1');
           setFps(actor.symbolFps || fps);
       } else {
@@ -1082,6 +1193,7 @@ export default function App() {
           };
           setFrames([frame]);
           setLayers([defaultLayer]);
+          setLayerFolders([]);
           setActiveLayerId(defaultLayer.id);
           // Keep current fps
       }
@@ -1098,12 +1210,6 @@ export default function App() {
   const exitSymbolEditMode = async () => {
       if (!editingSymbolId || !mainProjectBackup) return;
 
-      // Ensure current changes are committed to the actor
-      // The current canvas state is in `frames[currentFrameIndex].layers`
-      // We need to capture the current frame as the main `dataUrl` of the symbol 
-      // (or let's say frame 0's active layer for now, or compile all layers)
-      // Actually, flattening frames is complex without rendering.
-      // But we can just use the thumbnail or layer data.
       const currentLayerData = frames[0]?.thumbnailUrl || frames[0]?.layers[layers[0].id] || '';
 
       const updatedActors = mainProjectBackup.actors.map((a: Actor) => {
@@ -1113,9 +1219,10 @@ export default function App() {
                   isAnimated: frames.length > 1,
                   symbolFrames: frames,
                   symbolLayers: layers,
+                  layerFolders: layerFolders,
                   symbolFps: fps,
                   scripts: projectScript,
-                  dataUrl: currentLayerData // update preview/dataUrl
+                  dataUrl: currentLayerData
               };
           }
           return a;
@@ -1124,6 +1231,7 @@ export default function App() {
       // Restore main project
       setFrames(mainProjectBackup.frames);
       setLayers(mainProjectBackup.layers);
+      setLayerFolders(mainProjectBackup.layerFolders || []);
       setActiveLayerId(mainProjectBackup.activeLayerId);
       setActors(updatedActors);
       setProjectScript(mainProjectBackup.projectScript);
@@ -1142,27 +1250,56 @@ export default function App() {
       setHasUnsavedChanges(true);
   };
 
-  const handleMakeSymbol = () => {
-      if (!selection) return;
-      const isAnimated = window.confirm("Do you want to make this an animated symbol?");
+  const handleMakeSymbol = (overrideSelection?: SelectionState) => {
+      const activeSel = overrideSelection || selection;
+      if (!activeSel) return;
+      if (activeSel.actorId) {
+          setActors(prev => prev.map(a => 
+              a.id === activeSel.actorId 
+                  ? { 
+                      ...a, 
+                      x: activeSel.x, 
+                      y: activeSel.y, 
+                      width: activeSel.width, 
+                      height: activeSel.height, 
+                      rotation: activeSel.rotation, 
+                      scaleX: activeSel.scaleX, 
+                      scaleY: activeSel.scaleY 
+                    }
+                  : a
+          ));
+          setSelection(null);
+          setHasUnsavedChanges(true);
+          return;
+      }
       const newActor: Actor = {
           id: crypto.randomUUID(),
           name: `Symbol_${actors.length + 1}`,
-          dataUrl: selection.dataUrl,
-          x: selection.x,
-          y: selection.y,
-          width: selection.width,
-          height: selection.height,
-          rotation: selection.rotation,
-          scaleX: selection.scaleX,
-          scaleY: selection.scaleY,
+          dataUrl: activeSel.dataUrl,
+          x: activeSel.x,
+          y: activeSel.y,
+          width: activeSel.width,
+          height: activeSel.height,
+          rotation: activeSel.rotation || 0,
+          scaleX: activeSel.scaleX ?? 1,
+          scaleY: activeSel.scaleY ?? 1,
           opacity: 1,
           targetFrame: currentFrameIndex,
-          isAnimated: isAnimated,
+          isAnimated: false,
           scripts: `// Code runs when game starts\nthis.onUpdate = function() {\n  // Runs every frame\n};\n\nthis.onClick = function() {\n  // To control this symbol's timeline:\n  // this.play();\n  // this.gotoAndStop(2);\n\n  // To control the main game timeline:\n  // gotoAndStop(2);\n};`
       };
       setActors(prev => [...prev, newActor]);
       setSelection(null);
+      setHasUnsavedChanges(true);
+  };
+
+  const handleSelectionDelete = () => {
+      if (!selection) return;
+      if (selection.actorId) {
+          setActors(prev => prev.filter(a => a.id !== selection.actorId));
+      }
+      setSelection(null);
+      setHasUnsavedChanges(true);
   };
 
   const handleSelectActor = (actorId: string) => {
@@ -1183,21 +1320,22 @@ export default function App() {
       });
   };
 
-  const handleSelectionCommit = async () => {
-      if (!selection) return;
+  const handleSelectionCommit = async (overrideSelection?: SelectionState) => {
+      const activeSel = overrideSelection || selection;
+      if (!activeSel) return;
 
-      if (selection.actorId) {
+      if (activeSel.actorId) {
           setActors(prev => prev.map(a => 
-              a.id === selection.actorId 
+              a.id === activeSel.actorId 
                   ? { 
                       ...a, 
-                      x: selection.x, 
-                      y: selection.y, 
-                      width: selection.width, 
-                      height: selection.height, 
-                      rotation: selection.rotation, 
-                      scaleX: selection.scaleX, 
-                      scaleY: selection.scaleY 
+                      x: activeSel.x, 
+                      y: activeSel.y, 
+                      width: activeSel.width, 
+                      height: activeSel.height, 
+                      rotation: activeSel.rotation, 
+                      scaleX: activeSel.scaleX, 
+                      scaleY: activeSel.scaleY 
                     }
                   : a
           ));
@@ -1212,17 +1350,28 @@ export default function App() {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const layerData = frames[currentFrameIndex].layers[activeLayerId];
+      const layerData = frames[currentFrameIndex]?.layers?.[activeLayerId];
       if (layerData) {
-          const currentImg = await new Promise<HTMLImageElement>((resolve) => {
-              const img = new Image();
-              img.onload = () => resolve(img);
-              img.src = layerData;
-          });
-          ctx.drawImage(currentImg, 0, 0);
+          try {
+              const currentImg = await new Promise<HTMLImageElement>((resolve) => {
+                  const img = new Image();
+                  img.onload = () => resolve(img);
+                  img.onerror = () => resolve(img);
+                  img.src = layerData;
+              });
+              if (currentImg.complete && currentImg.naturalWidth > 0) {
+                  ctx.drawImage(currentImg, 0, 0);
+              }
+          } catch (e) {
+              console.warn("Could not draw previous layer data:", e);
+          }
       }
 
-      await drawSelectionOntoCanvas(ctx, selection);
+      try {
+          await drawSelectionOntoCanvas(ctx, activeSel);
+      } catch (e) {
+          console.error("Error drawing selection onto canvas:", e);
+      }
       
       const newDataUrl = canvas.toDataURL();
       await handleUpdateLayer(activeLayerId, newDataUrl);
@@ -1980,7 +2129,7 @@ export default function App() {
       }
       let thumb = '';
       if (frames.length > 0) {
-          thumb = await compositeLayers(frames[0], layers, canvasSize.width, canvasSize.height, background, backgroundImage);
+          thumb = await compositeLayers(frames[0], layers, canvasSize.width, canvasSize.height, background, backgroundImage, true, layerFolders);
       }
       const projectData: ProjectData = {
           id: projectId,
@@ -1993,6 +2142,7 @@ export default function App() {
           background,
           backgroundImage,
           layers,
+          layerFolders,
           frames,
           fps,
           audioTracks,
@@ -2087,6 +2237,7 @@ export default function App() {
         setBackground(data.background || { type: 'color', color: '#ffffff' });
         setBackgroundImage(data.backgroundImage || null);
         setLayers(data.layers);
+        setLayerFolders(data.layerFolders || []);
         setFrames(data.frames);
         setFps(data.fps);
         setAudioTracks(data.audioTracks || []);
@@ -2139,6 +2290,7 @@ export default function App() {
       
       const defaultL = [createDefaultLayer('1', `${t('layers.newLayer')} 1`)];
       setLayers(defaultL);
+      setLayerFolders([]);
       setActiveLayerId(defaultL[0].id);
 
       if (type === 'game') {
@@ -2309,6 +2461,7 @@ export default function App() {
           background,
           backgroundImage,
           layers,
+          layerFolders,
           frames,
           fps,
           audioTracks,
@@ -3087,6 +3240,152 @@ export default function App() {
     setHasUnsavedChanges(true);
   };
 
+  const handleBulkUpdateFrameDuration = (indices: number[], multiplier: number) => {
+    const newFrames = frames.map((f, i) => indices.includes(i) ? { ...f, durationMultiplier: multiplier } : f);
+    updateFramesWithHistory(newFrames);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleBulkUpdateFrameLabel = (indices: number[], label: string, colorTag?: string) => {
+    const newFrames = frames.map((f, i) => indices.includes(i) ? { ...f, label: label || undefined, colorTag: colorTag || undefined } : f);
+    updateFramesWithHistory(newFrames);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleReverseFrames = (indices?: number[]) => {
+    if (!indices || indices.length <= 1) {
+      const reversed = [...frames].reverse();
+      updateFramesWithHistory(reversed);
+      setHasUnsavedChanges(true);
+      return;
+    }
+    const sortedIndices = [...indices].sort((a, b) => a - b);
+    const subFrames = sortedIndices.map(i => frames[i]).reverse();
+    const newFrames = [...frames];
+    sortedIndices.forEach((idx, i) => {
+      newFrames[idx] = subFrames[i];
+    });
+    updateFramesWithHistory(newFrames);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleBulkFlipFrames = async (indices: number[], horizontal: boolean) => {
+    const newFrames = await Promise.all(frames.map(async (frame, index) => {
+      if (!indices.includes(index)) return frame;
+      const updatedLayers: Record<string, string> = {};
+      for (const [layerId, dataUrl] of Object.entries(frame.layers)) {
+        if (!dataUrl) {
+          updatedLayers[layerId] = dataUrl;
+          continue;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasSize.width;
+        canvas.height = canvasSize.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const img = await new Promise<HTMLImageElement>((res) => {
+            const i = new Image();
+            i.onload = () => res(i);
+            i.onerror = () => res(i);
+            i.src = dataUrl;
+          });
+          if (img.complete && img.naturalWidth > 0) {
+            ctx.save();
+            if (horizontal) {
+              ctx.translate(canvasSize.width, 0);
+              ctx.scale(-1, 1);
+            } else {
+              ctx.translate(0, canvasSize.height);
+              ctx.scale(1, -1);
+            }
+            ctx.drawImage(img, 0, 0);
+            ctx.restore();
+          }
+        }
+        updatedLayers[layerId] = canvas.toDataURL();
+      }
+      const updatedFrame = { ...frame, layers: updatedLayers };
+      updatedFrame.thumbnailUrl = await compositeLayers(updatedFrame, layers, canvasSize.width, canvasSize.height, background, backgroundImage, false, layerFolders);
+      return updatedFrame;
+    }));
+    updateFramesWithHistory(newFrames);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleBulkApplyFilterToFrames = async (indices: number[], filterType: 'grayscale' | 'invert' | 'sepia' | 'brightness') => {
+    const newFrames = await Promise.all(frames.map(async (frame, index) => {
+      if (!indices.includes(index)) return frame;
+      const updatedLayers: Record<string, string> = {};
+      for (const [layerId, dataUrl] of Object.entries(frame.layers)) {
+        if (!dataUrl) {
+          updatedLayers[layerId] = dataUrl;
+          continue;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasSize.width;
+        canvas.height = canvasSize.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const img = await new Promise<HTMLImageElement>((res) => {
+            const i = new Image();
+            i.onload = () => res(i);
+            i.onerror = () => res(i);
+            i.src = dataUrl;
+          });
+          if (img.complete && img.naturalWidth > 0) {
+            ctx.drawImage(img, 0, 0);
+            const imgData = ctx.getImageData(0, 0, canvasSize.width, canvasSize.height);
+            const d = imgData.data;
+            for (let i = 0; i < d.length; i += 4) {
+              if (d[i + 3] === 0) continue;
+              if (filterType === 'grayscale') {
+                const avg = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+                d[i] = avg; d[i + 1] = avg; d[i + 2] = avg;
+              } else if (filterType === 'invert') {
+                d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2];
+              } else if (filterType === 'sepia') {
+                const r = d[i], g = d[i + 1], b = d[i + 2];
+                d[i] = Math.min(255, (r * 0.393) + (g * 0.769) + (b * 0.189));
+                d[i + 1] = Math.min(255, (r * 0.349) + (g * 0.686) + (b * 0.168));
+                d[i + 2] = Math.min(255, (r * 0.272) + (g * 0.534) + (b * 0.131));
+              } else if (filterType === 'brightness') {
+                d[i] = Math.min(255, d[i] * 1.25);
+                d[i + 1] = Math.min(255, d[i + 1] * 1.25);
+                d[i + 2] = Math.min(255, d[i + 2] * 1.25);
+              }
+            }
+            ctx.putImageData(imgData, 0, 0);
+          }
+        }
+        updatedLayers[layerId] = canvas.toDataURL();
+      }
+      const updatedFrame = { ...frame, layers: updatedLayers };
+      updatedFrame.thumbnailUrl = await compositeLayers(updatedFrame, layers, canvasSize.width, canvasSize.height, background, backgroundImage, false, layerFolders);
+      return updatedFrame;
+    }));
+    updateFramesWithHistory(newFrames);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleInsertBlankFrames = async (afterIndex: number, count: number) => {
+    const blankFrames: Frame[] = [];
+    for (let i = 0; i < count; i++) {
+      const blank = createBlankFrame(layers, canvasSize.width, canvasSize.height);
+      blank.thumbnailUrl = await compositeLayers(blank, layers, canvasSize.width, canvasSize.height, background, backgroundImage, false, layerFolders);
+      blankFrames.push(blank);
+    }
+    const newFrames = [...frames];
+    const insertAt = Math.max(0, Math.min(frames.length, afterIndex + 1));
+    newFrames.splice(insertAt, 0, ...blankFrames);
+    updateFramesWithHistory(newFrames);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleCropFramesToSelection = (_indices: number[]) => {
+    if (!selection) return;
+    // Selection coordinates are canvas-space
+  };
+
   useEffect(() => {
     if (view === 'menu') return;
 
@@ -3127,13 +3426,17 @@ export default function App() {
             handled = true;
           }
           break;
+        case 'Enter':
+          if (selection) {
+            handleSelectionCommit();
+            handled = true;
+          }
+          break;
         case shortcuts.deleteFrame: 
         case 'Delete':
+        case 'Backspace':
           if (selection) {
-            if (selection.actorId) {
-                setActors(prev => prev.filter(a => a.id !== selection.actorId));
-            }
-            setSelection(null);
+            handleSelectionDelete();
             handled = true;
           } else if (finalKey === shortcuts.deleteFrame) {
             deleteFrame(currentFrameIndex); 
@@ -3838,7 +4141,7 @@ export default function App() {
                     <button onClick={handleCopy} disabled={!selection} className="p-2 text-gray-400 hover:text-white" title={t('tooltips.copy')}><Icons.Copy size={20} /></button>
                     <button onClick={handlePaste} className="p-2 rounded-full text-gray-400 hover:text-white" title={t('tooltips.paste')}><Icons.Clipboard size={20} /></button>
                     <button 
-                      onClick={handleSelectionCommit} 
+                      onClick={() => handleSelectionCommit()} 
                       disabled={!selection} 
                       className={`p-2 rounded-full ${selection ? 'text-green-400 hover:text-green-300' : 'text-gray-600'}`} 
                       title={t('tooltips.commitSelection')}
@@ -3846,22 +4149,26 @@ export default function App() {
                       <Icons.Check size={20} />
                     </button>
                     <button 
-                      onClick={() => {
-                        if (selection) {
-                          setSelection(null);
-                          setHasUnsavedChanges(true);
-                        }
-                      }} 
+                      onClick={handleSelectionDelete} 
                       disabled={!selection} 
                       className={`p-2 rounded-full ${selection ? 'text-red-400 hover:text-red-300' : 'text-gray-600'}`} 
                       title={t('tooltips.deleteSelection')}
                     >
                       <Icons.Trash2 size={20} />
                     </button>
+                    {selection && (
+                      <button 
+                        onClick={() => handleMakeSymbol()} 
+                        className="p-2 ml-1 rounded-full text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20" 
+                        title="Make Symbol"
+                      >
+                        <Icons.Box size={20} />
+                      </button>
+                    )}
                     {selection?.actorId && (
                       <button 
                         onClick={() => enterSymbolEditMode(selection.actorId!)} 
-                        className="p-2 ml-2 rounded-full text-[#007AFF] hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20" 
+                        className="p-2 ml-1 rounded-full text-[#007AFF] hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20" 
                         title="Edit Symbol Timeline"
                       >
                         <Icons.Film size={20} />
@@ -3911,12 +4218,8 @@ export default function App() {
             onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)} 
             onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)} 
             onSelectionCommit={handleSelectionCommit}
-            onSelectionDelete={() => {
-                if (selection?.actorId) {
-                    setActors(prev => prev.filter(a => a.id !== selection?.actorId));
-                }
-                setSelection(null);
-            }}
+            onSelectionDelete={handleSelectionDelete}
+            onSelectionMakeSymbol={handleMakeSymbol}
             shapeType={shapeType} 
             onSelectShapeType={setShapeType} 
             onOpenHelp={() => setIsHelpOpen(true)} 
@@ -3979,12 +4282,7 @@ export default function App() {
                 onSelectionCreate={handleSelectionCreate} 
                 onSelectionUpdate={setSelection} 
                 onSelectionCommit={handleSelectionCommit} 
-                onSelectionDelete={() => {
-                    if (selection?.actorId) {
-                        setActors(prev => prev.filter(a => a.id !== selection?.actorId));
-                    }
-                    setSelection(null);
-                }}
+                onSelectionDelete={handleSelectionDelete}
                 onSelectionMakeSymbol={handleMakeSymbol}
                 canvasWidth={canvasSize.width} 
                 canvasHeight={canvasSize.height} 
@@ -4192,7 +4490,32 @@ export default function App() {
         onOpenExport={() => setIsExportModalOpen(true)}
       />
       
-      {isLayerPanelOpen && view === 'editor' && <LayerPanel layers={layers} activeLayerId={activeLayerId} onSelectLayer={setActiveLayerId} onAddLayer={addLayer} onDuplicateLayer={duplicateLayer} onRemoveLayer={removeLayer} onToggleVisibility={toggleLayerVisibility} onToggleLock={toggleLayerLock} onUpdateLayerSettings={updateLayerSettings} onRenameLayer={renameLayer} onReorderLayers={reorderLayers} onClose={() => setIsLayerPanelOpen(false)} />}
+      {isLayerPanelOpen && view === 'editor' && (
+        <LayerPanel 
+          layers={layers} 
+          layerFolders={layerFolders}
+          activeLayerId={activeLayerId} 
+          onSelectLayer={setActiveLayerId} 
+          onAddLayer={addLayer} 
+          onAddLayerFolder={addLayerFolder}
+          onDuplicateLayer={duplicateLayer} 
+          onRemoveLayer={removeLayer} 
+          onRemoveLayerFolder={removeLayerFolder}
+          onToggleVisibility={toggleLayerVisibility} 
+          onToggleLock={toggleLayerLock} 
+          onToggleFolderVisibility={toggleLayerFolderVisibility}
+          onToggleFolderLock={toggleLayerFolderLock}
+          onToggleFolderExpanded={toggleLayerFolderExpanded}
+          onRenameLayerFolder={renameLayerFolder}
+          onSetLayerFolderColor={setLayerFolderColor}
+          onMoveLayerToFolder={moveLayerToFolder}
+          onUpdateLayerSettings={updateLayerSettings} 
+          onRenameLayer={renameLayer} 
+          onReorderLayers={reorderLayers} 
+          onReorderLayerFolders={reorderLayerFolders}
+          onClose={() => setIsLayerPanelOpen(false)} 
+        />
+      )}
 
       {isSymbolPanelOpen && view === 'editor' && (
         <SymbolPanel
@@ -4231,10 +4554,20 @@ export default function App() {
         isOpen={isFrameManagerOpen}
         onClose={() => setIsFrameManagerOpen(false)}
         frames={frames}
+        fps={fps}
+        layers={layers}
         onDeleteFrames={handleBulkDeleteFrames}
         onDuplicateFrames={handleBulkDuplicateFrames}
         onReorderFrames={handleReorderFrames}
         onUpdateFrameBackground={handleBulkUpdateFrameBackground}
+        onUpdateFrameDuration={handleBulkUpdateFrameDuration}
+        onUpdateFrameLabel={handleBulkUpdateFrameLabel}
+        onReverseFrames={handleReverseFrames}
+        onFlipFrames={handleBulkFlipFrames}
+        onApplyFilterToFrames={handleBulkApplyFilterToFrames}
+        onInsertBlankFrames={handleInsertBlankFrames}
+        onCropFramesToSelection={handleCropFramesToSelection}
+        onSelectFrame={(idx) => { setCurrentFrameIndex(idx); setIsFrameManagerOpen(false); }}
       />
 
       <AudioRecorderModal 
@@ -4356,6 +4689,11 @@ export default function App() {
         onBackupProject={handleBackupProject} 
         onionSkinSettings={onionSkinSettings} 
         setOnionSkinSettings={setOnionSkinSettings} 
+        frames={frames}
+        layers={layers}
+        layerFolders={layerFolders}
+        actors={actors}
+        audioTracks={audioTracks}
       />
       <GlobalSettingsModal 
         isOpen={isGlobalSettingsOpen} 

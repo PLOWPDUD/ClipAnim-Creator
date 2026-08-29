@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } f
 import { useTranslation } from 'react-i18next';
 import { motion } from 'motion/react';
 import { Icons } from '../Icons';
-import { ToolType, Frame, Layer, SelectionState, ShapeType, BrushType, OnionSkinSettings, BackgroundSettings, Point, SymmetryMode, Actor } from '../types';
+import { ToolType, Frame, Layer, LayerFolder, SelectionState, ShapeType, BrushType, OnionSkinSettings, BackgroundSettings, Point, SymmetryMode, Actor } from '../types';
 import { floodFill, magicWandSelect, lassoSelect } from '../utils/drawingUtils';
 
 export interface CanvasAreaHandle {
@@ -16,6 +16,7 @@ export interface CanvasAreaHandle {
 interface CanvasAreaProps {
   currentFrame: Frame;
   layers: Layer[];
+  layerFolders?: LayerFolder[];
   activeLayerId: string;
   onUpdateLayer: (layerId: string, dataUrl: string) => void;
   tool: ToolType;
@@ -34,9 +35,9 @@ interface CanvasAreaProps {
   selection: SelectionState | null;
   onSelectionCreate: (data: SelectionState) => void;
   onSelectionUpdate: (data: SelectionState) => void;
-  onSelectionCommit: () => void;
+  onSelectionCommit: (override?: SelectionState) => void;
   onSelectionDelete: () => void;
-  onSelectionMakeSymbol?: () => void;
+  onSelectionMakeSymbol?: (override?: SelectionState) => void;
 
   // Canvas Settings
   canvasWidth: number;
@@ -112,6 +113,7 @@ const getResizeCursor = (handle: string, rotation: number, scaleX: number, scale
 export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   currentFrame,
   layers,
+  layerFolders = [],
   activeLayerId,
   onUpdateLayer,
   tool,
@@ -522,8 +524,49 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     }
   };
 
+  const handleCommitSelectionAction = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    if (latestSelectionState.current) {
+      onSelectionUpdate(latestSelectionState.current);
+      onSelectionCommit(latestSelectionState.current);
+    } else {
+      onSelectionCommit();
+    }
+  };
+
+  const handleDeleteSelectionAction = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    onSelectionDelete();
+  };
+
+  const handleMakeSymbolSelectionAction = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    if (latestSelectionState.current) {
+      onSelectionUpdate(latestSelectionState.current);
+      if (onSelectionMakeSymbol) {
+        onSelectionMakeSymbol(latestSelectionState.current);
+      }
+    } else if (onSelectionMakeSymbol) {
+      onSelectionMakeSymbol();
+    }
+  };
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isPlaying || !currentFrame) return;
+
+    // Ignore interactive UI elements (buttons, inputs, sliders, dialogs)
+    if ((e.target as HTMLElement).closest('button, input, select, textarea, [data-interactive="true"]')) {
+        return;
+    }
     
     // Prevent default browser behavior for touch to ensure multi-touch works correctly in WebViews
     if (e.pointerType === 'touch') {
@@ -571,7 +614,12 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         return;
     }
 
-    if (activeLayer?.isLocked || !activeLayer?.isVisible) {
+    const folderMap = new Map(layerFolders.map(f => [f.id, f]));
+    const parentFolder = activeLayer?.folderId ? folderMap.get(activeLayer.folderId) : undefined;
+    const isLayerLocked = activeLayer?.isLocked || (parentFolder?.isLocked ?? false);
+    const isLayerVisible = (activeLayer?.isVisible ?? true) && (parentFolder?.isVisible ?? true);
+
+    if (isLayerLocked || !isLayerVisible) {
         isDrawing.current = false;
         return;
     }
@@ -739,6 +787,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const handleSelectionPointerDown = (e: React.PointerEvent) => {
       if (tool !== 'select') {
           return; // Let it bubble up to draw or wand
+      }
+      // If clicking directly on a button or interactive child, do not capture pointer or start move
+      if ((e.target as HTMLElement).closest('button, input, select, textarea, [data-interactive="true"]')) {
+          return;
       }
       e.stopPropagation();
       if (e.button === 2) return;
@@ -1671,43 +1723,48 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 </defs>
             </svg>
 
-            {layers.map((layer, index) => {
-                if (!layer.isVisible) return null;
-                
-                if (layer.id === activeLayerId) {
+            {(() => {
+                const folderMap = new Map(layerFolders.map(f => [f.id, f]));
+                return layers.map((layer, index) => {
+                    const parentFolder = layer.folderId ? folderMap.get(layer.folderId) : undefined;
+                    const isVisible = layer.isVisible && (parentFolder ? parentFolder.isVisible : true);
+                    if (!isVisible) return null;
+                    
+                    if (layer.id === activeLayerId) {
+                        return (
+                            <canvas
+                                key={layer.id}
+                                ref={activeCanvasRef}
+                                width={canvasWidth}
+                                height={canvasHeight}
+                                className="absolute inset-0 w-full h-full"
+                                style={{ 
+                                    zIndex: index + 10,
+                                    cursor: isGesture.current ? 'grabbing' : (tool === 'select' || tool === 'text' ? 'text' : tool === 'wand' ? 'crosshair' : 'crosshair'),
+                                    opacity: layer.opacity,
+                                    mixBlendMode: getMixBlendMode(layer.blendMode)
+                                }}
+                            />
+                        );
+                    }
+
+                    const layerData = currentFrame.layers?.[layer.id];
+                    if (!layerData) return null;
                     return (
-                        <canvas
-                            key={layer.id}
-                            ref={activeCanvasRef}
-                            width={canvasWidth}
-                            height={canvasHeight}
-                            className="absolute inset-0 w-full h-full"
-                            style={{ 
+                        <img 
+                            key={layer.id} 
+                            src={layerData} 
+                            alt="" 
+                            className="absolute inset-0 w-full h-full pointer-events-none" 
+                            style={{
                                 zIndex: index + 10,
-                                cursor: isGesture.current ? 'grabbing' : (tool === 'select' || tool === 'text' ? 'text' : tool === 'wand' ? 'crosshair' : 'crosshair'),
                                 opacity: layer.opacity,
                                 mixBlendMode: getMixBlendMode(layer.blendMode)
                             }}
                         />
                     );
-                }
-
-                const layerData = currentFrame.layers?.[layer.id];
-                if (!layerData) return null;
-                return (
-                    <img 
-                        key={layer.id} 
-                        src={layerData} 
-                        alt="" 
-                        className="absolute inset-0 w-full h-full pointer-events-none" 
-                        style={{
-                            zIndex: index + 10,
-                            opacity: layer.opacity,
-                            mixBlendMode: getMixBlendMode(layer.blendMode)
-                        }}
-                    />
-                );
-            })}
+                });
+            })()}
 
             {actors.map(actor => (
                 <div
@@ -1764,34 +1821,60 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     {/* Interactive Selection UI */}
                     <div className="absolute inset-0 border-4 border-[#007AFF] pointer-events-none shadow-[0_0_15px_rgba(0,122,255,0.3)]"></div>
 
-                    {/* Commit/Delete Buttons */}
-                    <div className={`absolute -top-14 left-1/2 -translate-x-1/2 flex gap-2 pointer-events-auto z-50 transition-opacity ${deviceType === 'mobile' ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                        <motion.button 
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={(e) => { e.stopPropagation(); onSelectionCommit(); }}
-                            className="bg-[#007AFF] text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-2xl flex items-center gap-2 hover:brightness-110 whitespace-nowrap"
+                    {/* Commit/Delete/Make Symbol Direct Overlay Buttons */}
+                    <div 
+                        data-interactive="true"
+                        onPointerDown={(e) => { e.stopPropagation(); }}
+                        onPointerUp={(e) => { e.stopPropagation(); }}
+                        onMouseDown={(e) => { e.stopPropagation(); }}
+                        onTouchStart={(e) => { e.stopPropagation(); }}
+                        onTouchEnd={(e) => { e.stopPropagation(); }}
+                        className="absolute -top-14 left-1/2 -translate-x-1/2 flex items-center gap-2 pointer-events-auto z-[260] bg-[#141414]/95 backdrop-blur-md px-2.5 py-1.5 rounded-full shadow-2xl border border-white/25 select-none"
+                    >
+                        <button 
+                            type="button"
+                            data-interactive="true"
+                            onPointerDown={(e) => { e.stopPropagation(); }}
+                            onPointerUp={(e) => { e.stopPropagation(); }}
+                            onMouseDown={(e) => { e.stopPropagation(); }}
+                            onTouchStart={(e) => { e.stopPropagation(); }}
+                            onTouchEnd={(e) => { e.stopPropagation(); }}
+                            onClick={handleCommitSelectionAction}
+                            className="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer transition-all border border-emerald-400/30"
+                            title={t('canvas.commit')}
                         >
-                            <Icons.Check size={16} /> {t('canvas.commit')}
-                        </motion.button>
-                        <motion.button 
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={(e) => { e.stopPropagation(); onSelectionDelete(); }}
-                            className="bg-red-500 text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-2xl flex items-center gap-2 hover:brightness-110 whitespace-nowrap"
-                        >
-                            <Icons.Trash2 size={16} /> {t('canvas.delete')}
-                        </motion.button>
+                            <Icons.Check size={14} /> <span>{t('canvas.commit')}</span>
+                        </button>
                         {onSelectionMakeSymbol && (
-                          <motion.button 
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={(e) => { e.stopPropagation(); onSelectionMakeSymbol(); }}
-                              className="bg-amber-500 text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-2xl flex items-center gap-2 hover:brightness-110 whitespace-nowrap"
+                          <button 
+                              type="button"
+                              data-interactive="true"
+                              onPointerDown={(e) => { e.stopPropagation(); }}
+                              onPointerUp={(e) => { e.stopPropagation(); }}
+                              onMouseDown={(e) => { e.stopPropagation(); }}
+                              onTouchStart={(e) => { e.stopPropagation(); }}
+                              onTouchEnd={(e) => { e.stopPropagation(); }}
+                              onClick={handleMakeSymbolSelectionAction}
+                              className="bg-amber-500 hover:bg-amber-400 active:scale-95 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer transition-all border border-amber-300/30"
+                              title="Make Symbol"
                           >
-                              <Icons.Box size={16} /> Make Symbol
-                          </motion.button>
+                              <Icons.Box size={14} /> <span>Make Symbol</span>
+                          </button>
                         )}
+                        <button 
+                            type="button"
+                            data-interactive="true"
+                            onPointerDown={(e) => { e.stopPropagation(); }}
+                            onPointerUp={(e) => { e.stopPropagation(); }}
+                            onMouseDown={(e) => { e.stopPropagation(); }}
+                            onTouchStart={(e) => { e.stopPropagation(); }}
+                            onTouchEnd={(e) => { e.stopPropagation(); }}
+                            onClick={handleDeleteSelectionAction}
+                            className="bg-red-600 hover:bg-red-500 active:scale-95 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer transition-all border border-red-400/30"
+                            title={t('canvas.delete')}
+                        >
+                            <Icons.Trash2 size={14} /> <span>{t('canvas.delete')}</span>
+                        </button>
                     </div>
                     
                     {/* Bigger Corner Handles */}
@@ -1907,36 +1990,62 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
 
         {/* Floating Mobile/Touch-Friendly Selection Actions Dock */}
         {selection && (
-            <div className="absolute top-4 right-4 flex items-center gap-2 z-[120] bg-black/60 p-1.5 rounded-xl border border-white/10 shadow-2xl backdrop-blur-md">
-                <motion.button
-                    whileTap={{ scale: 0.92 }}
-                    onClick={(e) => { e.stopPropagation(); onSelectionCommit(); }}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition-colors"
+            <div 
+                data-interactive="true"
+                onPointerDown={(e) => { e.stopPropagation(); }}
+                onPointerUp={(e) => { e.stopPropagation(); }}
+                onMouseDown={(e) => { e.stopPropagation(); }}
+                onTouchStart={(e) => { e.stopPropagation(); }}
+                onTouchEnd={(e) => { e.stopPropagation(); }}
+                className="absolute top-4 right-4 flex items-center gap-2 z-[260] bg-black/85 p-1.5 rounded-xl border border-white/25 shadow-2xl backdrop-blur-md select-none"
+            >
+                <button
+                    type="button"
+                    data-interactive="true"
+                    onPointerDown={(e) => { e.stopPropagation(); }}
+                    onPointerUp={(e) => { e.stopPropagation(); }}
+                    onMouseDown={(e) => { e.stopPropagation(); }}
+                    onTouchStart={(e) => { e.stopPropagation(); }}
+                    onTouchEnd={(e) => { e.stopPropagation(); }}
+                    onClick={handleCommitSelectionAction}
+                    className="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer border border-emerald-400/30"
                     title={t('canvas.commit')}
                 >
                     <Icons.Check size={14} />
                     <span>Commit</span>
-                </motion.button>
+                </button>
                 {onSelectionMakeSymbol && (
-                    <motion.button
-                        whileTap={{ scale: 0.92 }}
-                        onClick={(e) => { e.stopPropagation(); onSelectionMakeSymbol(); }}
-                        className="bg-amber-500 hover:bg-amber-400 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition-colors border border-amber-400/20"
+                    <button
+                        type="button"
+                        data-interactive="true"
+                        onPointerDown={(e) => { e.stopPropagation(); }}
+                        onPointerUp={(e) => { e.stopPropagation(); }}
+                        onMouseDown={(e) => { e.stopPropagation(); }}
+                        onTouchStart={(e) => { e.stopPropagation(); }}
+                        onTouchEnd={(e) => { e.stopPropagation(); }}
+                        onClick={handleMakeSymbolSelectionAction}
+                        className="bg-amber-500 hover:bg-amber-400 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition-all border border-amber-300/30 cursor-pointer"
                         title="Convert Selection to Symbol"
                     >
                         <Icons.Box size={14} />
                         <span className="font-extrabold uppercase tracking-tight text-[10px]">Make Symbol</span>
-                    </motion.button>
+                    </button>
                 )}
-                <motion.button
-                    whileTap={{ scale: 0.92 }}
-                    onClick={(e) => { e.stopPropagation(); onSelectionDelete(); }}
-                    className="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition-colors"
+                <button
+                    type="button"
+                    data-interactive="true"
+                    onPointerDown={(e) => { e.stopPropagation(); }}
+                    onPointerUp={(e) => { e.stopPropagation(); }}
+                    onMouseDown={(e) => { e.stopPropagation(); }}
+                    onTouchStart={(e) => { e.stopPropagation(); }}
+                    onTouchEnd={(e) => { e.stopPropagation(); }}
+                    onClick={handleDeleteSelectionAction}
+                    className="bg-red-600 hover:bg-red-500 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer border border-red-400/30"
                     title={t('canvas.delete')}
                 >
                     <Icons.Trash2 size={14} />
                     <span>Delete</span>
-                </motion.button>
+                </button>
             </div>
         )}
 

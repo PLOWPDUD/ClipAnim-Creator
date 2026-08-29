@@ -29,6 +29,7 @@ interface ToolbarProps {
   onRotate: () => void;
   onSelectionCommit: () => void;
   onSelectionDelete: () => void;
+  onSelectionMakeSymbol?: () => void;
   shapeType: ShapeType;
   onSelectShapeType: (type: ShapeType) => void;
   onOpenHelp: () => void;
@@ -75,6 +76,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onRotate,
   onSelectionCommit,
   onSelectionDelete,
+  onSelectionMakeSymbol,
   shapeType,
   onSelectShapeType,
   onOpenHelp,
@@ -318,8 +320,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     <Icons.Check size={20} />
                 </button>
                 <button onClick={onSelectionDelete} className="p-3 rounded-xl text-white bg-red-600 hover:bg-red-500 shadow-lg" title={t('tooltips.deselect')}>
-                    <Icons.X size={20} />
+                    <Icons.Trash2 size={20} />
                 </button>
+                {onSelectionMakeSymbol && (
+                  <button onClick={onSelectionMakeSymbol} className="p-3 rounded-xl text-white bg-amber-600 hover:bg-amber-500 shadow-lg" title="Make Symbol">
+                      <Icons.Box size={20} />
+                  </button>
+                )}
                 <button onClick={onRotate} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title={t('tooltips.rotate')}>
                     <Icons.RotateCw size={20} />
                 </button>

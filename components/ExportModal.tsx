@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icons } from '../Icons';
-import { Frame, Layer, BackgroundSettings } from '../types';
+import { Frame, Layer, LayerFolder, BackgroundSettings } from '../types';
 import { compositeLayers } from '../utils/drawingUtils';
 
 export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'png' | 'avi' | 'project-zip' | 'html';
@@ -22,6 +22,7 @@ interface ExportModalProps {
   exportedFile?: { url: string, name: string, blob: Blob } | null;
   frames?: Frame[];
   layers?: Layer[];
+  layerFolders?: LayerFolder[];
   canvasSize?: { width: number; height: number };
   background?: BackgroundSettings;
   backgroundImage?: string | null;
@@ -43,6 +44,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   exportedFile,
   frames,
   layers,
+  layerFolders,
   canvasSize,
   background,
   backgroundImage,
@@ -120,7 +122,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           renderH,
           background || { type: 'color', color: '#ffffff' },
           backgroundImage || null,
-          !transparent
+          !transparent,
+          layerFolders
         );
         compositedUrls.push(url);
         setRenderProgress(Math.round(((i + 1) / frames.length) * 100));
@@ -135,7 +138,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     } finally {
       setIsPreviewLoading(false);
     }
-  }, [frames, layers, canvasSize, safeFps, background, backgroundImage, transparent]);
+  }, [frames, layers, layerFolders, canvasSize, safeFps, background, backgroundImage, transparent]);
 
   // Auto-generate full preview on modal open and whenever transparency setting changes
   useEffect(() => {

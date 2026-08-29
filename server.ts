@@ -3,47 +3,53 @@ import path from 'node:path';
 
 const app = express();
 
-// API Route: Freesound Proxy
+// API Route: Advanced Freesound Proxy with Precise Filters & Search
 app.get('/api/search-sounds', async (req: Request, res: Response) => {
-  const { query } = req.query;
-  console.log(`[SoundSearch] Request for: "${query}"`);
+  const { query, filter, sort, page, page_size } = req.query;
+  const rawQuery = (query as string)?.trim() || '';
+  const filterParam = (filter as string)?.trim() || '';
+  const sortParam = (sort as string)?.trim() || 'score';
+  const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+  const pageSize = Math.min(60, Math.max(1, parseInt(page_size as string, 10) || 24));
+
+  console.log(`[SoundSearch] Query: "${rawQuery}", filter: "${filterParam}", sort: "${sortParam}", page: ${pageNum}, page_size: ${pageSize}`);
   
   const apiKey = process.env.FREESOUND_API_KEY || process.env.VITE_FREESOUND_API_KEY;
-
-  if (!query) {
-    return res.status(400).json({ error: 'Query parameter is required' });
-  }
 
   if (!apiKey) {
     console.error('[SoundSearch] API Key missing');
     return res.status(500).json({ 
-      error: 'Freesound API key not configured. Please add FREESOUND_API_KEY to your environment variables.' 
+      error: 'Freesound API key not configured. Please add FREESOUND_API_KEY to your environment variables in Settings.' 
     });
   }
 
   try {
-    // Use Authorization header instead of query param for better security/compatibility
-    const freesoundUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(query as string)}&fields=id,name,previews,description&page_size=30`;
+    const fields = 'id,name,tags,description,duration,samplerate,channels,filesize,bitrate,bitdepth,type,license,username,avg_rating,num_downloads,previews,images';
+    let freesoundUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(rawQuery || '*')}&fields=${fields}&page=${pageNum}&page_size=${pageSize}&sort=${encodeURIComponent(sortParam)}`;
     
-    console.log(`[SoundSearch] Fetching from Freesound...`);
+    if (filterParam) {
+      freesoundUrl += `&filter=${encodeURIComponent(filterParam)}`;
+    }
+
+    console.log(`[SoundSearch] Fetching from Freesound API...`);
     
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       console.log('[SoundSearch] Timeout triggered');
       controller.abort();
-    }, 9000);
+    }, 12000);
 
     try {
       const response = await fetch(freesoundUrl, {
         signal: controller.signal,
         headers: {
           'Authorization': `Token ${apiKey}`,
-          'User-Agent': 'ClipAnimCreator/1.1.0 (https://github.com/your-username/your-repo)'
+          'User-Agent': 'ClipAnimCreator/1.3.3 (https://github.com/your-username/your-repo)'
         }
       });
       
       clearTimeout(timeoutId);
-      console.log(`[SoundSearch] Status: ${response.status}`);
+      console.log(`[SoundSearch] Freesound Status: ${response.status}`);
       
       const text = await response.text();
       
@@ -52,7 +58,7 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
         data = JSON.parse(text);
       } catch (e) {
         console.error('[SoundSearch] JSON Parse Error');
-        return res.status(500).json({ error: 'Invalid response from Freesound' });
+        return res.status(500).json({ error: 'Invalid JSON response from Freesound' });
       }
 
       if (!response.ok) {
@@ -60,8 +66,17 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
         return res.status(response.status).json(data);
       }
 
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      res.json(data);
+      // Calculate total pages
+      const totalCount = data.count || 0;
+      const totalPages = Math.ceil(totalCount / pageSize);
+
+      res.setHeader('Cache-Control', 'public, max-age=1800');
+      res.json({
+        ...data,
+        page: pageNum,
+        page_size: pageSize,
+        total_pages: totalPages
+      });
     } catch (fetchError: any) {
       clearTimeout(timeoutId);
       throw fetchError;
@@ -69,9 +84,35 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[SoundSearch] Global Error:', error.message);
     if (error.name === 'AbortError') {
-      return res.status(504).json({ error: 'Freesound API timed out' });
+      return res.status(504).json({ error: 'Freesound API timed out. Please try again.' });
     }
     res.status(500).json({ error: `Server Error: ${error.message}` });
+  }
+});
+
+// API Route: Audio Proxy for seamless CORS audio playback and downloads
+app.get('/api/proxy-audio', async (req: Request, res: Response) => {
+  const { url } = req.query;
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'URL parameter is required' });
+  }
+
+  try {
+    const audioRes = await fetch(url);
+    if (!audioRes.ok) {
+      return res.status(audioRes.status).send('Failed to fetch audio stream');
+    }
+
+    const contentType = audioRes.headers.get('content-type') || 'audio/mpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    const arrayBuffer = await audioRes.arrayBuffer();
+    res.send(Buffer.from(arrayBuffer));
+  } catch (err: any) {
+    console.error('[AudioProxy] Error fetching remote audio:', err.message);
+    res.status(500).send('Audio proxy error');
   }
 });
 

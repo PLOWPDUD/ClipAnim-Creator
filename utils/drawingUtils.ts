@@ -1,5 +1,5 @@
 
-import { Frame, Layer, SelectionState, BackgroundSettings } from "../types";
+import { Frame, Layer, LayerFolder, SelectionState, BackgroundSettings } from "../types";
 
 export const hexToRgba = (hex: string) => {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -54,7 +54,8 @@ export const compositeLayers = async (
   height: number = 600,
   background: BackgroundSettings = { type: 'color', color: '#ffffff' },
   backgroundImage?: string | null,
-  includeBackground: boolean = true
+  includeBackground: boolean = true,
+  layerFolders?: LayerFolder[]
 ): Promise<string> => {
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -98,9 +99,13 @@ export const compositeLayers = async (
     ctx.clearRect(0, 0, width, height);
   }
 
+  const folderMap = new Map((layerFolders || []).map(f => [f.id, f]));
+
   // Draw layers in order
   for (const layer of layers) {
-    if (layer.isVisible && frame.layers[layer.id]) {
+    const folder = layer.folderId ? folderMap.get(layer.folderId) : undefined;
+    const isFolderVisible = folder ? folder.isVisible : true;
+    if (layer.isVisible && isFolderVisible && frame.layers[layer.id]) {
       await new Promise<void>((resolve) => {
         const img = new Image();
         img.onload = () => {
