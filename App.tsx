@@ -2451,7 +2451,7 @@ export default function App() {
       }
   };
 
-  const handleBackupProject = () => {
+  const handleBackupProject = (format: 'canim' | 'json' = 'canim') => {
       const projectData: ProjectData = {
           id: projectId,
           name: projectName,
@@ -2468,11 +2468,12 @@ export default function App() {
           motionPaths: [],
           onionSkinSettings
       };
-      const blob = new Blob([JSON.stringify(projectData)], { type: 'application/json' });
+      const ext = format === 'json' ? 'json' : 'canim';
+      const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${projectName.replace(/\s+/g, '_')}_backup.json`;
+      a.download = `${projectName.replace(/\s+/g, '_')}_backup.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
       setIsSettingsOpen(false);
@@ -3743,7 +3744,7 @@ export default function App() {
             </div>
           </div>
 
-          <input ref={importFileRef} type="file" accept=".json" onChange={handleImportProjectFile} className="hidden" />
+          <input ref={importFileRef} type="file" accept=".canim,.json,.clipanim" onChange={handleImportProjectFile} className="hidden" />
 
           {/* Main Content Scroll Area */}
           <div className="flex-1 overflow-y-auto pb-12 pr-1 space-y-8">
@@ -3888,7 +3889,7 @@ export default function App() {
                         <Icons.Upload size={24} />
                       </div>
                       <span className="font-bold text-xs text-gray-200 group-hover:text-white">{t('menu.importProject', 'Import File')}</span>
-                      <span className="text-[10px] text-gray-500 mt-0.5">JSON project file</span>
+                      <span className="text-[10px] text-gray-500 mt-0.5">.canim or .json file</span>
                     </button>
 
                     {/* Interactive Tutorial Button */}

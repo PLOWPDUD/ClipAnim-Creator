@@ -18,7 +18,7 @@ interface SettingsModalProps {
   setBackgroundImage: (url: string | null) => void;
   background: BackgroundSettings;
   setBackground: (background: BackgroundSettings) => void;
-  onBackupProject: () => void;
+  onBackupProject: (format?: 'canim' | 'json') => void;
   onionSkinSettings: OnionSkinSettings;
   setOnionSkinSettings: (settings: OnionSkinSettings) => void;
   frames?: any[];
@@ -979,20 +979,71 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* Backup & Save Buttons */}
-                <div className="bg-[#202020] p-4 rounded-2xl border border-gray-800 space-y-3">
-                  <span className="text-xs font-bold text-gray-200 uppercase tracking-wider block">Save & Export Project File</span>
+                {/* Backup & Save Format Options */}
+                <div className="bg-[#202020] p-4.5 rounded-2xl border border-gray-800 space-y-4">
+                  <div>
+                    <span className="text-xs font-bold text-gray-200 uppercase tracking-wider block">Save & Export Project File</span>
+                    <span className="text-[11px] text-gray-400 block mt-0.5">
+                      Select your preferred project backup format. Both formats store complete editable timeline frames, vector layers, symbol library, audio tracks, and settings.
+                    </span>
+                  </div>
                   
-                  <button 
-                    onClick={onBackupProject}
-                    className="w-full flex items-center justify-center gap-2.5 py-3.5 bg-gradient-to-r from-[#FF3B30] to-orange-600 text-white font-bold rounded-xl hover:from-red-600 hover:to-orange-700 transition-all shadow-lg shadow-red-900/20"
-                  >
-                    <Icons.FolderDown size={20} />
-                    <span>Download Project File (.clipanim / JSON)</span>
-                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Option 1: .canim */}
+                    <div className="bg-[#181818] p-4 rounded-xl border border-gray-700/80 flex flex-col justify-between space-y-3 hover:border-[#FF3B30]/50 transition-colors">
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="font-bold text-sm text-white flex items-center gap-1.5">
+                            <Icons.Sparkles size={16} className="text-[#FF3B30]" />
+                            <span>ClipAnim Backup</span>
+                          </span>
+                          <span className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase bg-[#FF3B30]/20 text-[#FF3B30] rounded-md border border-[#FF3B30]/30">
+                            .canim
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-400 leading-relaxed">
+                          ClipAnim Creator Backup File format. Recommended for native project archives and seamless restoration.
+                        </p>
+                      </div>
+
+                      <button 
+                        onClick={() => onBackupProject('canim')}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-[#FF3B30] to-orange-600 hover:from-red-600 hover:to-orange-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-red-900/20 transition-all active:scale-[0.98]"
+                      >
+                        <Icons.FolderDown size={16} />
+                        <span>Save as .canim File</span>
+                      </button>
+                    </div>
+
+                    {/* Option 2: .json */}
+                    <div className="bg-[#181818] p-4 rounded-xl border border-gray-700/80 flex flex-col justify-between space-y-3 hover:border-blue-500/50 transition-colors">
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="font-bold text-sm text-white flex items-center gap-1.5">
+                            <Icons.FileJson size={16} className="text-blue-400" />
+                            <span>Standard JSON</span>
+                          </span>
+                          <span className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase bg-blue-500/20 text-blue-400 rounded-md border border-blue-500/30">
+                            .json
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-400 leading-relaxed">
+                          Standard JSON format for open compatibility, external scripts, data inspection, and standard backups.
+                        </p>
+                      </div>
+
+                      <button 
+                        onClick={() => onBackupProject('json')}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 hover:text-white font-bold text-xs rounded-xl transition-all active:scale-[0.98]"
+                      >
+                        <Icons.Download size={16} />
+                        <span>Save as .json File</span>
+                      </button>
+                    </div>
+                  </div>
 
                   <p className="text-[11px] text-gray-400 text-center">
-                    Saves all timeline frames, vector layers, layer folders, symbol library, audio tracks, and stage settings into a portable project file.
+                    Restoration: You can import both <code className="text-gray-300 font-mono bg-black/40 px-1 py-0.5 rounded">.canim</code> and <code className="text-gray-300 font-mono bg-black/40 px-1 py-0.5 rounded">.json</code> backup files anytime from the workspace home screen.
                   </p>
                 </div>
               </div>
