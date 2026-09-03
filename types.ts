@@ -23,6 +23,12 @@ export interface BackpackItem {
   dataUrl: string;
   createdAt: number;
   name?: string;
+  category?: 'characters' | 'props' | 'mouths' | 'faces' | 'vfx' | 'bubbles' | 'uncategorized' | string;
+  tags?: string[];
+  width?: number;
+  height?: number;
+  colorBadge?: string;
+  isFavorite?: boolean;
 }
 
 export interface LayerFolder {

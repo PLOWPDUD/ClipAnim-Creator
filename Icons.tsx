@@ -121,7 +121,17 @@ import {
   FolderInput,
   FastForward,
   Shuffle,
-  Split
+  Split,
+  Package,
+  Flame,
+  Coins,
+  PlayCircle,
+  PauseCircle,
+  RefreshCw,
+  ImagePlus,
+  CheckSquare,
+  Crop,
+  Edit3
 } from 'lucide-react';
 
 export const Icons = {
@@ -251,5 +261,15 @@ export const Icons = {
   ExternalLink,
   Radio,
   Disc,
-  Activity
+  Activity,
+  Package,
+  Flame,
+  Coins,
+  PlayCircle,
+  PauseCircle,
+  RefreshCw,
+  ImagePlus,
+  CheckSquare,
+  Crop,
+  Edit3
 };

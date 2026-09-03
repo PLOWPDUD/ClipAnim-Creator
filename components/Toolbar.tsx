@@ -2,8 +2,6 @@ import React, { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ToolType, ShapeType, BrushType, SymmetryMode } from '../types';
 import { Icons } from '../Icons';
-
-// ... (rest of imports)
 import { hexToHsv, hsvToHex } from '../utils/drawingUtils';
 
 interface ToolbarProps {
@@ -103,10 +101,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const brushInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
-  const [activePopover, setActivePopover] = useState<ToolType | 'color' | null>(null);
+  const [activePopover, setActivePopover] = useState<ToolType | 'color' | 'symmetry' | null>(null);
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
   const [colorTab, setColorTab] = useState<'wheel' | 'sliders' | 'palette'>('wheel');
   const [hsv, setHsv] = useState({ h: 0, s: 0, v: 0 });
+  const [secondaryColor, setSecondaryColor] = useState<string>('#FFFFFF');
   const [savedColors, setSavedColors] = useState<string[]>(() => {
     try {
         const saved = localStorage.getItem('clipanim_custom_palette');
@@ -115,6 +114,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         return ['#FF3B30', '#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF2D55', '#00C7BE', '#FFCC00', '#000000', '#FFFFFF'];
     }
   });
+
+  const QUICK_PALETTE = ['#000000', '#FFFFFF', '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#007AFF', '#AF52DE'];
+  const BRUSH_SIZE_PRESETS = [2, 4, 8, 16, 24, 36, 64];
 
   const saveColorToPalette = () => {
     if (!savedColors.includes(currentColor)) {
@@ -129,6 +131,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     const newColors = savedColors.filter(c => c !== colorToRemove);
     setSavedColors(newColors);
     localStorage.setItem('clipanim_custom_palette', JSON.stringify(newColors));
+  };
+
+  const swapColors = () => {
+    const current = currentColor;
+    onChangeColor(secondaryColor);
+    setSecondaryColor(current);
   };
 
   const wheelRef = useRef<HTMLDivElement>(null);
@@ -171,7 +179,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   const handleToolClick = (e: React.MouseEvent<HTMLButtonElement>, toolId: ToolType) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const top = rect.top + rect.height / 2;
+    const top = Math.min(window.innerHeight - 200, Math.max(80, rect.top + rect.height / 2));
     const left = rect.right + 12;
     if (currentTool === toolId && ['pen', 'eraser', 'shape', 'text', 'fill'].includes(toolId)) {
         setActivePopover(activePopover === toolId ? null : toolId);
@@ -195,17 +203,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       }
   };
 
-  const allTools: { id: ToolType; icon: React.ElementType; label: string }[] = [
-    { id: 'select', icon: Icons.MousePointer2, label: t('toolbar.select') },
-    { id: 'lasso', icon: Icons.Lasso, label: t('toolbar.lasso') },
-    { id: 'wand', icon: Icons.Wand2, label: t('toolbar.wand') },
-    { id: 'pen', icon: Icons.Pencil, label: t('toolbar.brush') },
-    { id: 'eraser', icon: Icons.Eraser, label: t('toolbar.eraser') },
-    { id: 'fill', icon: Icons.PaintBucket, label: t('toolbar.fill') },
-    { id: 'eyedropper', icon: Icons.Eyedropper, label: t('toolbar.eyedropper') },
-    { id: 'shape', icon: getShapeIcon(), label: t('toolbar.shapes') },
-    { id: 'text', icon: Icons.Type, label: t('toolbar.text') },
-    { id: 'motionPath', icon: Icons.Repeat, label: t('toolbar.motionPath') },
+  const allTools: { id: ToolType; icon: React.ElementType; label: string; shortcut: string }[] = [
+    { id: 'select', icon: Icons.MousePointer2, label: t('toolbar.select', 'Select & Move'), shortcut: 'V' },
+    { id: 'lasso', icon: Icons.Lasso, label: t('toolbar.lasso', 'Lasso Select'), shortcut: 'L' },
+    { id: 'wand', icon: Icons.Wand2, label: t('toolbar.wand', 'Magic Wand'), shortcut: 'W' },
+    { id: 'pen', icon: Icons.Pencil, label: t('toolbar.brush', 'Brush / Pen'), shortcut: 'B' },
+    { id: 'eraser', icon: Icons.Eraser, label: t('toolbar.eraser', 'Eraser'), shortcut: 'E' },
+    { id: 'fill', icon: Icons.PaintBucket, label: t('toolbar.fill', 'Paint Bucket'), shortcut: 'G' },
+    { id: 'eyedropper', icon: Icons.Eyedropper, label: t('toolbar.eyedropper', 'Color Picker'), shortcut: 'I' },
+    { id: 'shape', icon: getShapeIcon(), label: t('toolbar.shapes', 'Vector Shapes'), shortcut: 'U' },
+    { id: 'text', icon: Icons.Type, label: t('toolbar.text', 'Text Tool'), shortcut: 'T' },
+    { id: 'motionPath', icon: Icons.Repeat, label: t('toolbar.motionPath', 'Motion Path'), shortcut: 'M' },
   ];
 
   const tools = isPainting ? allTools.filter(t => t.id !== 'motionPath') : allTools;
@@ -227,25 +235,63 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   return (
     <>
-      <div id="tour-toolbar" className="w-16 min-w-[64px] bg-[#1e1e1e] flex flex-col h-full border-r border-gray-700 z-20 shadow-xl">
-        <div id="tour-toolbar-tools" className="flex-1 overflow-y-auto no-scrollbar flex flex-col items-center py-4 space-y-4">
-            {tools.map((tool) => (
-            <button key={tool.id} onClick={(e) => handleToolClick(e, tool.id)} className={`p-3 rounded-xl transition-all shrink-0 ${currentTool === tool.id ? 'bg-[var(--accent-color)] text-white shadow-lg' : 'text-gray-400 hover:bg-gray-800'}`}>
-                <tool.icon size={24} />
-            </button>
-            ))}
+      <div id="tour-toolbar" className="w-16 min-w-[64px] bg-[#1a1a1a] flex flex-col h-full border-r border-gray-800/80 z-20 shadow-2xl select-none">
+        
+        {/* Scrollable Tools Stack */}
+        <div id="tour-toolbar-tools" className="flex-1 overflow-y-auto no-scrollbar flex flex-col items-center py-3 space-y-2">
+            {tools.map((tool) => {
+              const isActive = currentTool === tool.id;
+              return (
+                <button
+                  key={tool.id}
+                  onClick={(e) => handleToolClick(e, tool.id)}
+                  className={`relative p-2.5 rounded-2xl transition-all shrink-0 group ${
+                    isActive
+                      ? 'text-white shadow-lg ring-2 ring-white/20'
+                      : 'text-gray-400 hover:bg-gray-800/80 hover:text-gray-200'
+                  }`}
+                  style={isActive ? { backgroundColor: 'var(--accent-color, #007AFF)' } : {}}
+                  title={`${tool.label} (${tool.shortcut})`}
+                >
+                  <tool.icon size={22} />
+                  
+                  {/* Miniature tool badge indicator for popover-enabled tools */}
+                  {['pen', 'eraser', 'shape', 'text', 'fill'].includes(tool.id) && isActive && (
+                    <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                  )}
+                </button>
+              );
+            })}
             
-            {/* Symmetry */}
-            <div id="tour-toolbar-symmetry" className="flex flex-col items-center gap-2">
-                <button onClick={() => onSelectSymmetryMode('none')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'none' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>{t('globalSettings.systemDefault')}</button>
-                <button onClick={() => onSelectSymmetryMode('horizontal')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'horizontal' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>H</button>
-                <button onClick={() => onSelectSymmetryMode('vertical')} className={`p-2 rounded-lg text-xs ${symmetryMode === 'vertical' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>V</button>
+            <div className="w-8 h-px bg-gray-800 my-1 shrink-0" />
+
+            {/* Symmetry Mirror Toggle */}
+            <div id="tour-toolbar-symmetry" className="flex flex-col items-center gap-1.5">
+              <button
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setPopoverPos({ top: r.top + r.height / 2, left: r.right + 12 });
+                  setActivePopover(activePopover === 'symmetry' ? null : 'symmetry');
+                }}
+                className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center ${
+                  symmetryMode !== 'none'
+                    ? 'bg-purple-600 text-white shadow-md'
+                    : 'text-gray-400 hover:bg-gray-800'
+                }`}
+                title="Symmetry & Mirror Guides"
+              >
+                <Icons.Sparkles size={18} />
+              </button>
             </div>
 
             {/* Custom Brushes */}
-            <div className="flex flex-col items-center gap-2">
-                <button onClick={() => brushInputRef.current?.click()} className="p-2 rounded-lg bg-gray-800 text-gray-400 hover:bg-gray-700">
-                    <Icons.Plus size={20} />
+            <div className="flex flex-col items-center gap-1">
+                <button
+                  onClick={() => brushInputRef.current?.click()}
+                  className="p-2 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+                  title="Import Custom Brush Texture"
+                >
+                  <Icons.Plus size={18} />
                 </button>
                 <input 
                     ref={brushInputRef} 
@@ -261,152 +307,225 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                         }
                     }} 
                 />
-                {customBrushes.map((brush, index) => (
-                    <img key={index} src={brush} alt={`Brush ${index}`} className="w-8 h-8 rounded-lg" />
+                {customBrushes.slice(0, 3).map((brush, index) => (
+                    <img key={index} src={brush} alt={`Brush ${index}`} className="w-7 h-7 rounded-lg border border-gray-700 object-cover" />
                 ))}
             </div>
             
-            <div className="w-8 h-px bg-gray-700 my-2 shrink-0" />
+            <div className="w-8 h-px bg-gray-800 my-1 shrink-0" />
             
             {/* Image Import */}
             <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all shrink-0"
-            title={t('toolbar.importImage')}
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2.5 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all shrink-0"
+              title={t('toolbar.importImage', 'Import Image Asset')}
             >
-            <Icons.Image size={24} />
+              <Icons.Image size={20} />
             </button>
             <input 
-            ref={fileInputRef} 
-            type="file" 
-            accept="image/*" 
-            className="hidden" 
-            onChange={(e) => { if(e.target.files?.[0]) onImportImage(e.target.files[0]); if(fileInputRef.current) fileInputRef.current.value=''; }} 
+              ref={fileInputRef} 
+              type="file" 
+              accept="image/*" 
+              className="hidden" 
+              onChange={(e) => { if(e.target.files?.[0]) onImportImage(e.target.files[0]); if(fileInputRef.current) fileInputRef.current.value=''; }} 
             />
 
             {/* Video Import */}
             {!isPainting && (
               <>
                 <button 
-                onClick={() => videoInputRef.current?.click()}
-                className="p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all shrink-0"
-                title={t('toolbar.importVideo')}
+                  onClick={() => videoInputRef.current?.click()}
+                  className="p-2.5 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all shrink-0"
+                  title={t('toolbar.importVideo', 'Import Video Frame Guide')}
                 >
-                <Icons.FileVideo size={24} />
+                  <Icons.FileVideo size={20} />
                 </button>
                 <input 
-                ref={videoInputRef} 
-                type="file" 
-                accept="video/mp4" 
-                className="hidden" 
-                onChange={(e) => { if(e.target.files?.[0]) onImportVideo(e.target.files[0]); if(videoInputRef.current) videoInputRef.current.value=''; }} 
+                  ref={videoInputRef} 
+                  type="file" 
+                  accept="video/mp4" 
+                  className="hidden" 
+                  onChange={(e) => { if(e.target.files?.[0]) onImportVideo(e.target.files[0]); if(videoInputRef.current) videoInputRef.current.value=''; }} 
                 />
               </>
             )}
 
-            <div className="w-8 h-px bg-gray-700 my-2 shrink-0" />
+            <div className="w-8 h-px bg-gray-800 my-1 shrink-0" />
 
-            {/* Color / Transforms */}
-            <button 
-                id="tour-toolbar-color"
-                onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPopoverPos({ top: r.top + r.height/2, left: r.right+12 }); setActivePopover(activePopover === 'color' ? null : 'color'); }} 
-                className="w-10 h-10 rounded-full border-2 border-white/20 shrink-0" 
-                style={{ backgroundColor: currentColor }} 
-            />
+            {/* Dual Primary / Secondary Color Pill */}
+            <div className="relative flex items-center justify-center my-1">
+              <button 
+                  id="tour-toolbar-color"
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setPopoverPos({ top: r.top + r.height/2, left: r.right+12 });
+                    setActivePopover(activePopover === 'color' ? null : 'color');
+                  }} 
+                  className="w-8 h-8 rounded-full border-2 border-white/40 shadow-lg shrink-0 transition-transform active:scale-95 cursor-pointer z-10" 
+                  style={{ backgroundColor: currentColor }} 
+                  title="Primary Color Palette"
+              />
+              <button
+                onClick={swapColors}
+                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full border border-gray-600 shadow-md transition-transform hover:scale-110 active:scale-90"
+                style={{ backgroundColor: secondaryColor }}
+                title="Swap with Secondary Color (X)"
+              />
+            </div>
+
+            {/* Quick Palette Swatch Dots */}
+            <div className="grid grid-cols-2 gap-1 px-2 pt-1">
+              {QUICK_PALETTE.slice(0, 6).map((c, i) => (
+                <button
+                  key={i}
+                  onClick={() => onChangeColor(c)}
+                  className="w-4 h-4 rounded-md border border-gray-700/80 hover:scale-125 transition-transform"
+                  style={{ backgroundColor: c }}
+                  title={c}
+                />
+              ))}
+            </div>
 
             {hasSelection && (
-            <div className="flex flex-col gap-2 shrink-0 mt-2">
-                <button onClick={onSelectionCommit} className="p-3 rounded-xl text-white bg-green-600 hover:bg-green-500 shadow-lg" title={t('tooltips.commitSelection')}>
-                    <Icons.Check size={20} />
+            <div className="flex flex-col gap-1.5 shrink-0 mt-2 bg-gray-900/90 p-1.5 rounded-2xl border border-gray-800">
+                <button onClick={onSelectionCommit} className="p-2 rounded-xl text-white bg-emerald-600 hover:bg-emerald-500 shadow-md" title={t('tooltips.commitSelection', 'Commit Selection (Enter)')}>
+                    <Icons.Check size={18} />
                 </button>
-                <button onClick={onSelectionDelete} className="p-3 rounded-xl text-white bg-red-600 hover:bg-red-500 shadow-lg" title={t('tooltips.deselect')}>
-                    <Icons.Trash2 size={20} />
+                <button onClick={onSelectionDelete} className="p-2 rounded-xl text-white bg-red-600 hover:bg-red-500 shadow-md" title={t('tooltips.deselect', 'Delete Selection (Del)')}>
+                    <Icons.Trash2 size={18} />
                 </button>
                 {onSelectionMakeSymbol && (
-                  <button onClick={onSelectionMakeSymbol} className="p-3 rounded-xl text-white bg-amber-600 hover:bg-amber-500 shadow-lg" title="Make Symbol">
-                      <Icons.Box size={20} />
+                  <button onClick={onSelectionMakeSymbol} className="p-2 rounded-xl text-white bg-amber-600 hover:bg-amber-500 shadow-md" title="Convert to Interactive Symbol">
+                      <Icons.Box size={18} />
                   </button>
                 )}
-                <button onClick={onRotate} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title={t('tooltips.rotate')}>
-                    <Icons.RotateCw size={20} />
+                <button onClick={onRotate} className="p-2 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-md" title={t('tooltips.rotate', 'Rotate 90°')}>
+                    <Icons.RotateCw size={18} />
                 </button>
-                <button onClick={onFlipHorizontal} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title={t('tooltips.flipH')}>
-                    <Icons.FlipHorizontal size={20} />
+                <button onClick={onFlipHorizontal} className="p-2 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-md" title={t('tooltips.flipH', 'Flip Horizontal')}>
+                    <Icons.FlipHorizontal size={18} />
                 </button>
-                <button onClick={onFlipVertical} className="p-3 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-lg" title={t('tooltips.flipV')}>
-                    <Icons.FlipVertical size={20} />
+                <button onClick={onFlipVertical} className="p-2 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-md" title={t('tooltips.flipV', 'Flip Vertical')}>
+                    <Icons.FlipVertical size={18} />
                 </button>
             </div>
             )}
 
-            <div className="w-8 h-px bg-gray-700 my-2 shrink-0" />
+            <div className="w-8 h-px bg-gray-800 my-1 shrink-0" />
 
-            {/* Toggles */}
+            {/* Onion Skin & Grid Toggles */}
             {!isPainting && (
-              <button onClick={onToggleOnionSkin} className={`p-3 rounded-xl transition-colors shrink-0 ${onionSkin ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-400 hover:text-white'}`} title={t('toolbar.onionSkin')}>
-              <Icons.Ghost size={24} />
+              <button
+                onClick={onToggleOnionSkin}
+                className={`p-2.5 rounded-xl transition-colors shrink-0 ${
+                  onionSkin ? 'text-white bg-[var(--accent-color)] shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+                title={t('toolbar.onionSkin', 'Toggle Onion Skinning (O)')}
+              >
+                <Icons.Ghost size={20} />
               </button>
             )}
             
-            <button onClick={onToggleGrid} className={`p-3 rounded-xl transition-colors shrink-0 ${showGrid ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-400 hover:text-white'}`} title={t('toolbar.grid')}>
-            <Icons.Grid size={24} />
+            <button
+              onClick={onToggleGrid}
+              className={`p-2.5 rounded-xl transition-colors shrink-0 ${
+                showGrid ? 'text-white bg-[var(--accent-color)] shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+              title={t('toolbar.grid', 'Toggle Alignment Grid (G)')}
+            >
+              <Icons.Grid size={20} />
             </button>
 
-            <button onClick={onToggleFocusMode} className={`p-3 rounded-xl transition-colors shrink-0 ${isFocusMode ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-400 hover:text-white'}`} title={t('toolbar.focusMode')}>
-            {isFocusMode ? <Icons.Minimize2 size={24} /> : <Icons.Maximize2 size={24} />}
+            <button
+              onClick={onToggleFocusMode}
+              className={`p-2.5 rounded-xl transition-colors shrink-0 ${
+                isFocusMode ? 'text-white bg-[var(--accent-color)] shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+              title={t('toolbar.focusMode', 'Focus Mode (F)')}
+            >
+              {isFocusMode ? <Icons.Minimize2 size={20} /> : <Icons.Maximize2 size={20} />}
             </button>
         </div>
 
-        {/* Help Button - Pinned to bottom */}
-        <div className="shrink-0 p-2 border-t border-gray-700 flex justify-center bg-[#1e1e1e]">
+        {/* Bottom Pinned Help & Code Actions */}
+        <div className="shrink-0 p-2 border-t border-gray-800/80 flex flex-col items-center gap-1 bg-[#1a1a1a]">
             {onOpenCodeEditor && (
-                <button id="tour-toolbar-script" onClick={onOpenCodeEditor} className="p-3 rounded-xl text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 transition-colors" title="Script Editor">
+                <button
+                  id="tour-toolbar-script"
+                  onClick={onOpenCodeEditor}
+                  className="p-2.5 rounded-xl text-amber-400 hover:text-amber-300 hover:bg-amber-500/20 transition-all border border-amber-500/20"
+                  title="Open Interactive Script IDE"
+                >
                     <Icons.Code size={20} />
                 </button>
             )}
-            <button onClick={onOpenHelp} className="p-3 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors" title={t('toolbar.help')}>
-                <Icons.Help size={24} />
+            <button
+              onClick={onOpenHelp}
+              className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+              title={t('toolbar.help', 'Help & Keyboard Shortcuts')}
+            >
+                <Icons.Help size={20} />
             </button>
         </div>
       </div>
 
+      {/* Popover: Color Palette */}
       {activePopover === 'color' && (
-        <div className="fixed bg-[#252525] p-3 rounded-xl shadow-2xl w-60 border border-gray-700 z-50 flex flex-col gap-3" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
-            <div className="flex bg-gray-800 p-1 rounded-lg">
-                <button onClick={() => setColorTab('wheel')} className={`flex-1 text-xs py-1 rounded ${colorTab === 'wheel' ? 'bg-[var(--accent-color)] text-white' : 'text-gray-400'}`}>{t('toolbar.wheel')}</button>
-                <button onClick={() => setColorTab('sliders')} className={`flex-1 text-xs py-1 rounded ${colorTab === 'sliders' ? 'bg-[var(--accent-color)] text-white' : 'text-gray-400'}`}>{t('toolbar.sliders')}</button>
-                <button onClick={() => setColorTab('palette')} className={`flex-1 text-xs py-1 rounded ${colorTab === 'palette' ? 'bg-[var(--accent-color)] text-white' : 'text-gray-400'}`}>{t('toolbar.palette')}</button>
+        <div className="fixed bg-[#222222] p-4 rounded-2xl shadow-2xl w-64 border border-gray-700/80 z-50 flex flex-col gap-3.5 text-gray-200 animate-in fade-in zoom-in-95 duration-150" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
+            <div className="flex items-center justify-between border-b border-gray-700/80 pb-2">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Icons.Palette size={15} className="text-amber-400" />
+                Color Master
+              </span>
+              <button onClick={() => setActivePopover(null)} className="text-gray-400 hover:text-white">
+                <Icons.X size={15} />
+              </button>
             </div>
+
+            <div className="flex bg-gray-800/90 p-1 rounded-xl">
+                <button onClick={() => setColorTab('wheel')} className={`flex-1 text-xs py-1.5 rounded-lg font-bold transition-all ${colorTab === 'wheel' ? 'bg-[var(--accent-color)] text-white shadow' : 'text-gray-400'}`}>{t('toolbar.wheel')}</button>
+                <button onClick={() => setColorTab('sliders')} className={`flex-1 text-xs py-1.5 rounded-lg font-bold transition-all ${colorTab === 'sliders' ? 'bg-[var(--accent-color)] text-white shadow' : 'text-gray-400'}`}>{t('toolbar.sliders')}</button>
+                <button onClick={() => setColorTab('palette')} className={`flex-1 text-xs py-1.5 rounded-lg font-bold transition-all ${colorTab === 'palette' ? 'bg-[var(--accent-color)] text-white shadow' : 'text-gray-400'}`}>{t('toolbar.palette')}</button>
+            </div>
+
             {colorTab === 'wheel' && (
-                <div className="flex flex-col items-center py-2">
+                <div className="flex flex-col items-center py-1">
                     <div className="relative w-48 h-48 touch-none">
-                        <div ref={wheelRef} onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); handleWheelPointerUpdate(e); }} onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) handleWheelPointerUpdate(e); }} className="absolute inset-0 rounded-full border border-gray-700" style={{ background: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }}>
-                             <div className="absolute w-3 h-3 rounded-full border-2 border-white shadow bg-transparent" style={{ left: '50%', top: '5%', transformOrigin: '0 90px', transform: `translate(-50%, -50%) rotate(${hsv.h}deg)` }} />
+                        <div ref={wheelRef} onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); handleWheelPointerUpdate(e); }} onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) handleWheelPointerUpdate(e); }} className="absolute inset-0 rounded-full border border-gray-700 shadow-inner" style={{ background: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }}>
+                             <div className="absolute w-3.5 h-3.5 rounded-full border-2 border-white shadow-md bg-transparent" style={{ left: '50%', top: '5%', transformOrigin: '0 90px', transform: `translate(-50%, -50%) rotate(${hsv.h}deg)` }} />
                         </div>
-                        <div className="absolute inset-0 m-auto w-28 h-28 bg-[#252525] rounded-lg flex items-center justify-center overflow-hidden">
+                        <div className="absolute inset-0 m-auto w-26 h-26 bg-[#222222] rounded-xl flex items-center justify-center overflow-hidden border border-gray-700 shadow-inner">
                              <div ref={svRef} onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); handleSvPointerUpdate(e); }} onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) handleSvPointerUpdate(e); }} className="w-full h-full relative" style={{ backgroundColor: hsvToHex(hsv.h, 100, 100), backgroundImage: 'linear-gradient(to top, black, transparent), linear-gradient(to right, white, transparent)' }}>
-                                 <div className="absolute w-3 h-3 rounded-full border-2 border-white shadow pointer-events-none transform -translate-x-1/2 -translate-y-1/2" style={{ left: `${hsv.s}%`, top: `${100 - hsv.v}%` }} />
+                                 <div className="absolute w-3.5 h-3.5 rounded-full border-2 border-white shadow-md pointer-events-none transform -translate-x-1/2 -translate-y-1/2" style={{ left: `${hsv.s}%`, top: `${100 - hsv.v}%` }} />
                              </div>
                         </div>
+                    </div>
+                    <div className="w-full mt-3 flex items-center justify-between text-xs font-mono bg-gray-900 px-3 py-1.5 rounded-xl border border-gray-800">
+                      <span className="text-gray-400">HEX</span>
+                      <span className="text-white font-bold">{currentColor.toUpperCase()}</span>
                     </div>
                 </div>
             )}
             {colorTab === 'sliders' && (
-                <div className="space-y-4 py-2">
-                    <div className="w-full h-24 rounded-lg overflow-hidden border border-gray-600 relative">
+                <div className="space-y-3 py-1">
+                    <div className="w-full h-20 rounded-xl overflow-hidden border border-gray-700 relative shadow-inner">
                         <input type="color" value={currentColor} onChange={(e) => onChangeColor(e.target.value)} className="absolute -top-[50%] -left-[50%] w-[200%] h-[200%] p-0 m-0 border-none cursor-crosshair" />
+                    </div>
+                    <div className="flex items-center justify-between text-xs font-mono bg-gray-900 px-3 py-1.5 rounded-xl border border-gray-800">
+                      <span className="text-gray-400">Selected</span>
+                      <span className="text-white font-bold">{currentColor.toUpperCase()}</span>
                     </div>
                 </div>
             )}
             {colorTab === 'palette' && (
-                <div className="flex flex-col gap-3 py-2">
+                <div className="flex flex-col gap-3 py-1">
                     <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full border border-gray-600 shrink-0" style={{ backgroundColor: currentColor }} />
-                        <button onClick={saveColorToPalette} className="flex-1 py-1.5 bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1">
+                        <div className="w-7 h-7 rounded-full border-2 border-gray-600 shrink-0" style={{ backgroundColor: currentColor }} />
+                        <button onClick={saveColorToPalette} className="flex-1 py-1.5 bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1 shadow-sm">
                             <Icons.Plus size={14} /> {t('toolbar.saveColor')}
                         </button>
                     </div>
-                    <div className="grid grid-cols-5 gap-2 max-h-40 overflow-y-auto no-scrollbar">
+                    <div className="grid grid-cols-5 gap-1.5 max-h-40 overflow-y-auto no-scrollbar">
                         {savedColors.map((c, i) => (
                             <button
                                 key={i}
@@ -416,7 +535,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                             >
                                 <div 
                                     onClick={(e) => removeColorFromPalette(e, c)}
-                                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
                                 >
                                     <Icons.X size={10} />
                                 </div>
@@ -428,85 +547,177 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
       )}
 
-      {/* Pen Settings */}
+      {/* Popover: Symmetry Mode Selector */}
+      {activePopover === 'symmetry' && (
+        <div className="fixed bg-[#222222] p-4 rounded-2xl shadow-2xl w-60 border border-gray-700/80 z-50 flex flex-col gap-3 text-gray-200 animate-in fade-in zoom-in-95 duration-150" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
+          <div className="flex items-center justify-between border-b border-gray-700/80 pb-2">
+            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+              <Icons.Sparkles size={15} className="text-purple-400" />
+              Symmetry Guides
+            </span>
+            <button onClick={() => setActivePopover(null)} className="text-gray-400 hover:text-white">
+              <Icons.X size={15} />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-1.5">
+            {[
+              { id: 'none', label: 'Disabled (Off)', desc: 'Standard freehand drawing' },
+              { id: 'vertical', label: 'Vertical Mirror (Left-Right)', desc: 'Mirrors across center Y-axis' },
+              { id: 'horizontal', label: 'Horizontal Mirror (Top-Bottom)', desc: 'Mirrors across center X-axis' },
+              { id: 'quad', label: '4-Way Quad Mirror', desc: '4-quadrant reflection' },
+              { id: 'radial', label: '8-Way Kaleidoscope', desc: 'Radial circular symmetry' },
+            ].map(item => (
+              <button
+                key={item.id}
+                onClick={() => { onSelectSymmetryMode(item.id as SymmetryMode); setActivePopover(null); }}
+                className={`p-2.5 rounded-xl text-left text-xs transition-all flex flex-col ${
+                  symmetryMode === item.id
+                    ? 'bg-purple-600 text-white font-bold shadow-md'
+                    : 'bg-gray-800/80 text-gray-300 hover:bg-gray-700'
+                }`}
+              >
+                <span>{item.label}</span>
+                <span className="text-[10px] opacity-75 font-normal">{item.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Popover: Pen / Brush Settings */}
       {activePopover === 'pen' && (
-        <div className="fixed bg-[#252525] p-4 rounded-xl shadow-2xl w-64 border border-gray-700 z-50 flex flex-col gap-4" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
-            <div className="grid grid-cols-5 gap-2">
+        <div className="fixed bg-[#222222] p-4 rounded-2xl shadow-2xl w-68 border border-gray-700/80 z-50 flex flex-col gap-4 text-gray-200 animate-in fade-in zoom-in-95 duration-150" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
+            <div className="flex items-center justify-between border-b border-gray-700/80 pb-2">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Icons.Pencil size={15} className="text-blue-400" />
+                Brush Dynamics
+              </span>
+              <button onClick={() => setActivePopover(null)} className="text-gray-400 hover:text-white">
+                <Icons.X size={15} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-4 gap-1.5">
                 {[
-                    { type: 'pen', icon: Icons.Pencil },
-                    { type: 'marker', icon: Icons.Marker },
-                    { type: 'highlighter', icon: Icons.Highlighter },
-                    { type: 'spray', icon: Icons.Spray },
-                    { type: 'pixel', icon: Icons.Pixel },
-                    { type: 'watercolor', icon: Icons.Image },
-                    { type: 'oil', icon: Icons.Palette },
-                    { type: 'calligraphy', icon: Icons.Type },
+                    { type: 'pen', icon: Icons.Pencil, label: 'Pen' },
+                    { type: 'marker', icon: Icons.Marker, label: 'Marker' },
+                    { type: 'highlighter', icon: Icons.Highlighter, label: 'Highlight' },
+                    { type: 'spray', icon: Icons.Spray, label: 'Spray' },
+                    { type: 'pixel', icon: Icons.Pixel, label: 'Pixel' },
+                    { type: 'watercolor', icon: Icons.Image, label: 'Water' },
+                    { type: 'oil', icon: Icons.Palette, label: 'Oil' },
+                    { type: 'calligraphy', icon: Icons.Type, label: 'Calli' },
                 ].map((b) => (
                     <button 
                         key={b.type}
                         onClick={() => onSelectBrushType(b.type as BrushType)}
-                        className={`p-2 rounded-lg flex items-center justify-center transition-colors ${currentBrushType === b.type ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
-                        title={b.type}
+                        className={`p-2 rounded-xl flex flex-col items-center justify-center gap-1 transition-all ${currentBrushType === b.type ? 'bg-[var(--accent-color)] text-white shadow-md' : 'bg-gray-800/80 text-gray-400 hover:bg-gray-700'}`}
+                        title={b.label}
                     >
-                        <b.icon size={20} />
+                        <b.icon size={18} />
+                        <span className="text-[9px] font-semibold">{b.label}</span>
                     </button>
                 ))}
             </div>
+
+            {/* Quick Size Presets */}
             <div>
-                <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>{t('toolbar.size')}</span>
-                    <span>{strokeWidth}px</span>
-                </div>
-                <input type="range" min="1" max="100" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
+              <div className="flex justify-between text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">
+                  <span>{t('toolbar.size', 'Brush Size')}</span>
+                  <span className="text-white font-mono">{strokeWidth}px</span>
+              </div>
+              <div className="flex gap-1 mb-2">
+                {BRUSH_SIZE_PRESETS.map(size => (
+                  <button
+                    key={size}
+                    onClick={() => onChangeStrokeWidth(size)}
+                    className={`flex-1 py-1 rounded-lg text-[10px] font-mono font-bold transition-colors ${
+                      strokeWidth === size ? 'bg-white text-gray-900' : 'bg-gray-800 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+              <input type="range" min="1" max="100" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
             </div>
+
+            {/* Smoothing / Stabilizer */}
             <div>
-                <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>{t('toolbar.smoothing')}</span>
-                    <span>{smoothing}%</span>
+                <div className="flex justify-between text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">
+                    <span>{t('toolbar.smoothing', 'Stroke Stabilizer')}</span>
+                    <span className="text-white font-mono">{smoothing}%</span>
                 </div>
-                <input type="range" min="0" max="100" value={smoothing} onChange={(e) => onChangeSmoothing(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
+                <input type="range" min="0" max="100" value={smoothing} onChange={(e) => onChangeSmoothing(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
             </div>
         </div>
       )}
 
-      {/* Eraser Settings */}
+      {/* Popover: Eraser Settings */}
       {activePopover === 'eraser' && (
-        <div className="fixed bg-[#252525] p-4 rounded-xl shadow-2xl w-48 border border-gray-700 z-50 flex flex-col gap-4" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
+        <div className="fixed bg-[#222222] p-4 rounded-2xl shadow-2xl w-56 border border-gray-700/80 z-50 flex flex-col gap-3.5 text-gray-200 animate-in fade-in zoom-in-95 duration-150" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
+            <div className="flex items-center justify-between border-b border-gray-700/80 pb-2">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Icons.Eraser size={15} className="text-red-400" />
+                Eraser Radius
+              </span>
+              <button onClick={() => setActivePopover(null)} className="text-gray-400 hover:text-white">
+                <Icons.X size={15} />
+              </button>
+            </div>
             <div>
-                <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>{t('toolbar.eraser')} {t('toolbar.size')}</span>
-                    <span>{strokeWidth}px</span>
+                <div className="flex justify-between text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">
+                    <span>{t('toolbar.size')}</span>
+                    <span className="text-white font-mono">{strokeWidth}px</span>
                 </div>
-                <input type="range" min="1" max="100" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
+                <input type="range" min="1" max="100" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
             </div>
         </div>
       )}
 
-      {/* Fill Settings */}
+      {/* Popover: Fill Settings */}
       {activePopover === 'fill' && (
-        <div className="fixed bg-[#252525] p-4 rounded-xl shadow-2xl w-56 border border-gray-700 z-50 flex flex-col gap-4" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
-            <div>
-                <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>{t('toolbar.opacity')}</span>
-                    <span>{Math.round(fillOpacity * 100)}%</span>
-                </div>
-                <input type="range" min="0" max="1" step="0.01" value={fillOpacity} onChange={(e) => onChangeFillOpacity(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
+        <div className="fixed bg-[#222222] p-4 rounded-2xl shadow-2xl w-60 border border-gray-700/80 z-50 flex flex-col gap-3.5 text-gray-200 animate-in fade-in zoom-in-95 duration-150" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
+            <div className="flex items-center justify-between border-b border-gray-700/80 pb-2">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Icons.PaintBucket size={15} className="text-emerald-400" />
+                Paint Fill Settings
+              </span>
+              <button onClick={() => setActivePopover(null)} className="text-gray-400 hover:text-white">
+                <Icons.X size={15} />
+              </button>
             </div>
-            <div className="w-full h-px bg-gray-700" />
             <div>
-                <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>{t('toolbar.tolerance')}</span>
-                    <span>{fillTolerance}%</span>
+                <div className="flex justify-between text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">
+                    <span>{t('toolbar.opacity')}</span>
+                    <span className="text-white font-mono">{Math.round(fillOpacity * 100)}%</span>
                 </div>
-                <input type="range" min="0" max="100" value={fillTolerance} onChange={(e) => onChangeFillTolerance(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
+                <input type="range" min="0" max="1" step="0.01" value={fillOpacity} onChange={(e) => onChangeFillOpacity(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
+            </div>
+            <div className="w-full h-px bg-gray-700/80" />
+            <div>
+                <div className="flex justify-between text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">
+                    <span>{t('toolbar.tolerance')}</span>
+                    <span className="text-white font-mono">{fillTolerance}%</span>
+                </div>
+                <input type="range" min="0" max="100" value={fillTolerance} onChange={(e) => onChangeFillTolerance(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
             </div>
         </div>
       )}
 
-      {/* Shape Settings */}
+      {/* Popover: Shape Settings */}
       {activePopover === 'shape' && (
-        <div className="fixed bg-[#252525] p-4 rounded-xl shadow-2xl w-56 border border-gray-700 z-50 flex flex-col gap-4" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
-             <div className="grid grid-cols-3 gap-2">
+        <div className="fixed bg-[#222222] p-4 rounded-2xl shadow-2xl w-64 border border-gray-700/80 z-50 flex flex-col gap-3.5 text-gray-200 animate-in fade-in zoom-in-95 duration-150" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
+             <div className="flex items-center justify-between border-b border-gray-700/80 pb-2">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Icons.Square size={15} className="text-purple-400" />
+                Geometry Shapes
+              </span>
+              <button onClick={() => setActivePopover(null)} className="text-gray-400 hover:text-white">
+                <Icons.X size={15} />
+              </button>
+             </div>
+             <div className="grid grid-cols-3 gap-1.5">
                 {[
                     { type: 'rectangle', icon: Icons.Square },
                     { type: 'circle', icon: Icons.Circle },
@@ -521,7 +732,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     <button 
                         key={s.type}
                         onClick={() => onSelectShapeType(s.type as ShapeType)}
-                        className={`p-2 rounded-lg flex items-center justify-center transition-colors ${shapeType === s.type ? 'bg-[var(--accent-color)] text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+                        className={`p-2 rounded-xl flex items-center justify-center transition-colors ${shapeType === s.type ? 'bg-[var(--accent-color)] text-white shadow-md' : 'bg-gray-800/80 text-gray-400 hover:bg-gray-700'}`}
                         title={s.type}
                     >
                         <s.icon size={20} />
@@ -529,45 +740,53 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 ))}
             </div>
             <div>
-                <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
+                <div className="flex justify-between text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">
                     <span>{t('toolbar.strokeWidth')}</span>
-                    <span>{strokeWidth}px</span>
+                    <span className="text-white font-mono">{strokeWidth}px</span>
                 </div>
-                <input type="range" min="1" max="50" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
+                <input type="range" min="1" max="50" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
             </div>
         </div>
       )}
       
-      {/* Text Settings */}
+      {/* Popover: Text Settings */}
       {activePopover === 'text' && (
-        <div className="fixed bg-[#252525] p-4 rounded-xl shadow-2xl w-56 border border-gray-700 z-50 flex flex-col gap-4" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
-            <div>
-                <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
-                    <span>{t('toolbar.fontSize')}</span>
-                    <span>{strokeWidth}px</span>
-                </div>
-                <input type="range" min="10" max="100" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
+        <div className="fixed bg-[#222222] p-4 rounded-2xl shadow-2xl w-60 border border-gray-700/80 z-50 flex flex-col gap-3.5 text-gray-200 animate-in fade-in zoom-in-95 duration-150" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
+            <div className="flex items-center justify-between border-b border-gray-700/80 pb-2">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Icons.Type size={15} className="text-blue-400" />
+                Typography
+              </span>
+              <button onClick={() => setActivePopover(null)} className="text-gray-400 hover:text-white">
+                <Icons.X size={15} />
+              </button>
             </div>
-             <div className="w-full h-px bg-gray-700" />
+            <div>
+                <div className="flex justify-between text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">
+                    <span>{t('toolbar.fontSize')}</span>
+                    <span className="text-white font-mono">{strokeWidth}px</span>
+                </div>
+                <input type="range" min="10" max="100" value={strokeWidth} onChange={(e) => onChangeStrokeWidth(Number(e.target.value))} className="w-full accent-[var(--accent-color)] h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
+            </div>
              <div className="flex gap-2">
                 <button 
                     onClick={() => setTextToolBold(!textToolBold)}
-                    className={`flex-1 p-2 rounded-lg border transition-colors flex items-center justify-center ${textToolBold ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
+                    className={`flex-1 p-2 rounded-xl border transition-colors flex items-center justify-center ${textToolBold ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white shadow-md' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
                     title={t('fonts.bold')}
                 >
                     <Icons.Bold size={18} />
                 </button>
                 <button 
                     onClick={() => setTextToolItalic(!textToolItalic)}
-                    className={`flex-1 p-2 rounded-lg border transition-colors flex items-center justify-center ${textToolItalic ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
+                    className={`flex-1 p-2 rounded-xl border transition-colors flex items-center justify-center ${textToolItalic ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white shadow-md' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
                     title={t('fonts.italic')}
                 >
                     <Icons.Italic size={18} />
                 </button>
              </div>
-             <div className="w-full h-px bg-gray-700" />
+             <div className="w-full h-px bg-gray-700/80" />
             <div>
-                <div className="flex justify-between text-xs text-gray-400 mb-2 font-bold uppercase tracking-wider">
+                <div className="flex justify-between text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">
                     <span>{t('toolbar.fontFamily')}</span>
                 </div>
                 <div className="max-h-40 overflow-y-auto no-scrollbar space-y-1">
@@ -575,7 +794,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                         <button
                             key={f.value}
                             onClick={() => onSelectTextToolFont(f.value)}
-                            className={`w-full text-left px-2 py-1.5 rounded text-sm truncate ${textToolFont === f.value ? 'bg-[var(--accent-color)] text-white' : 'text-gray-300 hover:bg-gray-700'}`}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs truncate transition-colors ${textToolFont === f.value ? 'bg-[var(--accent-color)] text-white font-bold' : 'text-gray-300 hover:bg-gray-700'}`}
                             style={{ fontFamily: f.value }}
                         >
                             {f.label}

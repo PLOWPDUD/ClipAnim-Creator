@@ -9,16 +9,26 @@ const ASSETS_STORE = 'assets';
 export interface LibraryAsset {
   id: string;
   name: string;
-  type: 'image' | 'sound' | 'symbol';
+  type: 'image' | 'sound' | 'symbol' | 'palette';
   dataUrl: string; // Base64 data URI or object URL
-  fileType: string; // e.g. "image/png", "audio/mpeg"
+  fileType: string; // e.g. "image/png", "audio/mpeg", "image/svg+xml"
   size: number;
   createdAt: number;
   duration?: number; // for audio
+  width?: number;
+  height?: number;
+  tags?: string[];
+  category?: string;
+  folderId?: string;
+  isFavorite?: boolean;
+  paletteColors?: string[];
+  description?: string;
+  author?: string;
   // For symbols
   isAnimated?: boolean;
   symbolFrames?: any[];
   symbolLayers?: any[];
+  symbolLayerFolders?: any[];
   symbolFps?: number;
   scripts?: string;
 }

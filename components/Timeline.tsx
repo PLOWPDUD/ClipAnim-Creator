@@ -192,65 +192,105 @@ export const Timeline: React.FC<TimelineProps> = ({
         onPointerLeave={handleTimelinePointerUp}
     >
       {!isFocusMode && (
-        <div className="h-10 flex items-center px-4 justify-between animate-in fade-in slide-in-from-bottom-2">
-          <div className="flex items-center space-x-2">
+        <div className="h-12 flex items-center px-4 justify-between animate-in fade-in slide-in-from-bottom-2 select-none">
+          <div className="flex items-center space-x-1.5 bg-black/50 rounded-xl p-1 backdrop-blur-md border border-white/10 shadow-lg">
               <button 
                   onClick={onOpenFrameManager}
-                  className="p-1.5 rounded-full text-gray-300 hover:text-white hover:bg-white/10 transition-colors drop-shadow-md"
-                  title={t('layers.title')}
+                  className="p-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
+                  title={t('layers.title', 'Frame Overview')}
               >
-                  <Icons.FrameGrid size={18} />
+                  <Icons.FrameGrid size={16} />
               </button>
               <button 
                   onClick={() => setShowAudio(!showAudio)}
-                  className={`p-1.5 rounded-full transition-colors ${showAudio ? 'text-[var(--accent-color)] bg-black/40' : 'text-gray-300 hover:text-white drop-shadow-md'}`}
-                  title={t('timeline.audio')}
+                  className={`p-1.5 rounded-lg relative transition-colors ${showAudio ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-300 hover:text-white hover:bg-white/10'}`}
+                  title={t('timeline.audio', 'Audio Timeline')}
               >
                   <Icons.Music size={16} />
                   {audioTracks.length > 0 && (
-                      <span className="absolute top-0 right-0 w-2 h-2 bg-blue-500 rounded-full border border-[#1e1e1e]" />
+                      <span className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full border border-black animate-pulse" />
                   )}
               </button>
               <button 
                   onClick={onToggleLoop}
-                  className={`p-1.5 rounded-full transition-colors ${isLooping ? 'text-[var(--accent-color)] bg-black/40' : 'text-gray-300 hover:text-white drop-shadow-md'}`}
-                  title={isLooping ? t('timeline.loop') : t('timeline.loop')}
+                  className={`p-1.5 rounded-lg transition-colors ${isLooping ? 'text-[var(--accent-color)] bg-white/10' : 'text-gray-300 hover:text-white hover:bg-white/10'}`}
+                  title={isLooping ? t('timeline.loop', 'Loop On') : t('timeline.loop', 'Loop Off')}
               >
                   <Icons.Repeat size={16} />
               </button>
           </div>
           
-          <button 
-              onClick={onTogglePlay}
-              className={`
-                  flex items-center justify-center w-12 h-12 -mt-10 rounded-full shadow-[0_4px_10px_rgba(0,0,0,0.5)]
-                  transition-all duration-200 transform hover:scale-105 active:scale-95 border-2 border-[#121212] z-30
-                  ${isPlaying ? 'bg-white text-red-600' : 'bg-[#FF3B30] text-white'}
-              `}
-          >
-              {isPlaying ? <Icons.Pause size={24} fill="currentColor" /> : <Icons.Play size={24} fill="currentColor" className="ml-1"/>}
-          </button>
+          {/* Main Playback Transport Cluster */}
+          <div className="flex items-center gap-1.5">
+              <button
+                  onClick={() => onSelectFrame(0)}
+                  disabled={currentFrameIndex === 0}
+                  className="p-1.5 rounded-xl bg-black/40 hover:bg-black/60 disabled:opacity-30 text-gray-200 hover:text-white transition-colors border border-white/10 flex items-center"
+                  title="Jump to Start (Home)"
+              >
+                  <Icons.ChevronLeft size={14} className="-mr-1.5" />
+                  <Icons.ChevronLeft size={14} />
+              </button>
+              <button
+                  onClick={() => onSelectFrame(Math.max(0, currentFrameIndex - 1))}
+                  disabled={currentFrameIndex === 0}
+                  className="p-1.5 rounded-xl bg-black/40 hover:bg-black/60 disabled:opacity-30 text-gray-200 hover:text-white transition-colors border border-white/10"
+                  title="Previous Frame (<)"
+              >
+                  <Icons.ChevronLeft size={16} />
+              </button>
 
-          <div className="flex items-center space-x-1 bg-black/40 rounded-lg p-1 backdrop-blur-sm">
-                <div className="flex items-center space-x-1 px-2 border-r border-white/10 mr-1">
-                    <span className="text-[10px] text-gray-400 font-bold uppercase">{t('timeline.frames')}</span>
+              <button 
+                  onClick={onTogglePlay}
+                  className={`
+                      flex items-center justify-center w-11 h-11 rounded-full shadow-[0_0_15px_rgba(255,59,48,0.4)]
+                      transition-all duration-150 transform hover:scale-105 active:scale-95 border-2 border-[#121212] z-30 cursor-pointer
+                      ${isPlaying ? 'bg-white text-red-600' : 'bg-[#FF3B30] text-white'}
+                  `}
+                  title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+              >
+                  {isPlaying ? <Icons.Pause size={20} fill="currentColor" /> : <Icons.Play size={20} fill="currentColor" className="ml-0.5"/>}
+              </button>
+
+              <button
+                  onClick={() => onSelectFrame(Math.min(frames.length - 1, currentFrameIndex + 1))}
+                  disabled={currentFrameIndex === frames.length - 1}
+                  className="p-1.5 rounded-xl bg-black/40 hover:bg-black/60 disabled:opacity-30 text-gray-200 hover:text-white transition-colors border border-white/10"
+                  title="Next Frame (>)"
+              >
+                  <Icons.ChevronRight size={16} />
+              </button>
+              <button
+                  onClick={() => onSelectFrame(frames.length - 1)}
+                  disabled={currentFrameIndex === frames.length - 1}
+                  className="p-1.5 rounded-xl bg-black/40 hover:bg-black/60 disabled:opacity-30 text-gray-200 hover:text-white transition-colors border border-white/10 flex items-center"
+                  title="Jump to End (End)"
+              >
+                  <Icons.ChevronRight size={14} />
+                  <Icons.ChevronRight size={14} className="-ml-1.5" />
+              </button>
+          </div>
+
+          <div className="flex items-center space-x-1 bg-black/50 rounded-xl p-1 backdrop-blur-md border border-white/10 shadow-lg">
+                <div className="flex items-center space-x-1 px-2 border-r border-white/10 mr-0.5">
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{t('timeline.frames', 'Hold')}</span>
                     <input 
                       type="number" 
                       min="1" 
                       max="100" 
                       value={frames[currentFrameIndex]?.durationMultiplier || 1}
                       onChange={(e) => onUpdateFrameDuration(currentFrameIndex, parseInt(e.target.value) || 1)}
-                      className="w-10 bg-black/50 text-white text-xs rounded px-1 py-0.5 border border-white/10 text-center"
-                      title={t('timeline.frames')}
+                      className="w-9 bg-black/60 text-white text-xs font-mono font-bold rounded px-1 py-0.5 border border-white/20 text-center focus:outline-none focus:border-[var(--accent-color)]"
+                      title="Frame Hold Multiplier"
                     />
                 </div>
-               <button onClick={() => onDeleteFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-gray-300 hover:text-white" disabled={frames.length <= 1}>
+               <button onClick={() => onDeleteFrame(currentFrameIndex)} className="p-1.5 hover:bg-red-500/20 hover:text-red-400 rounded-lg text-gray-300 transition-colors" disabled={frames.length <= 1} title={t('common.delete', 'Delete Frame')}>
                   <Icons.Trash2 size={16} />
                </button>
-               <button onClick={() => onCopyFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-gray-300 hover:text-white" title={t('layers.duplicate')}>
+               <button onClick={() => onCopyFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded-lg text-gray-300 hover:text-white transition-colors" title={t('layers.duplicate', 'Duplicate Frame')}>
                   <Icons.Copy size={16} />
                </button>
-               <button onClick={() => onTweenFrame(currentFrameIndex)} className="p-1.5 hover:bg-white/10 rounded text-purple-400 hover:text-purple-300" title={t('toolbar.wand')}>
+               <button onClick={() => onTweenFrame(currentFrameIndex)} className="p-1.5 hover:bg-purple-500/20 text-purple-400 hover:text-purple-300 rounded-lg transition-colors" title={t('toolbar.wand', 'Auto In-Between Tween')}>
                   <Icons.Wand2 size={16} />
                </button>
           </div>

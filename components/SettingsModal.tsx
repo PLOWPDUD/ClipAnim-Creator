@@ -37,7 +37,6 @@ interface PresetItem {
   w: number;
   h: number;
   badge?: string;
-  icon?: string;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -68,6 +67,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [activeTab, setActiveTab] = useState<TabType>('general');
+  const [searchQuery, setSearchQuery] = useState('');
   const [projectAuthor, setProjectAuthor] = useState(() => localStorage.getItem('clipanim_project_author') || '');
   const [projectDescription, setProjectDescription] = useState(() => localStorage.getItem('clipanim_project_desc') || '');
   
@@ -87,6 +87,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [autoSaveInterval, setAutoSaveInterval] = useState(() => Number(localStorage.getItem('clipanim_autosave_min')) || 5);
   const [maxUndoSteps, setMaxUndoSteps] = useState(() => Number(localStorage.getItem('clipanim_max_undo')) || 50);
   const [highDpiMode, setHighDpiMode] = useState(() => localStorage.getItem('clipanim_high_dpi') !== 'false');
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem('clipanim_project_author', projectAuthor);
@@ -138,9 +139,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     { id: 'square_600', label: 'Square Canvas 600', category: 'standard', w: 600, h: 600, badge: '1:1' },
   ];
 
-  const filteredPresets = presetCategory === 'all' 
-    ? presets 
-    : presets.filter(p => p.category === presetCategory);
+  const filteredPresets = presets.filter(p => {
+    const matchesCategory = presetCategory === 'all' || p.category === presetCategory;
+    const matchesQuery = !searchQuery || p.label.toLowerCase().includes(searchQuery.toLowerCase()) || `${p.w}x${p.h}`.includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesQuery;
+  });
 
   const handleWidthChange = (newW: number) => {
     if (newW <= 0) return;
@@ -162,6 +165,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const handleScaleMultiplier = (factor: number) => {
+    setCanvasSize({
+      width: Math.max(16, Math.round(canvasSize.width * factor)),
+      height: Math.max(16, Math.round(canvasSize.height * factor)),
+    });
+  };
+
   const handleSwapDimensions = () => {
     setCanvasSize({ width: canvasSize.height, height: canvasSize.width });
   };
@@ -174,6 +184,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       };
       reader.readAsDataURL(e.target.files[0]);
     }
+  };
+
+  const resetProjectDefaults = () => {
+    setShowGrid(true);
+    setGridSize(24);
+    setGridColor('#ffffff');
+    setGridOpacity(0.2);
+    setShowSafeAreas(false);
+    setShowCenterCross(false);
+    setAutoSaveInterval(5);
+    setMaxUndoSteps(50);
+    setHighDpiMode(true);
+    setOnionSkinSettings({
+      numBefore: 2,
+      numAfter: 2,
+      beforeOpacity: 0.5,
+      afterOpacity: 0.5,
+      beforeColor: '#FF3B30',
+      afterColor: '#34C759',
+    });
+    setResetMessage('Project settings restored to default values.');
+    setTimeout(() => setResetMessage(null), 3000);
   };
 
   // Compute aspect ratio GCD
@@ -196,8 +228,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-200 p-3 sm:p-6">
       <div className="bg-[#181818] w-full max-w-4xl max-h-[92vh] rounded-3xl shadow-2xl border border-gray-700/80 flex flex-col overflow-hidden text-gray-200 font-sans">
         
-        {/* Top Navigation Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-[#202020] border-b border-gray-800 shrink-0">
+        {/* Top Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-6 py-4 bg-[#202020] border-b border-gray-800 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#FF3B30] to-orange-500 flex items-center justify-center shadow-lg text-white">
               <Icons.Settings size={20} />
@@ -214,19 +246,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
           
-          <button 
-            onClick={onClose} 
-            className="text-gray-400 hover:text-white p-2.5 rounded-full hover:bg-gray-800/80 transition-colors"
-            title="Close Settings"
-          >
-            <Icons.X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Live Filter Input */}
+            <div className="relative flex-1 sm:w-56">
+              <Icons.Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+              <input
+                type="text"
+                placeholder="Search project settings..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 bg-[#121212] border border-gray-700 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#FF3B30]"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
+                  <Icons.X size={12} />
+                </button>
+              )}
+            </div>
+
+            <button 
+              onClick={onClose} 
+              className="text-gray-400 hover:text-white p-2.5 rounded-full hover:bg-gray-800/80 transition-colors"
+              title="Close Settings"
+            >
+              <Icons.X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Main Body with Sidebar + Tab Content */}
         <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
           
-          {/* Tab Navigation Sidebar */}
+          {/* Sidebar Tabs */}
           <div className="w-full sm:w-56 bg-[#1f1f1f] border-r border-gray-800/80 p-3 flex sm:flex-col gap-1.5 shrink-0 overflow-x-auto sm:overflow-x-visible no-scrollbar">
             
             <button
@@ -355,7 +406,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onClick={() => setProjectType('animation')}
                       className={`py-3 px-3 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1.5 border transition-all ${
                         projectType === 'animation' 
-                          ? 'bg-[#FF3B30]/20 border-[#FF3B30] text-white' 
+                          ? 'bg-[#FF3B30]/20 border-[#FF3B30] text-white shadow-md' 
                           : 'bg-[#222] border-gray-800 text-gray-400 hover:bg-gray-800'
                       }`}
                     >
@@ -367,7 +418,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onClick={() => setProjectType('painting')}
                       className={`py-3 px-3 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1.5 border transition-all ${
                         projectType === 'painting' 
-                          ? 'bg-purple-500/20 border-purple-500 text-white' 
+                          ? 'bg-purple-500/20 border-purple-500 text-white shadow-md' 
                           : 'bg-[#222] border-gray-800 text-gray-400 hover:bg-gray-800'
                       }`}
                     >
@@ -379,7 +430,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onClick={() => setProjectType('game')}
                       className={`py-3 px-3 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1.5 border transition-all ${
                         projectType === 'game' 
-                          ? 'bg-amber-500/20 border-amber-500 text-white' 
+                          ? 'bg-amber-500/20 border-amber-500 text-white shadow-md' 
                           : 'bg-[#222] border-gray-800 text-gray-400 hover:bg-gray-800'
                       }`}
                     >
@@ -394,25 +445,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="flex justify-between items-center">
                       <div>
                         <span className="text-xs font-bold uppercase tracking-wider text-gray-300 block">Target Frame Rate (FPS)</span>
-                        <span className="text-[11px] text-gray-500">1 frame = {frameMs} ms</span>
+                        <span className="text-[11px] text-gray-500 font-mono">1 frame = {frameMs} ms</span>
                       </div>
-                      <span className="text-lg font-black text-[#FF3B30] bg-[#FF3B30]/10 px-3 py-1 rounded-xl border border-[#FF3B30]/30 font-mono">
+                      <span className="text-lg font-black text-[#FF3B30] bg-[#FF3B30]/10 px-3.5 py-1 rounded-xl border border-[#FF3B30]/30 font-mono shadow-sm">
                         {fps} FPS
                       </span>
                     </div>
 
-                    <div className="flex gap-2">
-                      {[8, 12, 15, 24, 30, 60].map(speed => (
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                      {[
+                        { speed: 6, note: 'Retro' },
+                        { speed: 12, note: 'Hand-Drawn' },
+                        { speed: 18, note: 'Anime' },
+                        { speed: 24, note: 'Film 24p' },
+                        { speed: 30, note: 'Web 30p' },
+                        { speed: 60, note: 'High FPS' }
+                      ].map(item => (
                         <button
-                          key={speed}
-                          onClick={() => setFps(speed)}
-                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                            fps === speed 
-                              ? 'bg-[#FF3B30] border-[#FF3B30] text-white' 
+                          key={item.speed}
+                          onClick={() => setFps(item.speed)}
+                          className={`py-2 rounded-xl text-xs font-bold border transition-all flex flex-col items-center justify-center ${
+                            fps === item.speed 
+                              ? 'bg-[#FF3B30] border-[#FF3B30] text-white shadow-md' 
                               : 'bg-[#282828] border-gray-700 text-gray-400 hover:text-white'
                           }`}
                         >
-                          {speed}
+                          <span>{item.speed} FPS</span>
+                          <span className="text-[9px] opacity-70 font-normal">{item.note}</span>
                         </button>
                       ))}
                     </div>
@@ -426,9 +485,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#FF3B30]"
                     />
                     <div className="flex justify-between text-[10px] text-gray-500 font-mono">
-                      <span>1 FPS (Slow)</span>
-                      <span>12 FPS (Hand-Drawn)</span>
-                      <span>24 FPS (Film)</span>
+                      <span>1 FPS (Time-lapse)</span>
+                      <span>12 FPS (Animating on 2s)</span>
+                      <span>24 FPS (Cinema Standard)</span>
                       <span>60 FPS (Ultra Smooth)</span>
                     </div>
                   </div>
@@ -441,7 +500,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="space-y-6 animate-in fade-in duration-200">
                 <div className="border-b border-gray-800 pb-3">
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider">Canvas Resolution & Presets</h3>
-                  <p className="text-xs text-gray-400">Choose standard formats or define custom pixel dimensions.</p>
+                  <p className="text-xs text-gray-400">Choose standard format presets or define custom pixel dimensions.</p>
                 </div>
 
                 {/* Preset Category Filter Pills */}
@@ -458,7 +517,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onClick={() => setPresetCategory(cat.id as any)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all ${
                         presetCategory === cat.id 
-                          ? 'bg-[#FF3B30] text-white' 
+                          ? 'bg-[#FF3B30] text-white shadow-md' 
                           : 'bg-[#222] text-gray-400 hover:bg-gray-800 hover:text-white'
                       }`}
                     >
@@ -502,26 +561,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="md:col-span-7 space-y-4">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-gray-300 uppercase tracking-wider">Custom Dimensions</span>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1.5">
                         <button
                           onClick={() => setIsAspectLocked(!isAspectLocked)}
-                          className={`p-2 rounded-lg text-xs font-bold border transition-colors flex items-center gap-1.5 ${
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-colors flex items-center gap-1.5 ${
                             isAspectLocked 
                               ? 'bg-amber-500/20 border-amber-500/60 text-amber-400' 
                               : 'bg-[#282828] border-gray-700 text-gray-400'
                           }`}
                           title={isAspectLocked ? "Aspect Ratio Locked" : "Aspect Ratio Unlocked"}
                         >
-                          {isAspectLocked ? <Icons.Lock size={14} /> : <Icons.Unlock size={14} />}
+                          {isAspectLocked ? <Icons.Lock size={13} /> : <Icons.Unlock size={13} />}
                           <span>{isAspectLocked ? 'Locked' : 'Unlocked'}</span>
                         </button>
 
                         <button
                           onClick={handleSwapDimensions}
-                          className="p-2 rounded-lg bg-[#282828] border border-gray-700 text-gray-300 hover:text-white hover:bg-gray-700 text-xs font-bold transition-colors"
+                          className="px-2.5 py-1.5 rounded-lg bg-[#282828] border border-gray-700 text-gray-300 hover:text-white hover:bg-gray-700 text-xs font-bold transition-colors flex items-center gap-1"
                           title="Swap Width & Height"
                         >
-                          <Icons.Repeat size={14} />
+                          <Icons.Repeat size={13} />
+                          <span>Swap W/H</span>
                         </button>
                       </div>
                     </div>
@@ -551,23 +611,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         />
                       </div>
                     </div>
+
+                    {/* Scale Multipliers */}
+                    <div>
+                      <span className="text-[11px] text-gray-400 block mb-1.5 font-medium">Quick Dimension Multipliers</span>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        <button onClick={() => handleScaleMultiplier(0.5)} className="py-1 bg-[#282828] hover:bg-gray-700 rounded-lg text-xs font-mono font-bold text-gray-300">0.5x</button>
+                        <button onClick={() => handleScaleMultiplier(1)} className="py-1 bg-[#282828] hover:bg-gray-700 rounded-lg text-xs font-mono font-bold text-gray-300">1.0x</button>
+                        <button onClick={() => handleScaleMultiplier(2)} className="py-1 bg-[#282828] hover:bg-gray-700 rounded-lg text-xs font-mono font-bold text-gray-300">2.0x</button>
+                        <button onClick={() => handleScaleMultiplier(4)} className="py-1 bg-[#282828] hover:bg-gray-700 rounded-lg text-xs font-mono font-bold text-gray-300">4.0x</button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Right Stage Proportions Preview Box */}
-                  <div className="md:col-span-5 bg-[#141414] rounded-2xl p-4 border border-gray-800 flex flex-col items-center justify-center min-h-[140px]">
+                  <div className="md:col-span-5 bg-[#141414] rounded-2xl p-4 border border-gray-800 flex flex-col items-center justify-center min-h-[160px]">
                     <div 
-                      className="border-2 border-dashed border-[#FF3B30]/70 bg-[#FF3B30]/10 rounded-lg flex items-center justify-center transition-all duration-300 shadow-inner max-w-[120px] max-h-[90px]"
+                      className="border-2 border-dashed border-[#FF3B30]/70 bg-[#FF3B30]/10 rounded-lg flex items-center justify-center transition-all duration-300 shadow-inner max-w-[130px] max-h-[100px]"
                       style={{
                         aspectRatio: `${canvasSize.width} / ${canvasSize.height}`,
-                        width: isLandscape ? '100px' : `${Math.round(100 * (canvasSize.width / canvasSize.height))}px`,
-                        height: !isLandscape ? '80px' : `${Math.round(80 * (canvasSize.height / canvasSize.width))}px`
+                        width: isLandscape ? '110px' : `${Math.round(110 * (canvasSize.width / canvasSize.height))}px`,
+                        height: !isLandscape ? '90px' : `${Math.round(90 * (canvasSize.height / canvasSize.width))}px`
                       }}
                     >
-                      <span className="text-[10px] font-bold text-[#FF3B30] font-mono">
+                      <span className="text-[11px] font-bold text-[#FF3B30] font-mono">
                         {aspectW}:{aspectH}
                       </span>
                     </div>
-                    <span className="text-[10px] text-gray-400 font-mono mt-2">
+                    <span className="text-[10px] text-gray-400 font-mono mt-2.5">
                       {isLandscape ? 'Landscape' : canvasSize.width === canvasSize.height ? 'Square' : 'Portrait'} ({canvasSize.width}x{canvasSize.height})
                     </span>
                   </div>
@@ -590,13 +661,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="flex bg-[#222] p-1 rounded-xl border border-gray-800 gap-1">
                     <button 
                       onClick={() => setBackground({ ...background, type: 'color' })}
-                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${background.type === 'color' ? 'bg-[#FF3B30] text-white' : 'text-gray-400 hover:text-white'}`}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${background.type === 'color' ? 'bg-[#FF3B30] text-white shadow' : 'text-gray-400 hover:text-white'}`}
                     >
                       Solid Color
                     </button>
                     <button 
                       onClick={() => setBackground({ ...background, type: 'gradient3', gradientColors: background.gradientColors || ['#FF3B30', '#007AFF', '#34C759'] })}
-                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${background.type === 'gradient3' ? 'bg-[#FF3B30] text-white' : 'text-gray-400 hover:text-white'}`}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${background.type === 'gradient3' ? 'bg-[#FF3B30] text-white shadow' : 'text-gray-400 hover:text-white'}`}
                     >
                       Gradient
                     </button>
@@ -690,8 +761,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <button
                       onClick={() => setShowGrid(!showGrid)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                        showGrid ? 'bg-[#FF3B30] border-[#FF3B30] text-white' : 'bg-[#282828] border-gray-700 text-gray-400'
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                        showGrid ? 'bg-[#FF3B30] border-[#FF3B30] text-white shadow' : 'bg-[#282828] border-gray-700 text-gray-400'
                       }`}
                     >
                       {showGrid ? 'Grid Enabled' : 'Grid Off'}
@@ -736,7 +807,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="flex justify-between text-[11px] text-gray-400 mb-1">
                           <span>Grid Line Color</span>
                         </div>
-                        <div className="flex items-center gap-2 bg-[#181818] p-1 rounded-xl border border-gray-700">
+                        <div className="flex items-center gap-2 bg-[#181818] p-1.5 rounded-xl border border-gray-700">
                           <input
                             type="color"
                             value={gridColor}
@@ -749,7 +820,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   )}
 
-                  <div className="flex gap-4 pt-2 border-t border-gray-800">
+                  {/* Interactive Mini Live Grid Preview */}
+                  <div className="relative w-full h-24 bg-[#141414] rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center">
+                    {/* Live Grid lines */}
+                    {showGrid && (
+                      <div 
+                        className="absolute inset-0 pointer-events-none"
+                        style={{
+                          backgroundImage: `linear-gradient(to right, ${gridColor}${Math.round(gridOpacity * 255).toString(16).padStart(2, '0')} 1px, transparent 1px), linear-gradient(to bottom, ${gridColor}${Math.round(gridOpacity * 255).toString(16).padStart(2, '0')} 1px, transparent 1px)`,
+                          backgroundSize: `${gridSize}px ${gridSize}px`
+                        }}
+                      />
+                    )}
+                    {/* Safe Areas */}
+                    {showSafeAreas && (
+                      <div className="absolute inset-4 border border-cyan-500/50 rounded pointer-events-none flex items-center justify-center">
+                        <span className="text-[9px] font-mono text-cyan-400/80 bg-black/60 px-1 rounded">TV Safe Guide</span>
+                      </div>
+                    )}
+                    {/* Center Crosshair */}
+                    {showCenterCross && (
+                      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                        <div className="w-full h-px bg-amber-400/60 absolute" />
+                        <div className="h-full w-px bg-amber-400/60 absolute" />
+                      </div>
+                    )}
+                    <span className="text-[10px] font-mono text-gray-400 bg-black/70 px-2 py-0.5 rounded-md z-10 border border-gray-800">
+                      Live Grid Preview
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-4 pt-2 border-t border-gray-800">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
                         type="checkbox" 
@@ -780,6 +881,82 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="border-b border-gray-800 pb-3">
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider">Onion Skinning Controls</h3>
                   <p className="text-xs text-gray-400">Configure keyframe ghosting, before/after color tints, and frame opacities.</p>
+                </div>
+
+                {/* Live Onion Skin Preview Visualizer */}
+                <div className="bg-[#141414] p-4 rounded-2xl border border-gray-800 space-y-2">
+                  <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">Interactive Timeline Ghost Visualizer</span>
+                  <div className="flex items-center justify-center gap-2 py-3">
+                    {/* Before Frame 2 */}
+                    {onionSkinSettings.numBefore >= 2 && (
+                      <div 
+                        className="w-14 h-14 rounded-xl border flex flex-col items-center justify-center font-mono text-xs font-bold transition-all"
+                        style={{ 
+                          borderColor: onionSkinSettings.beforeColor, 
+                          backgroundColor: `${onionSkinSettings.beforeColor}20`,
+                          color: onionSkinSettings.beforeColor,
+                          opacity: onionSkinSettings.beforeOpacity * 0.5
+                        }}
+                      >
+                        <span>F-2</span>
+                        <span className="text-[9px]">Ghost</span>
+                      </div>
+                    )}
+
+                    {/* Before Frame 1 */}
+                    {onionSkinSettings.numBefore >= 1 && (
+                      <div 
+                        className="w-14 h-14 rounded-xl border flex flex-col items-center justify-center font-mono text-xs font-bold transition-all shadow-md"
+                        style={{ 
+                          borderColor: onionSkinSettings.beforeColor, 
+                          backgroundColor: `${onionSkinSettings.beforeColor}35`,
+                          color: onionSkinSettings.beforeColor,
+                          opacity: onionSkinSettings.beforeOpacity
+                        }}
+                      >
+                        <span>F-1</span>
+                        <span className="text-[9px]">Past</span>
+                      </div>
+                    )}
+
+                    {/* Active Frame */}
+                    <div className="w-16 h-16 rounded-2xl border-2 border-white bg-white text-black flex flex-col items-center justify-center font-mono text-xs font-extrabold shadow-xl scale-105 z-10">
+                      <span>FRAME</span>
+                      <span className="text-[10px] text-gray-700 font-bold">ACTIVE</span>
+                    </div>
+
+                    {/* After Frame 1 */}
+                    {onionSkinSettings.numAfter >= 1 && (
+                      <div 
+                        className="w-14 h-14 rounded-xl border flex flex-col items-center justify-center font-mono text-xs font-bold transition-all shadow-md"
+                        style={{ 
+                          borderColor: onionSkinSettings.afterColor, 
+                          backgroundColor: `${onionSkinSettings.afterColor}35`,
+                          color: onionSkinSettings.afterColor,
+                          opacity: onionSkinSettings.afterOpacity
+                        }}
+                      >
+                        <span>F+1</span>
+                        <span className="text-[9px]">Future</span>
+                      </div>
+                    )}
+
+                    {/* After Frame 2 */}
+                    {onionSkinSettings.numAfter >= 2 && (
+                      <div 
+                        className="w-14 h-14 rounded-xl border flex flex-col items-center justify-center font-mono text-xs font-bold transition-all"
+                        style={{ 
+                          borderColor: onionSkinSettings.afterColor, 
+                          backgroundColor: `${onionSkinSettings.afterColor}20`,
+                          color: onionSkinSettings.afterColor,
+                          opacity: onionSkinSettings.afterOpacity * 0.5
+                        }}
+                      >
+                        <span>F+2</span>
+                        <span className="text-[9px]">Ghost</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -886,6 +1063,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <p className="text-xs text-gray-400">Adjust undo buffer limits, auto-save triggers, and canvas resolution scaling.</p>
                 </div>
 
+                {resetMessage && (
+                  <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-xs text-green-300 flex items-center gap-2">
+                    <Icons.Check size={16} className="text-green-400" />
+                    <span>{resetMessage}</span>
+                  </div>
+                )}
+
                 <div className="bg-[#202020] p-4 rounded-2xl border border-gray-800 space-y-4">
                   <div className="flex justify-between items-center">
                     <div>
@@ -898,7 +1082,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           key={steps}
                           onClick={() => setMaxUndoSteps(steps)}
                           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                            maxUndoSteps === steps ? 'bg-[#FF3B30] text-white' : 'bg-[#282828] text-gray-400'
+                            maxUndoSteps === steps ? 'bg-[#FF3B30] text-white shadow' : 'bg-[#282828] text-gray-400'
                           }`}
                         >
                           {steps} Steps
@@ -932,13 +1116,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <button
                       onClick={() => setHighDpiMode(!highDpiMode)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                        highDpiMode ? 'bg-[#FF3B30] border-[#FF3B30] text-white' : 'bg-[#282828] border-gray-700 text-gray-400'
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                        highDpiMode ? 'bg-[#FF3B30] border-[#FF3B30] text-white shadow' : 'bg-[#282828] border-gray-700 text-gray-400'
                       }`}
                     >
                       {highDpiMode ? 'Enabled' : 'Disabled'}
                     </button>
                   </div>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    onClick={resetProjectDefaults}
+                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-2 border border-gray-700"
+                  >
+                    <Icons.RotateCcw size={14} />
+                    <span>Restore Engine & Grid Defaults</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -948,7 +1142,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="space-y-6 animate-in fade-in duration-200">
                 <div className="border-b border-gray-800 pb-3">
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider">Project Analytics & Data Backup</h3>
-                  <p className="text-xs text-gray-400">Inspect project footprint metrics and export raw project JSON archives.</p>
+                  <p className="text-xs text-gray-400">Inspect project footprint metrics and export raw project archives.</p>
                 </div>
 
                 {/* Project Analytics Cards */}

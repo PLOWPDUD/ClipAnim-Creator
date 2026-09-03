@@ -16,6 +16,7 @@ import { HelpModal } from './components/HelpModal';
 import { TutorialModal } from './components/TutorialModal';
 import { InteractiveTour } from './components/InteractiveTour';
 import { BackpackModal } from './components/BackpackModal';
+import { QuickBackpackDock } from './components/QuickBackpackDock';
 import gifshot from 'gifshot';
 import { parseGIF, decompressFrames } from 'gifuct-js';
 import { FrameManagerModal } from './components/FrameManagerModal';
@@ -236,6 +237,7 @@ export default function App() {
   });
   const [isBackpackOpen, setIsBackpackOpen] = useState(false);
   const [isSelectingForBackpack, setIsSelectingForBackpack] = useState(false);
+  const [isQuickBackpackDockOpen, setIsQuickBackpackDockOpen] = useState(false);
 
   const [penSize, setPenSize] = useState(5);
   const [eraserSize, setEraserSize] = useState(30);
@@ -544,8 +546,24 @@ export default function App() {
                   await saveProjectToDB(exampleProject);
                   localStorage.setItem('clipanim_seeded_paint_example_v3', 'true');
               }
-              const projects = await getProjectList();
-              setSavedProjects(projects);
+              const rawProjects = await getProjectList();
+              const unionJackId = "345b4349-9a37-4252-b6d1-44ead85c868e";
+              const projectsToKeep: ProjectMeta[] = [];
+
+              for (const proj of rawProjects) {
+                  const isUnionJack = proj.id === unionJackId || proj.name.toLowerCase().includes('union jack');
+                  const isOtherExample = proj.id.startsWith('example-') ||
+                                         proj.folderId === 'folder-examples' ||
+                                         (proj.name.toLowerCase().includes('example') && !isUnionJack);
+                  
+                  if (isOtherExample) {
+                      await deleteProjectFromDB(proj.id);
+                  } else {
+                      projectsToKeep.push(proj);
+                  }
+              }
+
+              setSavedProjects(projectsToKeep);
           } catch (e) {
               console.error("Failed to load project list", e);
           }
@@ -1110,15 +1128,262 @@ export default function App() {
       setHasUnsavedChanges(true);
   };
 
+  const handleSelectBackpackItem = (item: BackpackItem) => {
+    const img = new window.Image();
+    img.onload = () => {
+      if (selection) {
+        const oldWidth = selection.width;
+        const oldHeight = selection.height;
+        const newAspect = img.width / img.height;
+        const oldAspect = oldWidth / oldHeight;
+
+        let newWidth = oldWidth;
+        let newHeight = oldHeight;
+
+        if (newAspect > oldAspect) {
+          newWidth = oldWidth;
+          newHeight = oldWidth / newAspect;
+        } else {
+          newHeight = oldHeight;
+          newWidth = oldHeight * newAspect;
+        }
+
+        const oldAnchorX = selection.anchorX ?? oldWidth / 2;
+        const oldAnchorY = selection.anchorY ?? oldHeight / 2;
+        
+        const relAnchorX = oldAnchorX / oldWidth;
+        const relAnchorY = oldAnchorY / oldHeight;
+        
+        const newAnchorX = newWidth * relAnchorX;
+        const newAnchorY = newHeight * relAnchorY;
+
+        const newX = selection.x + oldAnchorX - newAnchorX;
+        const newY = selection.y + oldAnchorY - newAnchorY;
+
+        setSelection({
+          ...selection,
+          x: newX,
+          y: newY,
+          width: newWidth,
+          height: newHeight,
+          dataUrl: item.dataUrl,
+          anchorX: newAnchorX,
+          anchorY: newAnchorY
+        });
+      } else {
+        setSelection({
+          x: canvasSize.width / 2 - img.width / 2,
+          y: canvasSize.height / 2 - img.height / 2,
+          width: img.width,
+          height: img.height,
+          dataUrl: item.dataUrl,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          anchorX: img.width / 2,
+          anchorY: img.height / 2
+        });
+      }
+      setTool('select');
+      setIsBackpackOpen(false);
+    };
+    img.src = item.dataUrl;
+  };
+
+  const handlePackCurrentLayer = () => {
+    const currentFrame = frames[currentFrameIndex];
+    if (!currentFrame) return;
+    const layerData = currentFrame.layers[activeLayerId];
+    if (!layerData) return;
+
+    const activeLayerObj = layers.find(l => l.id === activeLayerId);
+    const layerName = activeLayerObj ? activeLayerObj.name : `Layer_${activeLayerId}`;
+
+    const newItem: BackpackItem = {
+      id: crypto.randomUUID(),
+      name: `${layerName}_F${currentFrameIndex + 1}`,
+      dataUrl: layerData,
+      createdAt: Date.now(),
+      category: 'uncategorized'
+    };
+    setBackpackItems(prev => [newItem, ...prev]);
+  };
+
+  const handlePackCurrentFrame = () => {
+    const currentFrame = frames[currentFrameIndex];
+    if (!currentFrame) return;
+
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvasSize.width;
+    tempCanvas.height = canvasSize.height;
+    const ctx = tempCanvas.getContext('2d');
+    if (!ctx) return;
+
+    const loadPromises = layers
+      .filter(layer => layer.isVisible)
+      .map(layer => {
+        const layerData = currentFrame.layers[layer.id];
+        if (!layerData) return Promise.resolve(null);
+        return new Promise<{ img: HTMLImageElement; layer: Layer }>((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve({ img, layer });
+          img.onerror = () => resolve({ img: new Image(), layer });
+          img.src = layerData;
+        });
+      });
+
+    Promise.all(loadPromises).then(results => {
+      results.forEach(res => {
+        if (res && res.img.src) {
+          ctx.save();
+          ctx.globalAlpha = res.layer.opacity ?? 1;
+          ctx.globalCompositeOperation = res.layer.blendMode || 'source-over';
+          ctx.drawImage(res.img, 0, 0);
+          ctx.restore();
+        }
+      });
+
+      const dataUrl = tempCanvas.toDataURL('image/png');
+      const newItem: BackpackItem = {
+        id: crypto.randomUUID(),
+        name: `Frame_${currentFrameIndex + 1}_Stamp`,
+        dataUrl,
+        createdAt: Date.now(),
+        category: 'uncategorized'
+      };
+      setBackpackItems(prev => [newItem, ...prev]);
+    });
+  };
+
+  const handleStampOnLayer = (item: BackpackItem) => {
+    const currentFrame = frames[currentFrameIndex];
+    if (!currentFrame) return;
+
+    const img = new Image();
+    img.onload = () => {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvasSize.width;
+      tempCanvas.height = canvasSize.height;
+      const ctx = tempCanvas.getContext('2d');
+      if (!ctx) return;
+
+      const currentLayerData = currentFrame.layers[activeLayerId];
+      const proceedDraw = () => {
+        const x = (canvasSize.width - img.width) / 2;
+        const y = (canvasSize.height - img.height) / 2;
+        ctx.drawImage(img, x, y);
+
+        const newLayerData = tempCanvas.toDataURL();
+        const updatedFrames = [...frames];
+        updatedFrames[currentFrameIndex] = {
+          ...currentFrame,
+          layers: {
+            ...currentFrame.layers,
+            [activeLayerId]: newLayerData
+          }
+        };
+        updateFramesWithHistory(updatedFrames);
+        setHasUnsavedChanges(true);
+      };
+
+      if (currentLayerData) {
+        const bgImg = new Image();
+        bgImg.onload = () => {
+          ctx.drawImage(bgImg, 0, 0);
+          proceedDraw();
+        };
+        bgImg.src = currentLayerData;
+      } else {
+        proceedDraw();
+      }
+    };
+    img.src = item.dataUrl;
+  };
+
+  const handlePlaceAsNewLayer = (item: BackpackItem) => {
+    const newLayerId = crypto.randomUUID();
+    const newLayerName = item.name || `Stamp Layer ${layers.length + 1}`;
+    const newLayer: Layer = {
+      ...createDefaultLayer(newLayerId, newLayerName),
+      folderId: null
+    };
+
+    const newLayers = [...layers, newLayer];
+    setLayers(newLayers);
+    setActiveLayerId(newLayerId);
+
+    const img = new Image();
+    img.onload = () => {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvasSize.width;
+      tempCanvas.height = canvasSize.height;
+      const ctx = tempCanvas.getContext('2d');
+      if (!ctx) return;
+
+      const x = (canvasSize.width - img.width) / 2;
+      const y = (canvasSize.height - img.height) / 2;
+      ctx.drawImage(img, x, y);
+
+      const stampDataUrl = tempCanvas.toDataURL();
+      const updatedFrames = frames.map((frame, idx) => {
+        if (idx === currentFrameIndex) {
+          return {
+            ...frame,
+            layers: {
+              ...frame.layers,
+              [newLayerId]: stampDataUrl
+            }
+          };
+        } else {
+          return {
+            ...frame,
+            layers: {
+              ...frame.layers,
+              [newLayerId]: ''
+            }
+          };
+        }
+      });
+      updateFramesWithHistory(updatedFrames);
+      setHasUnsavedChanges(true);
+    };
+    img.src = item.dataUrl;
+  };
+
+  const handleConvertToActor = (item: BackpackItem) => {
+    const img = new Image();
+    img.onload = () => {
+      const newActor: Actor = {
+        id: crypto.randomUUID(),
+        name: item.name || `Symbol_${actors.length + 1}`,
+        x: canvasSize.width / 2 - img.width / 2,
+        y: canvasSize.height / 2 - img.height / 2,
+        width: img.width || 100,
+        height: img.height || 100,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        dataUrl: item.dataUrl,
+        opacity: 1,
+        scripts: ''
+      };
+      setActors(prev => [...prev, newActor]);
+      setHasUnsavedChanges(true);
+    };
+    img.src = item.dataUrl;
+  };
+
   const handleSelectionCreate = (newSelection: SelectionState) => {
     if (isSelectingForBackpack) {
       if (newSelection.dataUrl) {
         const newItem: BackpackItem = {
           id: crypto.randomUUID(),
+          name: `Canvas_Stamp_${backpackItems.length + 1}`,
           dataUrl: newSelection.dataUrl,
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          category: 'uncategorized'
         };
-        setBackpackItems(prev => [...prev, newItem]);
+        setBackpackItems(prev => [newItem, ...prev]);
       }
       setIsSelectingForBackpack(false);
       setSelection(null);
@@ -4179,7 +4444,21 @@ export default function App() {
                 <div id="tour-right-actions" className="flex items-center space-x-1 sm:space-x-2">
                     <button id="tour-btn-tutorial" onClick={() => setIsTutorialOpen(true)} className="p-3 text-amber-400 hover:text-amber-300" title={t('tutorial.title', 'Tutorial')}><Icons.GraduationCap size={20} /></button>
                     <button id="tour-btn-test-movie" onClick={() => setIsTestingMovie(true)} className={`p-3 rounded-full transition-colors ${actors.length > 0 ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10' : 'text-gray-400 hover:text-emerald-400 hover:bg-emerald-500/10'}`} title="Test Interactive Movie"><Icons.Gamepad2 size={20} /></button>
-                    <button id="tour-btn-backpack" onClick={() => setIsBackpackOpen(true)} className={`p-3 rounded-full ${isSelectingForBackpack ? 'text-[var(--accent-color)]' : 'text-gray-400 hover:text-white'}`} title={t('tooltips.backpack')}><Icons.Briefcase size={20} /></button>
+                    <button 
+                      id="tour-btn-backpack" 
+                      onClick={() => setIsBackpackOpen(true)} 
+                      className={`p-3 rounded-full transition-colors relative ${
+                        isSelectingForBackpack || isBackpackOpen || isQuickBackpackDockOpen
+                          ? 'text-amber-400 bg-amber-500/10' 
+                          : 'text-gray-400 hover:text-white'
+                      }`} 
+                      title={t('tooltips.backpack')}
+                    >
+                      <Icons.Briefcase size={20} />
+                      {backpackItems.length > 0 && (
+                        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-400 rounded-full ring-2 ring-[#18181b]" />
+                      )}
+                    </button>
                     <button id="tour-btn-layers" onClick={() => { setIsLayerPanelOpen(!isLayerPanelOpen); setIsSymbolPanelOpen(false); }} className={`p-3 rounded-full ${isLayerPanelOpen ? 'text-[#FF3B30]' : 'text-gray-400 hover:text-white'}`} title={t('tooltips.layers')}><Icons.Layers size={20} /></button>
                     <button id="tour-btn-symbols" onClick={() => { setIsSymbolPanelOpen(!isSymbolPanelOpen); setIsLayerPanelOpen(false); }} className={`p-3 rounded-full ${isSymbolPanelOpen ? 'text-[#007AFF]' : 'text-gray-400 hover:text-white'}`} title="Symbol Library"><Icons.Library size={20} /></button>
                     <button id="tour-btn-assets" onClick={() => setIsAssetLibraryOpen(true)} className="p-3 text-indigo-400 hover:text-indigo-300 rounded-full transition-colors" title="Asset Library"><Icons.Library size={20} /></button>
@@ -4341,6 +4620,25 @@ export default function App() {
                     }
                 }}
             />
+            {/* Quick Floating Backpack Stamp Dock */}
+            <QuickBackpackDock
+              isOpen={isQuickBackpackDockOpen}
+              onClose={() => setIsQuickBackpackDockOpen(false)}
+              items={backpackItems}
+              onSelectItem={handleSelectBackpackItem}
+              onStampOnLayer={handleStampOnLayer}
+              onOpenFullModal={() => {
+                setIsQuickBackpackDockOpen(false);
+                setIsBackpackOpen(true);
+              }}
+              onQuickCaptureSelection={() => {
+                setTool('select');
+                setIsSelectingForBackpack(true);
+              }}
+              onQuickPackLayer={handlePackCurrentLayer}
+              onQuickPackFrame={handlePackCurrentFrame}
+            />
+
             {(projectType === 'animation' || projectType === 'game') && (
                 <div id="tour-timeline" className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
                     <Timeline 
@@ -4581,72 +4879,20 @@ export default function App() {
         isOpen={isBackpackOpen}
         onClose={() => setIsBackpackOpen(false)}
         items={backpackItems}
-        onSelectItem={(item) => {
-          const img = new window.Image();
-          img.onload = () => {
-            if (selection) {
-              const oldWidth = selection.width;
-              const oldHeight = selection.height;
-              const newAspect = img.width / img.height;
-              const oldAspect = oldWidth / oldHeight;
-
-              let newWidth = oldWidth;
-              let newHeight = oldHeight;
-
-              if (newAspect > oldAspect) {
-                newWidth = oldWidth;
-                newHeight = oldWidth / newAspect;
-              } else {
-                newHeight = oldHeight;
-                newWidth = oldHeight * newAspect;
-              }
-
-              const oldAnchorX = selection.anchorX ?? oldWidth / 2;
-              const oldAnchorY = selection.anchorY ?? oldHeight / 2;
-              
-              const relAnchorX = oldAnchorX / oldWidth;
-              const relAnchorY = oldAnchorY / oldHeight;
-              
-              const newAnchorX = newWidth * relAnchorX;
-              const newAnchorY = newHeight * relAnchorY;
-
-              const newX = selection.x + oldAnchorX - newAnchorX;
-              const newY = selection.y + oldAnchorY - newAnchorY;
-
-              setSelection({
-                ...selection,
-                x: newX,
-                y: newY,
-                width: newWidth,
-                height: newHeight,
-                dataUrl: item.dataUrl,
-                anchorX: newAnchorX,
-                anchorY: newAnchorY
-              });
-            } else {
-              setSelection({
-                x: canvasSize.width / 2 - img.width / 2,
-                y: canvasSize.height / 2 - img.height / 2,
-                width: img.width,
-                height: img.height,
-                dataUrl: item.dataUrl,
-                rotation: 0,
-                scaleX: 1,
-                scaleY: 1,
-                anchorX: img.width / 2,
-                anchorY: img.height / 2
-              });
-            }
-            setTool('select');
-            setIsBackpackOpen(false);
-          };
-          img.src = item.dataUrl;
-        }}
+        onSelectItem={handleSelectBackpackItem}
         onDeleteItem={(id) => {
           setBackpackItems(prev => prev.filter(i => i.id !== id));
         }}
-        onUpdateItem={(id, name) => {
-          setBackpackItems(prev => prev.map(item => item.id === id ? { ...item, name } : item));
+        onDeleteMultipleItems={(ids) => {
+          const idSet = new Set(ids);
+          setBackpackItems(prev => prev.filter(i => !idSet.has(i.id)));
+        }}
+        onUpdateItem={(id, updates) => {
+          if (typeof updates === 'string') {
+            setBackpackItems(prev => prev.map(item => item.id === id ? { ...item, name: updates } : item));
+          } else {
+            setBackpackItems(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
+          }
         }}
         onStartSelecting={() => {
           setIsBackpackOpen(false);
@@ -4654,6 +4900,17 @@ export default function App() {
           setIsSelectingForBackpack(true);
         }}
         onImportItems={setBackpackItems}
+        onPackCurrentLayer={handlePackCurrentLayer}
+        onPackCurrentFrame={handlePackCurrentFrame}
+        onStampOnLayer={handleStampOnLayer}
+        onPlaceAsNewLayer={handlePlaceAsNewLayer}
+        onConvertToActor={handleConvertToActor}
+        onSetAsBackground={(item) => {
+          setBackgroundImage(item.dataUrl);
+          setHasUnsavedChanges(true);
+        }}
+        onToggleQuickDock={() => setIsQuickBackpackDockOpen(!isQuickBackpackDockOpen)}
+        isQuickDockOpen={isQuickBackpackDockOpen}
       />
 
       <AudioEditorModal 

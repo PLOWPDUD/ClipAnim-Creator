@@ -1970,21 +1970,54 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             )}
         </div>
         
-        <div className="absolute top-4 left-4 flex items-center gap-2 z-[120]">
+        <div className="absolute top-4 left-4 flex items-center gap-2 z-[120] select-none">
             <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={onToggleCameraMode}
-                className={`p-2 rounded-lg backdrop-blur-md border transition-all flex items-center gap-2 ${cameraMode ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white shadow-[0_0_15px_rgba(var(--accent-rgb),0.5)]' : 'bg-black/50 border-white/10 text-white hover:bg-black/70'}`}
+                className={`p-2 rounded-xl backdrop-blur-md border transition-all flex items-center gap-2 shadow-lg ${cameraMode ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white shadow-[0_0_15px_rgba(var(--accent-rgb),0.5)]' : 'bg-black/60 border-white/10 text-white hover:bg-black/80'}`}
                 title={cameraMode ? t('canvas.exitCamera') : t('canvas.enterCamera')}
             >
-                <Icons.Camera size={18} />
-                <span className="text-xs font-medium hidden sm:inline">{cameraMode ? t('canvas.cameraOn') : t('canvas.cameraOff')}</span>
+                <Icons.Camera size={16} />
+                <span className="text-xs font-bold hidden sm:inline">{cameraMode ? t('canvas.cameraOn') : t('canvas.cameraOff')}</span>
             </motion.button>
             
-            <div className="bg-black/50 text-white text-xs px-3 py-2 rounded-lg backdrop-blur-md border border-white/10 pointer-events-none flex gap-3">
-                <span className="flex items-center gap-1 opacity-70"><Icons.Maximize2 size={12} /> {Math.round(transform.current.scale * 100)}%</span>
-                <span className="flex items-center gap-1 opacity-70"><Icons.RotateCw size={12} /> {Math.round(transform.current.rotation)}°</span>
+            {/* Interactive Canvas HUD */}
+            <div className="bg-black/70 text-white text-xs px-2 py-1 rounded-xl backdrop-blur-md border border-white/10 flex items-center gap-1.5 shadow-xl">
+                <button
+                    onClick={() => {
+                        transform.current.scale = Math.max(transform.current.scale / 1.2, 0.1);
+                        updateTransformStyle();
+                    }}
+                    className="p-1 hover:bg-white/20 rounded-lg transition-colors text-gray-300 hover:text-white"
+                    title="Zoom Out (-)"
+                >
+                    <Icons.Minus size={13} />
+                </button>
+                <button
+                    onClick={() => {
+                        transform.current = { scale: 1, x: 0, y: 0, rotation: 0 };
+                        updateTransformStyle();
+                    }}
+                    className="px-1.5 py-0.5 hover:bg-white/20 rounded-md font-mono text-[11px] font-bold text-gray-200 hover:text-white transition-colors"
+                    title="Reset Zoom to 100%"
+                >
+                    {Math.round(transform.current.scale * 100)}%
+                </button>
+                <button
+                    onClick={() => {
+                        transform.current.scale = Math.min(transform.current.scale * 1.2, 10);
+                        updateTransformStyle();
+                    }}
+                    className="p-1 hover:bg-white/20 rounded-lg transition-colors text-gray-300 hover:text-white"
+                    title="Zoom In (+)"
+                >
+                    <Icons.Plus size={13} />
+                </button>
+                <div className="w-px h-3 bg-white/20 mx-0.5" />
+                <span className="text-[10px] text-gray-400 font-mono hidden md:inline px-1">
+                    {canvasWidth}×{canvasHeight}px
+                </span>
             </div>
         </div>
 
