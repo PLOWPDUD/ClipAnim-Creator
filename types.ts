@@ -5,7 +5,7 @@ export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'lasso' | 'wand' |
 
 export type BrushType = 'pen' | 'marker' | 'highlighter' | 'spray' | 'pixel' | 'watercolor' | 'oil' | 'calligraphy';
 
-export type ShapeType = 'rectangle' | 'circle' | 'line' | 'triangle' | 'star' | 'hexagon' | 'heart' | 'arrow' | 'speech-bubble';
+export type ShapeType = 'rectangle' | 'circle' | 'half-circle' | 'line' | 'triangle' | 'diamond' | 'pentagon' | 'hexagon' | 'octagon' | 'star' | 'heart' | 'cross' | 'trapezoid' | 'arrow' | 'speech-bubble' | 'cloud' | 'ring';
 
 export interface MotionPath {
   id: string;

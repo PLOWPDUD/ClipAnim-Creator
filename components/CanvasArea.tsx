@@ -1211,67 +1211,170 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 const cx = startX + w / 2;
                 const cy = startY + h / 2;
                 ctx.ellipse(cx, cy, Math.abs(w / 2), Math.abs(h / 2), 0, 0, 2 * Math.PI);
+            } else if (shapeType === 'half-circle') {
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                const cx = minX + absW / 2;
+                const baseY = minY + absH;
+                ctx.moveTo(minX, baseY);
+                ctx.ellipse(cx, baseY, absW / 2, absH, 0, Math.PI, 0, false);
+                ctx.closePath();
             } else if (shapeType === 'line') {
                 ctx.moveTo(startX, startY);
                 ctx.lineTo(drawX, drawY);
-            }
- else if (shapeType === 'triangle') {
-                ctx.moveTo(startX + w / 2, startY);
-                ctx.lineTo(startX + w, startY + h);
-                ctx.lineTo(startX, startY + h);
+            } else if (shapeType === 'triangle') {
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                ctx.moveTo(minX + absW / 2, minY);
+                ctx.lineTo(minX + absW, minY + absH);
+                ctx.lineTo(minX, minY + absH);
                 ctx.closePath();
-            } else if (shapeType === 'star') {
-                const cx = startX + w / 2;
-                const cy = startY + h / 2;
-                const outerRadius = Math.min(Math.abs(w), Math.abs(h)) / 2;
-                const innerRadius = outerRadius / 2;
-                const spikes = 5;
-                let rot = Math.PI / 2 * 3;
-                let x = cx;
-                let y = cy;
-                const step = Math.PI / spikes;
-                ctx.moveTo(cx, cy - outerRadius);
-                for (let i = 0; i < spikes; i++) {
-                    x = cx + Math.cos(rot) * outerRadius;
-                    y = cy + Math.sin(rot) * outerRadius;
-                    ctx.lineTo(x, y);
-                    rot += step;
-                    x = cx + Math.cos(rot) * innerRadius;
-                    y = cy + Math.sin(rot) * innerRadius;
-                    ctx.lineTo(x, y);
-                    rot += step;
-                }
-                ctx.lineTo(cx, cy - outerRadius);
+            } else if (shapeType === 'diamond') {
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                const cx = minX + absW / 2;
+                const cy = minY + absH / 2;
+                ctx.moveTo(cx, minY);
+                ctx.lineTo(minX + absW, cy);
+                ctx.lineTo(cx, minY + absH);
+                ctx.lineTo(minX, cy);
                 ctx.closePath();
-            } else if (shapeType === 'hexagon') {
-                const cx = startX + w / 2;
-                const cy = startY + h / 2;
-                const radius = Math.min(Math.abs(w), Math.abs(h)) / 2;
-                for (let i = 0; i < 6; i++) {
-                    const angle = (Math.PI / 3) * i;
-                    const x = cx + radius * Math.cos(angle);
-                    const y = cy + radius * Math.sin(angle);
+            } else if (shapeType === 'pentagon') {
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                const cx = minX + absW / 2;
+                const cy = minY + absH / 2;
+                const rx = absW / 2;
+                const ry = absH / 2;
+                for (let i = 0; i < 5; i++) {
+                    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+                    const x = cx + rx * Math.cos(angle);
+                    const y = cy + ry * Math.sin(angle);
                     if (i === 0) ctx.moveTo(x, y);
                     else ctx.lineTo(x, y);
                 }
                 ctx.closePath();
+            } else if (shapeType === 'hexagon') {
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                const cx = minX + absW / 2;
+                const cy = minY + absH / 2;
+                const rx = absW / 2;
+                const ry = absH / 2;
+                for (let i = 0; i < 6; i++) {
+                    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / 6;
+                    const x = cx + rx * Math.cos(angle);
+                    const y = cy + ry * Math.sin(angle);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+            } else if (shapeType === 'octagon') {
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                const cx = minX + absW / 2;
+                const cy = minY + absH / 2;
+                const rx = absW / 2;
+                const ry = absH / 2;
+                for (let i = 0; i < 8; i++) {
+                    const angle = -Math.PI / 8 + (i * 2 * Math.PI) / 8;
+                    const x = cx + rx * Math.cos(angle);
+                    const y = cy + ry * Math.sin(angle);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+            } else if (shapeType === 'star') {
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                const cx = minX + absW / 2;
+                const cy = minY + absH / 2;
+                const rx = absW / 2;
+                const ry = absH / 2;
+                const innerRx = rx / 2;
+                const innerRy = ry / 2;
+                const spikes = 5;
+                let rot = -Math.PI / 2;
+                const step = Math.PI / spikes;
+                ctx.moveTo(cx + Math.cos(rot) * rx, cy + Math.sin(rot) * ry);
+                for (let i = 0; i < spikes; i++) {
+                    let x = cx + Math.cos(rot) * rx;
+                    let y = cy + Math.sin(rot) * ry;
+                    ctx.lineTo(x, y);
+                    rot += step;
+                    x = cx + Math.cos(rot) * innerRx;
+                    y = cy + Math.sin(rot) * innerRy;
+                    ctx.lineTo(x, y);
+                    rot += step;
+                }
+                ctx.closePath();
             } else if (shapeType === 'heart') {
-                const cx = startX + w / 2;
-                const cy = startY + h / 2;
-                const width = Math.abs(w);
-                const height = Math.abs(h);
-                const topCurveHeight = height * 0.3;
-                ctx.moveTo(cx, cy + height / 2);
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                const cx = minX + absW / 2;
+                const cy = minY + absH / 2;
+                const topCurveHeight = absH * 0.3;
+                ctx.moveTo(cx, cy + absH / 2);
                 ctx.bezierCurveTo(
-                    cx - width / 2, cy + height / 2 - topCurveHeight,
-                    cx - width / 2, cy - height / 2,
-                    cx, cy - height / 2 + topCurveHeight
+                    minX, cy + absH / 2 - topCurveHeight,
+                    minX, minY,
+                    cx, minY + topCurveHeight
                 );
                 ctx.bezierCurveTo(
-                    cx + width / 2, cy - height / 2,
-                    cx + width / 2, cy + height / 2 - topCurveHeight,
-                    cx, cy + height / 2
+                    minX + absW, minY,
+                    minX + absW, cy + absH / 2 - topCurveHeight,
+                    cx, cy + absH / 2
                 );
+                ctx.closePath();
+            } else if (shapeType === 'cross') {
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                const x1 = minX + absW / 3;
+                const x2 = minX + (2 * absW) / 3;
+                const x3 = minX + absW;
+                const y1 = minY + absH / 3;
+                const y2 = minY + (2 * absH) / 3;
+                const y3 = minY + absH;
+                ctx.moveTo(x1, minY);
+                ctx.lineTo(x2, minY);
+                ctx.lineTo(x2, y1);
+                ctx.lineTo(x3, y1);
+                ctx.lineTo(x3, y2);
+                ctx.lineTo(x2, y2);
+                ctx.lineTo(x2, y3);
+                ctx.lineTo(x1, y3);
+                ctx.lineTo(x1, y2);
+                ctx.lineTo(minX, y2);
+                ctx.lineTo(minX, y1);
+                ctx.lineTo(x1, y1);
+                ctx.closePath();
+            } else if (shapeType === 'trapezoid') {
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                ctx.moveTo(minX + absW * 0.25, minY);
+                ctx.lineTo(minX + absW * 0.75, minY);
+                ctx.lineTo(minX + absW, minY + absH);
+                ctx.lineTo(minX, minY + absH);
                 ctx.closePath();
             } else if (shapeType === 'arrow') {
                 const headlen = Math.min(Math.abs(w), Math.abs(h)) * 0.3;
@@ -1306,6 +1409,29 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 ctx.lineTo(minX, minY + radius);
                 ctx.quadraticCurveTo(minX, minY, minX + radius, minY);
                 ctx.closePath();
+            } else if (shapeType === 'cloud') {
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                ctx.moveTo(minX + absW * 0.2, minY + absH * 0.85);
+                ctx.bezierCurveTo(minX, minY + absH * 0.7, minX, minY + absH * 0.3, minX + absW * 0.25, minY + absH * 0.3);
+                ctx.bezierCurveTo(minX + absW * 0.2, minY + absH * 0.05, minX + absW * 0.5, minY + absH * 0.05, minX + absW * 0.55, minY + absH * 0.25);
+                ctx.bezierCurveTo(minX + absW * 0.7, minY + absH * 0.05, minX + absW * 0.95, minY + absH * 0.2, minX + absW * 0.85, minY + absH * 0.5);
+                ctx.bezierCurveTo(minX + absW, minY + absH * 0.65, minX + absW * 0.85, minY + absH * 0.9, minX + absW * 0.6, minY + absH * 0.85);
+                ctx.closePath();
+            } else if (shapeType === 'ring') {
+                const minX = Math.min(startX, drawX);
+                const minY = Math.min(startY, drawY);
+                const absW = Math.abs(w);
+                const absH = Math.abs(h);
+                const cx = minX + absW / 2;
+                const cy = minY + absH / 2;
+                const rx = absW / 2;
+                const ry = absH / 2;
+                ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+                ctx.moveTo(cx + rx * 0.5, cy);
+                ctx.ellipse(cx, cy, rx * 0.5, ry * 0.5, 0, 0, 2 * Math.PI, true);
             }
             ctx.stroke();
         } else if (tool === 'pen' && brushType === 'pixel') {

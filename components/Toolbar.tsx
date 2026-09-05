@@ -192,13 +192,21 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const getShapeIcon = () => {
       switch (shapeType) {
           case 'circle': return Icons.Circle;
+          case 'half-circle': return Icons.HalfCircle;
           case 'line': return Icons.Line;
           case 'triangle': return Icons.Triangle;
-          case 'star': return Icons.Star;
+          case 'diamond': return Icons.Diamond;
+          case 'pentagon': return Icons.Pentagon;
           case 'hexagon': return Icons.Hexagon;
+          case 'octagon': return Icons.Octagon;
+          case 'star': return Icons.Star;
           case 'heart': return Icons.Heart;
+          case 'cross': return Icons.Cross;
+          case 'trapezoid': return Icons.Trapezoid;
           case 'arrow': return Icons.ArrowRight;
           case 'speech-bubble': return Icons.MessageCircle;
+          case 'cloud': return Icons.CloudShape;
+          case 'ring': return Icons.Ring;
           default: return Icons.Square;
       }
   };
@@ -707,7 +715,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Popover: Shape Settings */}
       {activePopover === 'shape' && (
-        <div className="fixed bg-[#222222] p-4 rounded-2xl shadow-2xl w-64 border border-gray-700/80 z-50 flex flex-col gap-3.5 text-gray-200 animate-in fade-in zoom-in-95 duration-150" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
+        <div className="fixed bg-[#222222] p-4 rounded-2xl shadow-2xl w-72 border border-gray-700/80 z-50 flex flex-col gap-3.5 text-gray-200 animate-in fade-in zoom-in-95 duration-150" style={{ top: popoverPos.top, left: popoverPos.left, transform: 'translateY(-50%)' }}>
              <div className="flex items-center justify-between border-b border-gray-700/80 pb-2">
               <span className="text-xs font-bold text-white flex items-center gap-1.5">
                 <Icons.Square size={15} className="text-purple-400" />
@@ -717,23 +725,31 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 <Icons.X size={15} />
               </button>
              </div>
-             <div className="grid grid-cols-3 gap-1.5">
+             <div className="grid grid-cols-4 gap-1.5 max-h-64 overflow-y-auto pr-1">
                 {[
-                    { type: 'rectangle', icon: Icons.Square },
-                    { type: 'circle', icon: Icons.Circle },
-                    { type: 'line', icon: Icons.Line },
-                    { type: 'triangle', icon: Icons.Triangle },
-                    { type: 'star', icon: Icons.Star },
-                    { type: 'hexagon', icon: Icons.Hexagon },
-                    { type: 'heart', icon: Icons.Heart },
-                    { type: 'arrow', icon: Icons.ArrowRight },
-                    { type: 'speech-bubble', icon: Icons.MessageCircle },
+                    { type: 'rectangle', label: 'Rectangle', icon: Icons.Square },
+                    { type: 'circle', label: 'Circle', icon: Icons.Circle },
+                    { type: 'half-circle', label: 'Half Circle', icon: Icons.HalfCircle },
+                    { type: 'line', label: 'Line', icon: Icons.Line },
+                    { type: 'triangle', label: 'Triangle', icon: Icons.Triangle },
+                    { type: 'diamond', label: 'Diamond', icon: Icons.Diamond },
+                    { type: 'pentagon', label: 'Pentagon', icon: Icons.Pentagon },
+                    { type: 'hexagon', label: 'Hexagon', icon: Icons.Hexagon },
+                    { type: 'octagon', label: 'Octagon', icon: Icons.Octagon },
+                    { type: 'star', label: 'Star', icon: Icons.Star },
+                    { type: 'heart', label: 'Heart', icon: Icons.Heart },
+                    { type: 'cross', label: 'Cross', icon: Icons.Cross },
+                    { type: 'trapezoid', label: 'Trapezoid', icon: Icons.Trapezoid },
+                    { type: 'arrow', label: 'Arrow', icon: Icons.ArrowRight },
+                    { type: 'speech-bubble', label: 'Speech Bubble', icon: Icons.MessageCircle },
+                    { type: 'cloud', label: 'Cloud', icon: Icons.CloudShape },
+                    { type: 'ring', label: 'Ring', icon: Icons.Ring },
                 ].map((s) => (
                     <button 
                         key={s.type}
                         onClick={() => onSelectShapeType(s.type as ShapeType)}
-                        className={`p-2 rounded-xl flex items-center justify-center transition-colors ${shapeType === s.type ? 'bg-[var(--accent-color)] text-white shadow-md' : 'bg-gray-800/80 text-gray-400 hover:bg-gray-700'}`}
-                        title={s.type}
+                        className={`p-2 rounded-xl flex items-center justify-center transition-colors ${shapeType === s.type ? 'bg-[var(--accent-color)] text-white shadow-md' : 'bg-gray-800/80 text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+                        title={s.label}
                     >
                         <s.icon size={20} />
                     </button>

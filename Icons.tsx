@@ -134,7 +134,64 @@ import {
   Edit3
 } from 'lucide-react';
 
+const HalfCircle = ({ size = 20, className = '' }: { size?: number; className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M3 16 A 9 9 0 0 1 21 16 Z" />
+  </svg>
+);
+
+const Diamond = ({ size = 20, className = '' }: { size?: number; className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <polygon points="12 3 21 12 12 21 3 12" />
+  </svg>
+);
+
+const Pentagon = ({ size = 20, className = '' }: { size?: number; className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <polygon points="12 3 21 9 18 20 6 20 3 9" />
+  </svg>
+);
+
+const Octagon = ({ size = 20, className = '' }: { size?: number; className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86" />
+  </svg>
+);
+
+const Cross = ({ size = 20, className = '' }: { size?: number; className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M8 3 H16 V8 H21 V16 H16 V21 H8 V16 H3 V8 H8 Z" />
+  </svg>
+);
+
+const Trapezoid = ({ size = 20, className = '' }: { size?: number; className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <polygon points="7 5 17 5 21 19 3 19" />
+  </svg>
+);
+
+const CloudShape = ({ size = 20, className = '' }: { size?: number; className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M17.5 19C19.9853 19 22 16.9853 22 14.5C22 12.151 20.198 10.2229 17.8985 10.0242C17.433 6.58804 14.4844 4 11 4C7.80806 4 5.12781 6.18342 4.31682 9.17647C2.41727 9.87327 1 11.7001 1 14C1 16.7614 3.23858 19 6 19H17.5Z" />
+  </svg>
+);
+
+const Ring = ({ size = 20, className = '' }: { size?: number; className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="4" />
+  </svg>
+);
+
 export const Icons = {
+  HalfCircle,
+  Diamond,
+  Pentagon,
+  Octagon,
+  Cross,
+  Trapezoid,
+  CloudShape,
+  Ring,
   Pencil,
   Eraser,
   PaintBucket,
