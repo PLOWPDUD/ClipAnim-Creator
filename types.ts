@@ -187,6 +187,33 @@ export interface AppState {
   motionPaths: MotionPath[];
 }
 
+export type TweenType = 'motion' | 'shape' | 'classic';
+
+export interface TweenOptions {
+  type: TweenType;
+  numFrames: number;
+  easing: string;
+  includeOnionSkin: boolean;
+  // Motion Tween options
+  interpolatePosition?: boolean;
+  interpolateScale?: boolean;
+  interpolateRotation?: boolean;
+  motionBlur?: boolean;
+  motionBlurStrength?: number;
+  motionBlurSamples?: number;
+  motionBlurShutterAngle?: number;
+  // Shape Tween options
+  shapeMorphMode?: 'contour' | 'dissolve' | 'liquify';
+  shapeBlendColors?: boolean;
+  shapeSoftness?: number; // 0 (sharp vector) to 10 (soft edge)
+  // Classic Tween options
+  classicArc?: 'straight' | 'arc-up' | 'arc-down' | 's-curve';
+  classicAnchor?: 'center' | 'top-left' | 'top-center' | 'bottom-center' | 'custom';
+  classicSpinCount?: number; // 0, 1, 2, -1, -2 (turns)
+  classicColorTint?: boolean;
+  classicEaseAmount?: number; // -100 to 100
+}
+
 export interface ProjectFolder {
     id: string;
     name: string;

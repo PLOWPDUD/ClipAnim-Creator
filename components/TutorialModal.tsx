@@ -361,36 +361,42 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({
     {
       id: 'tweening',
       category: 'advanced',
-      title: 'Automatic Motion Tweening & Easing Curves',
-      duration: '3 min',
+      title: 'Tween Studio: Motion, Shape & Classic Tweens',
+      duration: '4 min',
       icon: Icons.Wand2,
-      summary: 'Generate silky-smooth interpolation between keyframes with customizable mathematical easing curves.',
+      summary: 'Generate automated in-betweens using Motion Tweens (transformations & motion blur), Shape Tweens (organic vector morphing), and Classic Tweens (Flash-style arcs & spins).',
       keyTakeaways: [
-        'Click the Magic Wand icon on the timeline between two frames to generate in-betweens.',
-        'Choose easing curves (Linear, Ease-In, Ease-Out, Ease-In-Out, Bounce, Elastic).',
-        'Saves hours of tedious manual intermediate in-between drawing.',
+        'Motion Tween: Interpolates position, scale, and rotation with multi-sample studio motion blur.',
+        'Shape Tween: Morphs vector contours and organic silhouettes using Liquify, Contour, and Dissolve modes.',
+        'Classic Tween: Animates along parabolic arcs, anchor registration points, and multi-turn spins (CW/CCW).',
       ],
       quiz: {
-        question: 'Which easing curve creates the most natural organic motion by starting slow, accelerating, and decelerating gently?',
+        question: 'Which tween mode should you use if you want to morph a star into a circle or deform an organic blob?',
         options: [
-          'Ease-In-Out',
-          'Linear',
-          'Instant Cut'
+          'Shape Tween (with Liquify or Contour morphing)',
+          'Classic Tween (Straight Line)',
+          'Static Frame Hold'
         ],
         correctIndex: 0,
-        explanation: 'Ease-In-Out smoothly accelerates into the movement and gently decelerates at the destination, matching real-world inertia.'
+        explanation: 'Shape Tweens analyze and morph vector contours, hulls, and organic silhouettes directly between keyframes!'
       },
       steps: [
         {
-          title: '1. Creating Start and End Keyframes',
-          description: 'Draw your initial pose on frame 1 (e.g. an object on the left). Create a second keyframe on frame 2 (e.g. object on the right).',
-          tip: 'Keep the layer structure consistent between the two frames for best interpolation.',
+          title: '1. Choosing the Right Tween Mode',
+          description: 'Click the Magic Wand icon on the timeline. Select between Motion Tween (for symbols and props), Shape Tween (for organic morphs and transforming vector drawings), or Classic Tween (for parabolic jumping arcs and multi-spin turns).',
+          tip: 'Use the interactive simulation viewport to preview your exact motion curves before generating in-betweens.',
           demoType: 'tweening'
         },
         {
-          title: '2. Generating Easing Curves',
-          description: 'Click the Magic Wand icon between frames. Select your curve: Linear for robotic movement, Ease-Out for braking friction, Bounce for cartoon drops, or Elastic for rubber physics.',
-          tip: 'Choose between 2 to 24 intermediate in-between frames.',
+          title: '2. Motion Blur & Easing Curves',
+          description: 'Enable Studio Motion Blur to automatically smooth high-velocity movements and eliminate visual stepping. Select easing curves like Ease-In-Out, Bounce, or Elastic.',
+          tip: 'Choose from presets like "Action Streak" or "Smooth Float" for instant cinematic timing.',
+          demoType: 'tweening'
+        },
+        {
+          title: '3. Classic Arcs, Anchors & Spins',
+          description: 'In Classic Tween mode, configure Trajectory Arcs (Jump Arc Up, Gravity Drop Down, S-Wave) and Anchor Points (Bottom ground contact, top pendulum, center of mass) to achieve traditional Disney-quality physics.',
+          tip: 'Set Spin Count to +1 or +2 to animate 360°/720° rotations effortlessly.',
           demoType: 'tweening'
         }
       ]

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Frame, ToolType, Layer, LayerFolder, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point, Actor } from './types';
+import { Frame, ToolType, Layer, LayerFolder, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point, Actor, TweenType, TweenOptions } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
@@ -3324,7 +3324,9 @@ export default function App() {
     motionBlur: boolean = true,
     motionBlurStrength: number = 0.75,
     motionBlurSamples: number = 7,
-    motionBlurShutterAngle: number = 180
+    motionBlurShutterAngle: number = 180,
+    tweenType: TweenType = 'motion',
+    options?: Partial<TweenOptions>
   ) => {
     if (index >= frames.length - 1) return; // Cannot tween the last frame
     
@@ -3413,7 +3415,9 @@ export default function App() {
           motionBlur,
           motionBlurStrength,
           motionBlurSamples,
-          motionBlurShutterAngle
+          motionBlurShutterAngle,
+          tweenType,
+          options
         );
 
         const layerDataUrl = canvas.toDataURL();
@@ -4584,7 +4588,7 @@ export default function App() {
             <TweenModal
                 isOpen={tweenTargetIndex !== null}
                 onClose={() => setTweenTargetIndex(null)}
-                onGenerate={(numTweens, easing, includeOnionSkin, interpolatePosition, interpolateScale, interpolateRotation, motionBlur, motionBlurStrength, motionBlurSamples, motionBlurShutterAngle) => {
+                onGenerate={(numTweens, easing, includeOnionSkin, interpolatePosition, interpolateScale, interpolateRotation, motionBlur, motionBlurStrength, motionBlurSamples, motionBlurShutterAngle, tweenType, options) => {
                     if (tweenTargetIndex !== null) {
                         executeTween(
                           tweenTargetIndex, 
@@ -4597,7 +4601,9 @@ export default function App() {
                           motionBlur,
                           motionBlurStrength,
                           motionBlurSamples,
-                          motionBlurShutterAngle
+                          motionBlurShutterAngle,
+                          tweenType || 'motion',
+                          options
                         );
                     }
                 }}
