@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { Icons } from '../Icons';
 
 export type TourMode = 'all' | 'painting' | 'games';
@@ -17,6 +17,7 @@ export interface TourStep {
     action: () => void;
   };
   tips?: string;
+  autoTriggerAction?: () => void;
 }
 
 export interface InteractiveTourProps {
@@ -43,12 +44,19 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   const [mode, setMode] = useState<TourMode>(initialMode);
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(false);
+  const [autoPlayProgress, setAutoPlayProgress] = useState<number>(0);
+
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const autoPlayIntervalRef = useRef<any>(null);
 
   // Sync mode when initialMode changes
   useEffect(() => {
     if (isActive) {
       setMode(initialMode);
       setCurrentStep(0);
+      setIsAutoPlaying(false);
+      setAutoPlayProgress(0);
     }
   }, [isActive, initialMode]);
 
@@ -102,8 +110,9 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       description: 'Organize your artwork on separate layers: Lineart, Flat Colors, Shading, and Backgrounds. Use blend modes like Multiply (for shadows), Screen (for glows), Add, and Overlay with individual opacity controls.',
       position: 'bottom',
       highlightPadding: 8,
+      autoTriggerAction: onOpenLayers,
       actionButton: onOpenLayers ? {
-        label: 'Open Layers Panel',
+        label: 'Toggle Layers Panel',
         icon: Icons.Layers,
         action: onOpenLayers
       } : undefined,
@@ -128,7 +137,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       position: 'bottom',
       highlightPadding: 8,
       actionButton: onOpenExport ? {
-        label: 'Open Export Menu',
+        label: 'Open Export Studio',
         icon: Icons.Download,
         action: onOpenExport
       } : undefined,
@@ -145,6 +154,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       description: 'Turn your drawings into reusable game components. Use Graphic Symbols for static scenery, props, and UI buttons, and MovieClip Symbols with nested multi-frame timelines for animated characters (walk, run, jump, idle).',
       position: 'bottom',
       highlightPadding: 8,
+      autoTriggerAction: onOpenSymbols,
       actionButton: onOpenSymbols ? {
         label: 'Open Symbol Library',
         icon: Icons.Library,
@@ -170,6 +180,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       description: 'Write custom JavaScript/ActionScript behaviors for each actor. Hook into this.onClick for clickable buttons, this.onUpdate for physics, keys["ArrowRight"] for player controls, and hitTest() for collisions.',
       position: 'right',
       highlightPadding: 8,
+      autoTriggerAction: onOpenScripts,
       actionButton: onOpenScripts ? {
         label: 'Open Script Editor',
         icon: Icons.Code,
@@ -246,6 +257,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       description: 'Organize drawings on multiple layers with Multiply, Screen, Add, and Overlay blend modes, lock protection, and opacity sliders.',
       position: 'bottom',
       highlightPadding: 8,
+      autoTriggerAction: onOpenLayers,
       actionButton: onOpenLayers ? {
         label: 'Open Layers',
         icon: Icons.Layers,
@@ -260,6 +272,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       description: 'Convert drawings into reusable Symbols with nested timelines for animated characters, interactive buttons, and game props.',
       position: 'bottom',
       highlightPadding: 8,
+      autoTriggerAction: onOpenSymbols,
       actionButton: onOpenSymbols ? {
         label: 'Open Symbols',
         icon: Icons.Library,
@@ -317,40 +330,88 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
     }
   }, [mode, paintingSteps, gamesSteps, allSteps]);
 
-  // Update spotlight target rectangle
+  // Recalculate target element position and smooth scroll into view
+  const updateRect = useCallback(() => {
+    const step = steps[currentStep];
+    if (!step) return;
+
+    // Trigger panel auto-opening if configured
+    if (step.autoTriggerAction) {
+      step.autoTriggerAction();
+    }
+
+    const el = document.getElementById(step.targetId);
+    if (el) {
+      // Ensure element is visible in viewport
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      setTargetRect(el.getBoundingClientRect());
+    } else {
+      // Fallback target
+      const fallbackEl = document.getElementById('tour-toolbar') || document.getElementById('tour-canvas');
+      if (fallbackEl) {
+        setTargetRect(fallbackEl.getBoundingClientRect());
+      } else {
+        setTargetRect(null);
+      }
+    }
+  }, [steps, currentStep]);
+
+  // Continuously track target bounding rect during resize and animations
   useEffect(() => {
     if (!isActive) {
       setCurrentStep(0);
       setTargetRect(null);
+      setIsAutoPlaying(false);
       return;
     }
 
-    const updateRect = () => {
-      const step = steps[currentStep];
-      if (!step) return;
-      const el = document.getElementById(step.targetId);
-      if (el) {
-        setTargetRect(el.getBoundingClientRect());
-      } else {
-        // Fallback target or center
-        const fallbackEl = document.getElementById('tour-toolbar') || document.getElementById('tour-canvas');
-        if (fallbackEl) {
-          setTargetRect(fallbackEl.getBoundingClientRect());
-        } else {
-          setTargetRect(null);
-        }
-      }
-    };
-
     updateRect();
     window.addEventListener('resize', updateRect);
-    const timer = setTimeout(updateRect, 100);
+    window.addEventListener('scroll', updateRect, true);
+
+    const timer1 = setTimeout(updateRect, 80);
+    const timer2 = setTimeout(updateRect, 300);
 
     return () => {
       window.removeEventListener('resize', updateRect);
-      clearTimeout(timer);
+      window.removeEventListener('scroll', updateRect, true);
+      clearTimeout(timer1);
+      clearTimeout(timer2);
     };
-  }, [isActive, currentStep, steps, mode]);
+  }, [isActive, currentStep, steps, mode, updateRect]);
+
+  // Auto-play walkthrough timer
+  useEffect(() => {
+    if (!isActive || !isAutoPlaying) {
+      if (autoPlayIntervalRef.current) clearInterval(autoPlayIntervalRef.current);
+      setAutoPlayProgress(0);
+      return;
+    }
+
+    const duration = 6000; // 6s per step
+    const intervalTime = 100;
+    let elapsed = 0;
+
+    autoPlayIntervalRef.current = setInterval(() => {
+      elapsed += intervalTime;
+      setAutoPlayProgress(Math.min(100, (elapsed / duration) * 100));
+
+      if (elapsed >= duration) {
+        elapsed = 0;
+        setAutoPlayProgress(0);
+        if (currentStep < steps.length - 1) {
+          setCurrentStep(prev => prev + 1);
+        } else {
+          setIsAutoPlaying(false);
+          onComplete();
+        }
+      }
+    }, intervalTime);
+
+    return () => {
+      if (autoPlayIntervalRef.current) clearInterval(autoPlayIntervalRef.current);
+    };
+  }, [isActive, isAutoPlaying, currentStep, steps.length, onComplete]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -360,15 +421,20 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       if (e.key === 'Escape') {
         onComplete();
       } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
+        setIsAutoPlaying(false);
         if (currentStep < steps.length - 1) {
           setCurrentStep(prev => prev + 1);
         } else {
           onComplete();
         }
       } else if (e.key === 'ArrowLeft') {
+        setIsAutoPlaying(false);
         if (currentStep > 0) {
           setCurrentStep(prev => prev - 1);
         }
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        setIsAutoPlaying(prev => !prev);
       }
     };
 
@@ -381,6 +447,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   const step = steps[currentStep] || steps[0];
 
   const handleNext = () => {
+    setIsAutoPlaying(false);
     if (currentStep < steps.length - 1) {
       setCurrentStep(prev => prev + 1);
     } else {
@@ -389,6 +456,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   };
 
   const handlePrev = () => {
+    setIsAutoPlaying(false);
     if (currentStep > 0) {
       setCurrentStep(prev => prev - 1);
     }
@@ -397,9 +465,10 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   const handleSwitchMode = (newMode: TourMode) => {
     setMode(newMode);
     setCurrentStep(0);
+    setIsAutoPlaying(false);
   };
 
-  // Calculate tooltip placement
+  // Smart Tooltip Placement with Edge Safety & Direction Flipping
   const getTooltipStyle = () => {
     if (!targetRect) {
       return {
@@ -411,30 +480,41 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
 
     const padding = step.highlightPadding || 8;
     const margin = 16 + padding;
+    const cardWidth = 380;
+    const cardHeight = 280;
 
-    if (step.position === 'right') {
-      return {
-        top: Math.max(20, Math.min(window.innerHeight - 340, targetRect.top)),
-        left: Math.min(window.innerWidth - 420, targetRect.right + margin),
-      };
-    } else if (step.position === 'top') {
-      return {
-        bottom: window.innerHeight - targetRect.top + margin,
-        left: Math.max(20, Math.min(window.innerWidth - 420, targetRect.left + (targetRect.width / 2) - 190)),
-      };
-    } else if (step.position === 'bottom') {
-      return {
-        top: targetRect.bottom + margin,
-        left: Math.max(20, Math.min(window.innerWidth - 420, targetRect.left + (targetRect.width / 2) - 190)),
-      };
-    } else if (step.position === 'left') {
-      return {
-        top: Math.max(20, Math.min(window.innerHeight - 340, targetRect.top)),
-        right: window.innerWidth - targetRect.left + margin,
-      };
+    let pos = step.position;
+
+    // Edge check and automatic flipping
+    if (pos === 'right' && targetRect.right + margin + cardWidth > window.innerWidth - 16) {
+      pos = 'left';
+    } else if (pos === 'left' && targetRect.left - margin - cardWidth < 16) {
+      pos = 'right';
+    } else if (pos === 'bottom' && targetRect.bottom + margin + cardHeight > window.innerHeight - 16) {
+      pos = 'top';
+    } else if (pos === 'top' && targetRect.top - margin - cardHeight < 16) {
+      pos = 'bottom';
     }
 
-    // Default center
+    if (pos === 'right') {
+      const top = Math.max(16, Math.min(window.innerHeight - cardHeight - 16, targetRect.top));
+      const left = Math.min(window.innerWidth - cardWidth - 16, targetRect.right + margin);
+      return { top: `${top}px`, left: `${left}px` };
+    } else if (pos === 'left') {
+      const top = Math.max(16, Math.min(window.innerHeight - cardHeight - 16, targetRect.top));
+      const left = Math.max(16, targetRect.left - margin - cardWidth);
+      return { top: `${top}px`, left: `${left}px` };
+    } else if (pos === 'top') {
+      const top = Math.max(16, targetRect.top - margin - cardHeight);
+      const left = Math.max(16, Math.min(window.innerWidth - cardWidth - 16, targetRect.left + (targetRect.width / 2) - (cardWidth / 2)));
+      return { top: `${top}px`, left: `${left}px` };
+    } else if (pos === 'bottom') {
+      const top = Math.min(window.innerHeight - cardHeight - 16, targetRect.bottom + margin);
+      const left = Math.max(16, Math.min(window.innerWidth - cardWidth - 16, targetRect.left + (targetRect.width / 2) - (cardWidth / 2)));
+      return { top: `${top}px`, left: `${left}px` };
+    }
+
+    // Default Center
     return {
       top: '50%',
       left: '50%',
@@ -454,26 +534,29 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
     return 'bg-amber-500/20 text-amber-300 border-amber-500/30';
   };
 
+  const padding = step.highlightPadding || 8;
+
   return (
-    <div className="fixed inset-0 z-[100] pointer-events-auto select-none overflow-hidden animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] pointer-events-auto select-none overflow-hidden animate-in fade-in duration-300">
       
       {/* Dark overlay backdrop */}
-      <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px] transition-all duration-300" />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px] transition-all duration-300" />
 
-      {/* Target Spotlight Highlight Ring */}
+      {/* Target Spotlight Highlight Ring with Smooth Interpolation */}
       {targetRect && (
         <div
-          className="absolute rounded-2xl pointer-events-none transition-all duration-300 border-2 border-[var(--accent-color)] shadow-[0_0_0_9999px_rgba(0,0,0,0.65),0_0_25px_var(--accent-color)] z-[101]"
+          className="absolute rounded-2xl pointer-events-none transition-all duration-300 ease-out border-2 border-[var(--accent-color)] shadow-[0_0_0_9999px_rgba(0,0,0,0.72),0_0_30px_var(--accent-color)] z-[101]"
           style={{
-            top: targetRect.top - (step.highlightPadding || 8),
-            left: targetRect.left - (step.highlightPadding || 8),
-            width: targetRect.width + (step.highlightPadding || 8) * 2,
-            height: targetRect.height + (step.highlightPadding || 8) * 2,
+            top: targetRect.top - padding,
+            left: targetRect.left - padding,
+            width: targetRect.width + padding * 2,
+            height: targetRect.height + padding * 2,
           }}
         >
-          <span className="absolute -top-3 -right-3 flex h-7 w-7">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent-color)] opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-7 w-7 bg-gradient-to-tr from-[var(--accent-color)] to-amber-400 text-white text-[12px] font-black items-center justify-center shadow-lg border border-white/20">
+          {/* Animated Pulsing Pin */}
+          <span className="absolute -top-3.5 -right-3.5 flex h-8 w-8">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent-color)] opacity-75" />
+            <span className="relative inline-flex rounded-full h-8 w-8 bg-gradient-to-tr from-[var(--accent-color)] to-amber-400 text-white text-[13px] font-black items-center justify-center shadow-xl border-2 border-white">
               {currentStep + 1}
             </span>
           </span>
@@ -482,13 +565,24 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
 
       {/* Floating Spotlight Card */}
       <div
-        className="absolute z-[102] w-[380px] max-w-[92vw] bg-[#1a1a1a] border border-gray-700/80 rounded-3xl p-5 shadow-2xl text-white transition-all duration-300 space-y-4 backdrop-blur-xl"
+        ref={cardRef}
+        className="absolute z-[102] w-[380px] max-w-[92vw] bg-[#1a1a1e] border border-gray-700/80 rounded-3xl p-5 shadow-2xl text-white transition-all duration-300 ease-out space-y-4 backdrop-blur-xl animate-in zoom-in-95 duration-200"
         style={getTooltipStyle() as any}
       >
-        {/* Tour Type Selector & Header */}
+        {/* Auto-Play Progress Bar */}
+        {isAutoPlaying && (
+          <div className="absolute top-0 left-6 right-6 h-1 bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-amber-400 to-orange-500 h-full transition-all duration-100 ease-linear"
+              style={{ width: `${autoPlayProgress}%` }}
+            />
+          </div>
+        )}
+
+        {/* Header & Controls */}
         <div className="space-y-2.5">
-          <div className="flex items-center justify-between border-b border-gray-800 pb-2.5">
-            <div className="flex items-center gap-1.5">
+          <div className="flex items-center justify-between border-b border-gray-800/80 pb-2.5">
+            <div className="flex items-center gap-2">
               <span className={`w-6 h-6 rounded-lg bg-gradient-to-tr ${getModeColor()} text-white text-xs font-black flex items-center justify-center shadow`}>
                 {currentStep + 1}
               </span>
@@ -497,13 +591,28 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
               </span>
             </div>
             
-            <button
-              onClick={onComplete}
-              className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
-              title="Exit Tour (Esc)"
-            >
-              <Icons.X size={16} />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setIsAutoPlaying(!isAutoPlaying)}
+                className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                  isAutoPlaying
+                    ? 'bg-amber-500 text-black shadow'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+                title={isAutoPlaying ? "Pause Walkthrough (Space)" : "Start Auto-Play Walkthrough (Space)"}
+              >
+                {isAutoPlaying ? <Icons.Pause size={13} /> : <Icons.Play size={13} />}
+                <span className="text-[10px]">{isAutoPlaying ? 'Pause' : 'Auto'}</span>
+              </button>
+
+              <button
+                onClick={onComplete}
+                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
+                title="Exit Tour (Esc)"
+              >
+                <Icons.X size={16} />
+              </button>
+            </div>
           </div>
 
           {/* Mode Switcher Tabs */}
@@ -547,7 +656,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
         {/* Title & Description */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${getBadgeColor()}`}>
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${getBadgeColor()}`}>
               {step.badge}
             </span>
           </div>
@@ -560,20 +669,23 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
 
           {/* Contextual Tip */}
           {step.tips && (
-            <div className="p-2.5 rounded-xl bg-gray-900/90 border border-gray-800 text-[11px] text-gray-400 flex items-start gap-2">
+            <div className="p-2.5 rounded-xl bg-gray-900/90 border border-gray-800 text-[11px] text-gray-300 flex items-start gap-2 shadow-inner">
               <Icons.Lightbulb size={14} className="text-amber-400 shrink-0 mt-0.5" />
               <div className="leading-snug">
-                <span className="text-gray-300 font-semibold">Pro Tip: </span>
+                <span className="text-amber-400 font-bold">Pro Tip: </span>
                 {step.tips}
               </div>
             </div>
           )}
 
-          {/* Quick Action Button (if applicable) */}
+          {/* Quick Action Button */}
           {step.actionButton && (
             <button
-              onClick={step.actionButton.action}
-              className="w-full py-2 px-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold transition-all border border-gray-700 flex items-center justify-center gap-2 shadow-sm hover:scale-[1.01]"
+              onClick={() => {
+                step.actionButton?.action();
+                setTimeout(updateRect, 120);
+              }}
+              className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-gray-800 to-gray-800/90 hover:from-gray-700 hover:to-gray-700 text-white text-xs font-bold transition-all border border-gray-700 flex items-center justify-center gap-2 shadow-sm hover:scale-[1.01] active:scale-[0.99]"
             >
               {step.actionButton.icon && <step.actionButton.icon size={14} className="text-[var(--accent-color)]" />}
               <span>{step.actionButton.label}</span>
@@ -581,14 +693,17 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
           )}
         </div>
 
-        {/* Step Dots & Navigation Buttons */}
-        <div className="pt-3 border-t border-gray-800 flex items-center justify-between gap-2">
+        {/* Step Dots, Shortcuts & Navigation Buttons */}
+        <div className="pt-3 border-t border-gray-800/80 flex items-center justify-between gap-2">
           {/* Progress dots */}
           <div className="flex items-center gap-1.5">
             {steps.map((_, idx) => (
               <button
                 key={idx}
-                onClick={() => setCurrentStep(idx)}
+                onClick={() => {
+                  setIsAutoPlaying(false);
+                  setCurrentStep(idx);
+                }}
                 className={`h-1.5 rounded-full transition-all ${
                   idx === currentStep
                     ? 'w-5 bg-[var(--accent-color)]'
@@ -601,12 +716,12 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
             ))}
           </div>
 
-          {/* Action buttons */}
+          {/* Navigation Controls */}
           <div className="flex items-center gap-2">
             {currentStep > 0 && (
               <button
                 onClick={handlePrev}
-                className="px-3 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-xs font-bold text-gray-200 transition-colors flex items-center gap-1 border border-gray-700"
+                className="px-3 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-xs font-bold text-gray-200 transition-colors flex items-center gap-1 border border-gray-700 active:scale-95"
               >
                 <Icons.ChevronLeft size={14} />
                 <span>Back</span>
@@ -615,12 +730,18 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
 
             <button
               onClick={handleNext}
-              className="px-4 py-1.5 rounded-xl bg-[var(--accent-color)] hover:opacity-90 text-xs font-bold text-white transition-all flex items-center gap-1 shadow-md hover:scale-[1.02]"
+              className="px-4 py-1.5 rounded-xl bg-[var(--accent-color)] hover:opacity-90 text-xs font-bold text-white transition-all flex items-center gap-1 shadow-md hover:scale-[1.02] active:scale-95"
             >
               <span>{currentStep === steps.length - 1 ? 'Finish Tour' : 'Next'}</span>
               {currentStep < steps.length - 1 && <Icons.ChevronRight size={14} />}
             </button>
           </div>
+        </div>
+
+        {/* Keyboard Helper Hint */}
+        <div className="text-[9px] text-gray-500 font-mono text-center pt-0.5">
+          <span>Keyboard: </span>
+          <span className="text-gray-400">← Back</span> • <span className="text-gray-400">→ Next</span> • <span className="text-gray-400">Space Auto</span> • <span className="text-gray-400">Esc Exit</span>
         </div>
 
       </div>

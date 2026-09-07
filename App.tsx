@@ -4819,12 +4819,18 @@ export default function App() {
       {isSymbolPanelOpen && view === 'editor' && (
         <SymbolPanel
           actors={actors}
+          currentFrameIndex={currentFrameIndex}
+          frameCount={frames.length}
           onAddActor={(newActor) => {
             setActors(prev => [...prev, newActor]);
             setHasUnsavedChanges(true);
           }}
           onRemoveActor={(id) => {
             setActors(prev => prev.filter(a => a.id !== id));
+            setHasUnsavedChanges(true);
+          }}
+          onUpdateActorTargetFrame={(id, targetFrame) => {
+            setActors(prev => prev.map(a => a.id === id ? { ...a, targetFrame } : a));
             setHasUnsavedChanges(true);
           }}
           canvasWidth={canvasSize.width}

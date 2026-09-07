@@ -5,8 +5,11 @@ import { PRESET_SYMBOLS } from '../utils/libraryPresets';
 
 interface SymbolPanelProps {
   actors: Actor[];
+  currentFrameIndex?: number;
+  frameCount?: number;
   onAddActor: (actor: Actor) => void;
   onRemoveActor: (id: string) => void;
+  onUpdateActorTargetFrame?: (id: string, targetFrame?: number) => void;
   canvasWidth: number;
   canvasHeight: number;
   onClose: () => void;
@@ -15,12 +18,15 @@ interface SymbolPanelProps {
 }
 
 type SymbolTab = 'project' | 'global' | 'presets';
-type SymbolFilter = 'all' | 'animated' | 'static' | 'scripted';
+type SymbolFilter = 'all' | 'animated' | 'static' | 'scripted' | 'current-frame';
 
 export const SymbolPanel: React.FC<SymbolPanelProps> = ({
   actors,
+  currentFrameIndex = 0,
+  frameCount = 1,
   onAddActor,
   onRemoveActor,
+  onUpdateActorTargetFrame,
   canvasWidth,
   canvasHeight,
   onClose,
@@ -145,7 +151,10 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
   };
 
   // Instantiate symbol into current project
-  const handleInstantiateSymbol = (symbol: SavedSymbol | typeof PRESET_SYMBOLS[0]) => {
+  const handleInstantiateSymbol = (
+    symbol: SavedSymbol | Actor | typeof PRESET_SYMBOLS[0],
+    targetFrame?: number
+  ) => {
     let instanceName = symbol.name.replace(/[^a-zA-Z0-9_]/g, '_');
     if (!/^[a-zA-Z]/.test(instanceName)) {
       instanceName = 'Actor_' + instanceName;
@@ -178,11 +187,13 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
       scaleX: 1,
       scaleY: 1,
       opacity: 1,
+      targetFrame: targetFrame,
       scripts: symbol.scripts || `// Custom behaviors\nthis.onUpdate = function() {\n  // Code loop\n};`
     };
 
     onAddActor(newActor);
-    showToast(`Placed "${newActor.name}" on canvas!`);
+    const frameNotice = targetFrame !== undefined ? `Frame ${targetFrame + 1}` : 'All Frames';
+    showToast(`Placed "${newActor.name}" on ${frameNotice}!`);
   };
 
   // Rename a symbol in global library
@@ -272,6 +283,7 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
       if (activeFilter === 'animated') return !!item.isAnimated;
       if (activeFilter === 'static') return !item.isAnimated;
       if (activeFilter === 'scripted') return !!(item.scripts && item.scripts.trim().length > 0);
+      if (activeFilter === 'current-frame') return item.targetFrame === currentFrameIndex || item.targetFrame === undefined;
       return true;
     });
   };
@@ -420,20 +432,37 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
 
         {/* Filter Pills */}
         <div className="flex items-center gap-1 overflow-x-auto no-scrollbar text-[10px] font-bold">
-          {(['all', 'animated', 'static', 'scripted'] as SymbolFilter[]).map(filter => (
+          {(['all', 'current-frame', 'animated', 'static', 'scripted'] as SymbolFilter[]).map(filter => (
             <button
               key={filter}
               onClick={() => setActiveFilter(filter)}
-              className={`px-2.5 py-0.5 rounded-full capitalize transition-colors ${
+              className={`px-2.5 py-0.5 rounded-full capitalize transition-colors shrink-0 ${
                 activeFilter === filter
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-blue-600 text-white shadow'
                   : 'bg-white/5 text-gray-400 hover:text-white'
               }`}
             >
-              {filter === 'all' ? 'All Symbols' : filter === 'animated' ? 'Loops' : filter === 'static' ? 'Static' : 'Scripted'}
+              {filter === 'all' 
+                ? 'All Symbols' 
+                : filter === 'current-frame'
+                ? `Frame ${currentFrameIndex + 1} Only`
+                : filter === 'animated' 
+                ? 'Loops' 
+                : filter === 'static' 
+                ? 'Static' 
+                : 'Scripted'}
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Active Frame Indicator Banner */}
+      <div className="px-3 py-1.5 bg-blue-950/40 border-b border-blue-500/20 flex items-center justify-between shrink-0 text-[10px]">
+        <div className="flex items-center gap-1.5 text-blue-300 font-bold">
+          <Icons.Film size={12} />
+          <span>Active Target: <span className="text-white underline">Frame {currentFrameIndex + 1}</span></span>
+        </div>
+        <span className="text-[9px] text-gray-400">Total Frames: {frameCount}</span>
       </div>
 
       {/* Spritesheet Export Quick Banner */}
@@ -481,18 +510,27 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
                     ? Object.values(actor.symbolFrames[hoveredFrameIndex].layers)[0] || actor.dataUrl
                     : actor.dataUrl;
 
+                  const isOnCurrentFrame = actor.targetFrame === currentFrameIndex;
+                  const isAllFrames = actor.targetFrame === undefined;
+
                   return (
                     <div
                       key={actor.id}
                       onMouseEnter={() => startHoverPreview(actor, actor.id)}
                       onMouseLeave={stopHoverPreview}
-                      className="group bg-[#1e1e23] rounded-xl border border-white/10 hover:border-blue-500/50 p-2 flex flex-col transition-all shadow-md relative overflow-hidden"
+                      className={`group bg-[#1e1e23] rounded-xl border p-2 flex flex-col transition-all shadow-md relative overflow-hidden ${
+                        isOnCurrentFrame
+                          ? 'border-blue-500/60 ring-1 ring-blue-500/30'
+                          : isAllFrames
+                          ? 'border-indigo-500/40'
+                          : 'border-white/10 hover:border-blue-500/40'
+                      }`}
                     >
                       {/* Image Preview Box */}
                       <div className="aspect-square bg-[#27272e] rounded-lg flex items-center justify-center p-2 relative overflow-hidden bg-[radial-gradient(#3a3a44_1px,transparent_1px)] [background-size:8px_8px]">
                         <img src={displayUrl} alt={actor.name} className="max-w-full max-h-full object-contain pointer-events-none" />
 
-                        {/* Top Badges */}
+                        {/* Top Left Badges */}
                         <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
                           {actor.isAnimated && (
                             <span className="text-[8px] bg-indigo-600 text-white font-bold px-1.5 py-0.2 rounded-md shadow">
@@ -506,37 +544,85 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
                           )}
                         </div>
 
+                        {/* Top Right Frame Target Badge */}
+                        <div className="absolute top-1.5 right-1.5 z-10">
+                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md shadow border ${
+                            isAllFrames 
+                              ? 'bg-blue-600/90 text-white border-blue-400/50' 
+                              : isOnCurrentFrame
+                              ? 'bg-emerald-600/90 text-white border-emerald-400/50'
+                              : 'bg-purple-900/90 text-purple-200 border-purple-500/50'
+                          }`}>
+                            {isAllFrames ? 'All Frames' : `Frame ${actor.targetFrame! + 1}`}
+                          </span>
+                        </div>
+
                         {/* Hover Overlay Action Controls */}
-                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity gap-1.5 p-1">
+                        <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity gap-1.5 p-2 z-20">
                           <button
-                            onClick={() => handleSaveToGlobalLibrary(actor)}
-                            className="p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors shadow"
-                            title="Save to Global Library"
+                            onClick={() => handleInstantiateSymbol(actor, currentFrameIndex)}
+                            className="w-full py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-bold shadow transition-all active:scale-95 flex items-center justify-center gap-1"
+                            title={`Add instance to Frame ${currentFrameIndex + 1}`}
                           >
-                            <Icons.Save size={12} />
+                            <Icons.Plus size={11} />
+                            <span>+ Frame {currentFrameIndex + 1}</span>
                           </button>
-                          <button
-                            onClick={() => handleDuplicateActor(actor)}
-                            className="p-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors"
-                            title="Duplicate Actor"
-                          >
-                            <Icons.Copy size={12} />
-                          </button>
-                          <button
-                            onClick={() => onRemoveActor(actor.id)}
-                            className="p-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
-                            title="Remove Actor"
-                          >
-                            <Icons.Trash2 size={12} />
-                          </button>
+
+                          <div className="flex items-center gap-1 w-full justify-center">
+                            <button
+                              onClick={() => handleSaveToGlobalLibrary(actor)}
+                              className="p-1.5 bg-white/20 hover:bg-blue-600 text-white rounded-lg transition-colors shadow"
+                              title="Save to Global Library"
+                            >
+                              <Icons.Save size={12} />
+                            </button>
+                            <button
+                              onClick={() => handleDuplicateActor(actor)}
+                              className="p-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors"
+                              title="Duplicate Actor"
+                            >
+                              <Icons.Copy size={12} />
+                            </button>
+                            <button
+                              onClick={() => onRemoveActor(actor.id)}
+                              className="p-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
+                              title="Remove Actor"
+                            >
+                              <Icons.Trash2 size={12} />
+                            </button>
+                          </div>
                         </div>
                       </div>
 
                       {/* Name & Subtitle */}
                       <div className="mt-1.5 flex items-center justify-between text-xs px-0.5">
-                        <span className="font-bold text-white truncate max-w-[100px]" title={actor.name}>{actor.name}</span>
-                        <span className="text-[9px] text-gray-400 font-mono">Actor</span>
+                        <span className="font-bold text-white truncate max-w-[85px]" title={actor.name}>{actor.name}</span>
+                        <span className="text-[9px] text-gray-400 font-mono">Symbol</span>
                       </div>
+
+                      {/* Target Frame Selection Selector */}
+                      {onUpdateActorTargetFrame && (
+                        <div className="mt-1 flex items-center gap-1 text-[9px]">
+                          <span className="text-gray-400 shrink-0">On:</span>
+                          <select
+                            value={actor.targetFrame === undefined ? 'all' : actor.targetFrame}
+                            onChange={(e) => {
+                              const val = e.target.value === 'all' ? undefined : parseInt(e.target.value, 10);
+                              onUpdateActorTargetFrame(actor.id, val);
+                              const label = val === undefined ? 'All Frames' : `Frame ${val + 1}`;
+                              showToast(`Moved "${actor.name}" to ${label}`);
+                            }}
+                            className="bg-black/60 text-white border border-white/15 rounded px-1 py-0.5 text-[9px] w-full focus:outline-none focus:border-blue-500 cursor-pointer font-bold"
+                          >
+                            <option value="all">✨ All Frames</option>
+                            {Array.from({ length: frameCount }).map((_, idx) => (
+                              <option key={idx} value={idx}>
+                                {idx === currentFrameIndex ? `▶ Frame ${idx + 1} (Current)` : `Frame ${idx + 1}`}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -593,28 +679,40 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
                         </div>
 
                         {/* Hover Overlay Controls */}
-                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity gap-1.5 p-1">
+                        <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity gap-1.5 p-2">
                           <button
-                            onClick={() => handleInstantiateSymbol(symbol)}
-                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-bold shadow transition-all active:scale-95"
-                            title="Place on Canvas"
+                            onClick={() => handleInstantiateSymbol(symbol, currentFrameIndex)}
+                            className="w-full py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-bold shadow transition-all active:scale-95 flex items-center justify-center gap-1"
+                            title={`Place on Frame ${currentFrameIndex + 1}`}
                           >
-                            Place
+                            <Icons.Plus size={11} />
+                            <span>Frame {currentFrameIndex + 1}</span>
                           </button>
+                          
                           <button
-                            onClick={() => handleDuplicateGlobal(symbol)}
-                            className="p-1 bg-white/20 hover:bg-white/30 text-white rounded-lg"
-                            title="Duplicate"
+                            onClick={() => handleInstantiateSymbol(symbol, undefined)}
+                            className="w-full py-0.5 bg-white/10 hover:bg-white/20 text-gray-200 rounded-lg text-[9px] font-bold transition-all"
+                            title="Place on All Frames"
                           >
-                            <Icons.Copy size={11} />
+                            All Frames
                           </button>
-                          <button
-                            onClick={() => handleDeleteFromLibrary(symbol.id)}
-                            className="p-1 bg-red-600 hover:bg-red-500 text-white rounded-lg"
-                            title="Delete"
-                          >
-                            <Icons.Trash2 size={11} />
-                          </button>
+
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <button
+                              onClick={() => handleDuplicateGlobal(symbol)}
+                              className="p-1 bg-white/20 hover:bg-white/30 text-white rounded-lg"
+                              title="Duplicate"
+                            >
+                              <Icons.Copy size={11} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteFromLibrary(symbol.id)}
+                              className="p-1 bg-red-600 hover:bg-red-500 text-white rounded-lg"
+                              title="Delete"
+                            >
+                              <Icons.Trash2 size={11} />
+                            </button>
+                          </div>
                         </div>
                       </div>
 
@@ -698,13 +796,21 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
                       </div>
 
                       {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity gap-1.5 p-1">
+                      <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity gap-1.5 p-2">
                         <button
-                          onClick={() => handleInstantiateSymbol(preset)}
-                          className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold shadow transition-all active:scale-95"
-                          title="Place Preset on Canvas"
+                          onClick={() => handleInstantiateSymbol(preset, currentFrameIndex)}
+                          className="w-full py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold shadow transition-all active:scale-95 flex items-center justify-center gap-1"
+                          title={`Place Template on Frame ${currentFrameIndex + 1}`}
                         >
-                          Use Symbol
+                          <Icons.Plus size={11} />
+                          <span>Frame {currentFrameIndex + 1}</span>
+                        </button>
+                        <button
+                          onClick={() => handleInstantiateSymbol(preset, undefined)}
+                          className="w-full py-0.5 bg-white/10 hover:bg-white/20 text-gray-200 rounded-lg text-[9px] font-bold transition-all"
+                          title="Place Template on All Frames"
+                        >
+                          All Frames
                         </button>
                       </div>
                     </div>
