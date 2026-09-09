@@ -1,4 +1,6 @@
 
+export type WorkspaceMode = 'classic' | 'adobe-animate';
+
 export type SymmetryMode = 'none' | 'horizontal' | 'vertical';
 
 export type ToolType = 'pen' | 'eraser' | 'fill' | 'select' | 'lasso' | 'wand' | 'shape' | 'text' | 'eyedropper' | 'motionPath';

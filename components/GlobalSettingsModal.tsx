@@ -16,6 +16,8 @@ interface GlobalSettingsModalProps {
   setDeviceType: (type: 'mobile' | 'pc') => void;
   theme: 'dark' | 'light' | 'system';
   setTheme: (theme: 'dark' | 'light' | 'system') => void;
+  workspaceMode?: 'classic' | 'adobe-animate';
+  setWorkspaceMode?: (mode: 'classic' | 'adobe-animate') => void;
 }
 
 type GlobalTab = 'appearance' | 'shortcuts' | 'device' | 'language';
@@ -50,7 +52,9 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
   deviceType,
   setDeviceType,
   theme,
-  setTheme
+  setTheme,
+  workspaceMode = 'classic',
+  setWorkspaceMode
 }) => {
   const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState<GlobalTab>('appearance');
@@ -355,6 +359,74 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
                     }}
                     className="flex-1 px-3 py-1.5 bg-[#1e1e1e] border border-gray-700 rounded-xl text-xs font-mono text-white placeholder-gray-500 focus:outline-none focus:border-[var(--accent-color)]"
                   />
+                </div>
+              </div>
+
+              {/* Workspace Layout Mode (Adobe Animate vs Classic) */}
+              <div className="space-y-3 pt-3 border-t border-gray-800/80">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-400">Workspace Layout Mode</label>
+                    <p className="text-[11px] text-gray-400">Select between Adobe Animate CC layout and Classic ClipAnim UI.</p>
+                  </div>
+                  {setWorkspaceMode && (
+                    <button
+                      onClick={() => setWorkspaceMode('classic')}
+                      className="px-3 py-1.5 bg-gray-800 hover:bg-amber-600/30 text-amber-300 hover:text-amber-200 border border-amber-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                      title="Return to Classic UI"
+                    >
+                      <Icons.RotateCcw size={13} />
+                      <span>Classic UI</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Adobe Animate Mode Option */}
+                  <button
+                    onClick={() => setWorkspaceMode?.('adobe-animate')}
+                    className={`flex flex-col text-left p-4 rounded-2xl border transition-all ${
+                      workspaceMode === 'adobe-animate'
+                        ? 'border-[#E34F26] bg-[#E34F26]/15 text-white shadow-lg ring-1 ring-[#E34F26]/50'
+                        : 'border-gray-800 bg-[#1e1e1e] text-gray-300 hover:text-white hover:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-[#E34F26] text-white text-xs font-black">An</span>
+                        <span className="text-sm font-bold text-white">Adobe Animate Mode</span>
+                      </div>
+                      {workspaceMode === 'adobe-animate' && (
+                        <span className="text-[10px] bg-[#E34F26] text-white px-2 py-0.5 rounded-full font-extrabold uppercase">Active</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-400 leading-relaxed">
+                      Authentic Adobe Animate CC workspace with top timeline, right inspector & symbol library dock, and vertical Adobe tool strip.
+                    </p>
+                  </button>
+
+                  {/* Classic UI Option */}
+                  <button
+                    onClick={() => setWorkspaceMode?.('classic')}
+                    className={`flex flex-col text-left p-4 rounded-2xl border transition-all ${
+                      workspaceMode === 'classic'
+                        ? 'border-amber-500 bg-amber-500/15 text-white shadow-lg ring-1 ring-amber-500/50'
+                        : 'border-gray-800 bg-[#1e1e1e] text-gray-300 hover:text-white hover:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full mb-2">
+                      <div className="flex items-center gap-2">
+                        <Icons.RotateCcw size={16} className="text-amber-400" />
+                        <span className="text-sm font-bold text-white">Classic ClipAnim UI</span>
+                      </div>
+                      {workspaceMode === 'classic' && (
+                        <span className="text-[10px] bg-amber-500 text-black px-2 py-0.5 rounded-full font-extrabold uppercase">Active</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-400 leading-relaxed">
+                      Standard ClipAnim layout featuring bottom timeline scrubber, floating toolbar, and quick action widgets.
+                    </p>
+                  </button>
                 </div>
               </div>
 

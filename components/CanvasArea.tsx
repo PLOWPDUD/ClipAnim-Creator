@@ -167,6 +167,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const transform = useRef({ scale: 1, x: 0, y: 0, rotation: 0 });
   const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const isGesture = useRef(false);
+  const gestureLocked = useRef(false);
   const isDrawing = useRef(false);
   const isDrawingOnSelectionRef = useRef(false);
   
@@ -174,6 +175,11 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const initialAngle = useRef<number | null>(null);
   const startRotation = useRef<number>(0);
   const lastPanPoint = useRef<{ x: number; y: number } | null>(null);
+
+  // Pre-stroke snapshots for non-destructive gesture rollback
+  const preStrokeCanvasSnapshot = useRef<ImageData | null>(null);
+  const preStrokeSelectionSnapshot = useRef<ImageData | null>(null);
+  const pendingTapAction = useRef<{ tool: ToolType; x: number; y: number; mx: number; my: number } | null>(null);
 
   // Tracking movement to distinguish tap from drag
   const hasMoved = useRef(false);
@@ -192,6 +198,50 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
 
   const [textInput, setTextInput] = useState<{x: number, y: number, value: string, font?: string, color?: string, fontSize?: number} | null>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
+
+  const cancelStrokeAndRestoreCanvas = () => {
+    isDrawing.current = false;
+    isDrawingOnSelectionRef.current = false;
+    pendingTapAction.current = null;
+    drawStart.current = null;
+    lastPoint.current = null;
+    points.current = [];
+    symmetryPathPoints.current = {};
+    symmetryLastPoints.current = {};
+    motionPathPoints.current = [];
+    canvasSnapshot.current = null;
+
+    if (preStrokeCanvasSnapshot.current && activeCanvasRef.current) {
+      const ctx = activeCanvasRef.current.getContext('2d');
+      if (ctx) {
+        try {
+          ctx.putImageData(preStrokeCanvasSnapshot.current, 0, 0);
+        } catch (err) {
+          console.warn('Could not restore pre-stroke canvas snapshot:', err);
+        }
+      }
+    }
+    if (preStrokeSelectionSnapshot.current && selectionCanvasRef.current) {
+      const sCtx = selectionCanvasRef.current.getContext('2d');
+      if (sCtx) {
+        try {
+          sCtx.putImageData(preStrokeSelectionSnapshot.current, 0, 0);
+        } catch (err) {
+          console.warn('Could not restore pre-stroke selection snapshot:', err);
+        }
+      }
+    }
+
+    if (selectionMode.current === 'create') {
+      selectionMode.current = null;
+      setIsCreatingSelection(false);
+      lassoPoints.current = [];
+      if (marqueeRef.current) {
+        marqueeRef.current.style.width = '0px';
+        marqueeRef.current.style.height = '0px';
+      }
+    }
+  };
 
   useImperativeHandle(ref, () => ({
       resetView: () => {
@@ -577,19 +627,25 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         }
     }
     
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+        // Ignore pointer capture errors
+    }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (e.button === 2) { 
+        gestureLocked.current = true;
         isGesture.current = true;
-        isDrawing.current = false;
+        cancelStrokeAndRestoreCanvas();
         lastPanPoint.current = { x: e.clientX, y: e.clientY };
         return;
     }
     
-    if (pointers.current.size >= 2) { 
+    if (pointers.current.size >= 2 || gestureLocked.current) { 
+        gestureLocked.current = true;
         isGesture.current = true;
-        isDrawing.current = false;
+        cancelStrokeAndRestoreCanvas();
         selectionMode.current = null;
         if (textInput) commitText();
 
@@ -608,12 +664,6 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
     const activeLayer = layers.find(l => l.id === activeLayerId);
 
-    if (tool === 'eyedropper') {
-        pickColor(x, y);
-        isDrawing.current = true;
-        return;
-    }
-
     const folderMap = new Map(layerFolders.map(f => [f.id, f]));
     const parentFolder = activeLayer?.folderId ? folderMap.get(activeLayer.folderId) : undefined;
     const isLayerLocked = activeLayer?.isLocked || (parentFolder?.isLocked ?? false);
@@ -622,6 +672,28 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     if (isLayerLocked || !isLayerVisible) {
         isDrawing.current = false;
         return;
+    }
+
+    // Capture pre-stroke snapshot for non-destructive rollback if a second finger joins to zoom
+    if (activeCanvasRef.current) {
+        const ctx = activeCanvasRef.current.getContext('2d');
+        if (ctx) {
+            try {
+                preStrokeCanvasSnapshot.current = ctx.getImageData(0, 0, activeCanvasRef.current.width, activeCanvasRef.current.height);
+            } catch {
+                preStrokeCanvasSnapshot.current = null;
+            }
+        }
+    }
+    if (selectionCanvasRef.current) {
+        const sCtx = selectionCanvasRef.current.getContext('2d');
+        if (sCtx) {
+            try {
+                preStrokeSelectionSnapshot.current = sCtx.getImageData(0, 0, selectionCanvasRef.current.width, selectionCanvasRef.current.height);
+            } catch {
+                preStrokeSelectionSnapshot.current = null;
+            }
+        }
     }
 
     if (tool === 'text') {
@@ -636,19 +708,9 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     }
 
     if (tool === 'select' || tool === 'lasso') {
-        // Only commit if we are not clicking on the selection
-        // Since this handler is on the container, and selection overlay stops propagation,
-        // we only get here if we clicked outside the selection box.
-        
-        // However, if the selection is outside the canvas, clicking on the canvas
-        // should probably NOT commit if the user is just trying to navigate.
-        // But if they are in 'select' tool, they probably want to start a new selection.
-        
-        // Let's add a small check: if the click is very close to the selection, don't commit.
         const isClickNearSelection = () => {
             if (!selection) return false;
             const margin = 60;
-            // Simple unrotated check for now as a heuristic
             return (
                 x >= selection.x - margin &&
                 x <= selection.x + selection.width + margin &&
@@ -658,7 +720,6 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         };
 
         if (selection && !isClickNearSelection()) {
-            // Only commit if clicking inside the canvas bounds
             const isInsideCanvas = x >= 0 && x <= canvasWidth && y >= 0 && y <= canvasHeight;
             if (isInsideCanvas) {
                 onSelectionCommit();
@@ -671,20 +732,6 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             lassoPoints.current = [{ x, y }];
         }
         setIsCreatingSelection(true);
-        isDrawing.current = false;
-        return;
-    }
-
-    if (tool === 'wand') {
-        if (selection) onSelectionCommit();
-        const ctx = activeCanvasRef.current?.getContext('2d');
-        if (ctx) {
-            const newSelection = magicWandSelect(ctx, Math.floor(x), Math.floor(y));
-            if (newSelection) {
-                saveCanvas();
-                onSelectionCreate({ ...newSelection, originX: newSelection.x, originY: newSelection.y });
-            }
-        }
         isDrawing.current = false;
         return;
     }
@@ -711,13 +758,19 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     let mx = mappedCoords.x;
     let my = mappedCoords.y;
 
-    let didCommit = false;
-    
-    const isActuallyDrawingOnSelection = selection && !didCommit && (mx >= 0 && mx <= selection.width && my >= 0 && my <= selection.height) && tool !== 'motionPath';
+    const isActuallyDrawingOnSelection = selection && (mx >= 0 && mx <= selection.width && my >= 0 && my <= selection.height) && tool !== 'motionPath';
     isDrawingOnSelectionRef.current = !!isActuallyDrawingOnSelection;
     
     const drawX = isActuallyDrawingOnSelection ? mx : x;
     const drawY = isActuallyDrawingOnSelection ? my : y;
+
+    // Postpone tap actions (eyedropper, wand, fill) to pointerup so multi-touch zoom doesn't trigger them accidentally
+    if (tool === 'eyedropper' || tool === 'wand' || tool === 'fill') {
+        pendingTapAction.current = { tool, x, y, mx, my };
+        isDrawing.current = false;
+        drawStart.current = { x: drawX, y: drawY };
+        return;
+    }
 
     const ctx = isActuallyDrawingOnSelection ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
     if (!ctx) return;
@@ -756,17 +809,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         }
     }
 
-    if (tool === 'fill') {
-        floodFill(ctx, Math.floor(mx), Math.floor(my), color, fillOpacity, fillTolerance);
-        if (!isDrawingOnSelectionRef.current) saveCanvas();
-        else {
-            // Update selection dataUrl
-            const newUrl = selectionCanvasRef.current?.toDataURL();
-            if (newUrl) onSelectionUpdate({ ...selection!, dataUrl: newUrl });
-        }
-        isDrawing.current = false;
-        isDrawingOnSelectionRef.current = false;
-    } else if (tool === 'shape') {
+    if (tool === 'shape') {
         canvasSnapshot.current = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     } else {
         setupBrush(ctx);
@@ -794,9 +837,28 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
       }
       e.stopPropagation();
       if (e.button === 2) return;
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+          // Ignore capture error
+      }
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       
+      if (pointers.current.size >= 2 || gestureLocked.current) {
+          gestureLocked.current = true;
+          isGesture.current = true;
+          selectionMode.current = null;
+          cancelStrokeAndRestoreCanvas();
+          const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
+          if (points.length >= 2) {
+              initialPinchDistance.current = getDistance(points[0], points[1]);
+              initialAngle.current = getAngle(points[0], points[1]);
+              startRotation.current = transform.current.rotation;
+              lastPanPoint.current = getCenter(points[0], points[1]);
+          }
+          return;
+      }
+
       const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
       selectionMode.current = 'move';
       dragStart.current = { x, y };
@@ -808,8 +870,27 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
       if (tool !== 'select') return;
       e.stopPropagation();
       if (e.button === 2) return;
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+          // Ignore capture error
+      }
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.current.size >= 2 || gestureLocked.current) {
+          gestureLocked.current = true;
+          isGesture.current = true;
+          selectionMode.current = null;
+          cancelStrokeAndRestoreCanvas();
+          const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
+          if (points.length >= 2) {
+              initialPinchDistance.current = getDistance(points[0], points[1]);
+              initialAngle.current = getAngle(points[0], points[1]);
+              startRotation.current = transform.current.rotation;
+              lastPanPoint.current = getCenter(points[0], points[1]);
+          }
+          return;
+      }
 
       const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
       selectionMode.current = type;
@@ -822,8 +903,27 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
       if (tool !== 'select') return;
       e.stopPropagation();
       if (e.button === 2) return;
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+          // Ignore capture error
+      }
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.current.size >= 2 || gestureLocked.current) {
+          gestureLocked.current = true;
+          isGesture.current = true;
+          selectionMode.current = null;
+          cancelStrokeAndRestoreCanvas();
+          const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
+          if (points.length >= 2) {
+              initialPinchDistance.current = getDistance(points[0], points[1]);
+              initialAngle.current = getAngle(points[0], points[1]);
+              startRotation.current = transform.current.rotation;
+              lastPanPoint.current = getCenter(points[0], points[1]);
+          }
+          return;
+      }
 
       selectionMode.current = 'rotate';
       initialSelection.current = selection ? { ...selection } : null;
@@ -864,8 +964,27 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
           return;
       }
 
-      containerRef.current?.setPointerCapture(e.pointerId);
+      try {
+          containerRef.current?.setPointerCapture(e.pointerId);
+      } catch {
+          // Ignore capture error
+      }
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.current.size >= 2 || gestureLocked.current) {
+          gestureLocked.current = true;
+          isGesture.current = true;
+          selectionMode.current = null;
+          cancelStrokeAndRestoreCanvas();
+          const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
+          if (points.length >= 2) {
+              initialPinchDistance.current = getDistance(points[0], points[1]);
+              initialAngle.current = getAngle(points[0], points[1]);
+              startRotation.current = transform.current.rotation;
+              lastPanPoint.current = getCenter(points[0], points[1]);
+          }
+          return;
+      }
 
       selectionMode.current = 'anchor';
       initialSelection.current = selection ? { ...selection } : null;
@@ -876,29 +995,27 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     if (isPlaying) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    if (e.pointerType === 'touch' && pointers.current.size >= 2) {
+    if (e.pointerType === 'touch' && (pointers.current.size >= 2 || gestureLocked.current)) {
         e.preventDefault();
     }
 
-    // Safety net for multi-touch gestures that might have missed pointerdown or are in buggy WebViews
-    if (pointers.current.size >= 2 && !isGesture.current) {
-        isGesture.current = true;
-        isDrawing.current = false;
-        const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
-        initialPinchDistance.current = getDistance(points[0], points[1]);
-        initialAngle.current = getAngle(points[0], points[1]);
-        startRotation.current = transform.current.rotation;
-        lastPanPoint.current = getCenter(points[0], points[1]);
-        
-        // If we were drawing, we should probably clear the current path to avoid a "dot" or "line" from the start of the pinch
-        const ctx = isDrawingOnSelectionRef.current ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
-        if (ctx && !hasMoved.current) {
-            // Re-render the frame to clear any accidental marks
-            forceUpdate({});
+    // Safety net: when 2 or more fingers are detected during movement, cancel any drawn marks and enter zoom/pan gesture
+    if (pointers.current.size >= 2 || gestureLocked.current) {
+        if (!isGesture.current) {
+            gestureLocked.current = true;
+            isGesture.current = true;
+            cancelStrokeAndRestoreCanvas();
+            const points = Array.from(pointers.current.values()) as { x: number; y: number }[];
+            if (points.length >= 2) {
+                initialPinchDistance.current = getDistance(points[0], points[1]);
+                initialAngle.current = getAngle(points[0], points[1]);
+                startRotation.current = transform.current.rotation;
+                lastPanPoint.current = getCenter(points[0], points[1]);
+            }
         }
     }
 
-    if (isGesture.current) {
+    if (isGesture.current || gestureLocked.current) {
         if (e.pointerType === 'mouse' && e.buttons === 2) {
             if (lastPanPoint.current) {
                 const dx = e.clientX - lastPanPoint.current.x;
@@ -945,7 +1062,13 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
 
     if (drawStart.current) {
         const dist = getDistance(drawStart.current, { x, y });
-        if (dist > 2) hasMoved.current = true;
+        if (dist > 2) {
+            hasMoved.current = true;
+            if (pendingTapAction.current && dist > 8) {
+                // Dragged significantly while on a tap tool - cancel pending tap
+                pendingTapAction.current = null;
+            }
+        }
     }
 
     if ((tool === 'select' || tool === 'lasso' || tool === 'wand') && selectionMode.current) {
@@ -1577,15 +1700,68 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
 
   const handlePointerUp = (e: React.PointerEvent) => {
     pointers.current.delete(e.pointerId);
-    e.currentTarget.releasePointerCapture(e.pointerId);
+    try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+        // Ignore release capture error
+    }
 
     if (e.button === 2) {
         isGesture.current = false;
         lastPanPoint.current = null;
-    } else if (pointers.current.size < 2) {
+    }
+
+    // Only unlock gesture and reset multi-touch parameters once ALL fingers have lifted off
+    if (pointers.current.size === 0) {
+        gestureLocked.current = false;
         isGesture.current = false;
         initialPinchDistance.current = null;
+        initialAngle.current = null;
         lastPanPoint.current = null;
+    }
+
+    // If a gesture was active or locked, abort any drawing or pending tap actions
+    if (gestureLocked.current || isGesture.current) {
+        cancelStrokeAndRestoreCanvas();
+        return;
+    }
+
+    // Execute pending discrete tap tool actions (eyedropper, wand, fill) only if no gesture occurred and no drag movement
+    if (pendingTapAction.current && !hasMoved.current) {
+        const action = pendingTapAction.current;
+        pendingTapAction.current = null;
+
+        if (action.tool === 'eyedropper') {
+            pickColor(action.x, action.y);
+        } else if (action.tool === 'wand') {
+            if (selection) onSelectionCommit();
+            const ctx = activeCanvasRef.current?.getContext('2d');
+            if (ctx) {
+                const newSelection = magicWandSelect(ctx, Math.floor(action.x), Math.floor(action.y));
+                if (newSelection) {
+                    saveCanvas();
+                    onSelectionCreate({ ...newSelection, originX: newSelection.x, originY: newSelection.y });
+                }
+            }
+        } else if (action.tool === 'fill') {
+            const isActOnSel = isDrawingOnSelectionRef.current;
+            const ctx = isActOnSel ? selectionCanvasRef.current?.getContext('2d') : activeCanvasRef.current?.getContext('2d');
+            if (ctx) {
+                floodFill(ctx, Math.floor(action.mx), Math.floor(action.my), color, fillOpacity, fillTolerance);
+                if (!isActOnSel) {
+                    saveCanvas();
+                } else {
+                    const newUrl = selectionCanvasRef.current?.toDataURL();
+                    if (newUrl) onSelectionUpdate({ ...selection!, dataUrl: newUrl });
+                }
+            }
+        }
+        isDrawing.current = false;
+        isDrawingOnSelectionRef.current = false;
+        drawStart.current = null;
+        preStrokeCanvasSnapshot.current = null;
+        preStrokeSelectionSnapshot.current = null;
+        return;
     }
 
     if (tool === 'select' || tool === 'lasso' || tool === 'wand') {
@@ -1733,6 +1909,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         drawStart.current = null;
         lastPoint.current = null;
         canvasSnapshot.current = null;
+        preStrokeCanvasSnapshot.current = null;
+        preStrokeSelectionSnapshot.current = null;
     }
   };
 

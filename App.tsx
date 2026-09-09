@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Frame, ToolType, Layer, LayerFolder, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point, Actor, TweenType, TweenOptions } from './types';
+import { Frame, ToolType, Layer, LayerFolder, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point, Actor, TweenType, TweenOptions, WorkspaceMode } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
+import { AdobeAnimateWorkspace } from './components/animate/AdobeAnimateWorkspace';
 import { Timeline } from './components/Timeline';
 import { Toolbar } from './components/Toolbar';
 import { Icons } from './Icons';
@@ -87,6 +88,15 @@ export default function App() {
   }, [deviceType]);
 
   // Global Settings
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
+    const saved = localStorage.getItem('clipanim_workspace_mode');
+    return (saved as WorkspaceMode) || 'classic';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('clipanim_workspace_mode', workspaceMode);
+  }, [workspaceMode]);
+
   const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [isVideoImportOpen, setIsVideoImportOpen] = useState(false);
@@ -1766,8 +1776,8 @@ export default function App() {
     }
 
     if (format === 'mp4') {
-        const exportWidth = canvasSize.width % 2 === 0 ? canvasSize.width : canvasSize.width - 1;
-        const exportHeight = canvasSize.height % 2 === 0 ? canvasSize.height : canvasSize.height - 1;
+        const exportWidth = Math.max(2, Math.floor(canvasSize.width / 2) * 2);
+        const exportHeight = Math.max(2, Math.floor(canvasSize.height / 2) * 2);
         const bitrateMap = {
             low: 1_000_000,
             medium: 4_000_000,
@@ -1776,20 +1786,20 @@ export default function App() {
 
         let mp4ExportSuccess = false;
 
-        // 1. Attempt WebCodecs + mp4-muxer with feature detection & codec fallback (supports Firefox, Chrome, Safari)
+        // 1. Attempt WebCodecs + mp4-muxer with standard H.264 (AVC1) profiles supported by Windows Media Player & QuickTime
         if (typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined') {
             try {
-                // Determine supported video codec for WebCodecs
+                // Standard H.264 (AVC1) video profile candidates
                 const videoCandidates = [
-                    { encoderCodec: 'avc1.42001e', muxerCodec: 'avc' as const },
-                    { encoderCodec: 'avc1.42001f', muxerCodec: 'avc' as const },
-                    { encoderCodec: 'avc1.4d401f', muxerCodec: 'avc' as const },
-                    { encoderCodec: 'avc1.4d002a', muxerCodec: 'avc' as const },
-                    { encoderCodec: 'vp09.00.10.08', muxerCodec: 'vp9' as const },
-                    { encoderCodec: 'av01.0.04M.08', muxerCodec: 'av1' as const }
+                    { encoderCodec: 'avc1.42001e', muxerCodec: 'avc' as const }, // Baseline Profile Level 3.0
+                    { encoderCodec: 'avc1.42001f', muxerCodec: 'avc' as const }, // Baseline Profile Level 3.1
+                    { encoderCodec: 'avc1.4d401f', muxerCodec: 'avc' as const }, // Main Profile Level 3.1
+                    { encoderCodec: 'avc1.4d002a', muxerCodec: 'avc' as const }, // Main Profile Level 4.2
+                    { encoderCodec: 'avc1.64001f', muxerCodec: 'avc' as const }, // High Profile Level 3.1
+                    { encoderCodec: 'avc1.640028', muxerCodec: 'avc' as const }, // High Profile Level 4.0
                 ];
 
-                let selectedVideo: { encoderCodec: string; muxerCodec: 'avc' | 'hevc' | 'vp9' | 'av1' } | null = null;
+                let selectedVideo: { encoderCodec: string; muxerCodec: 'avc' } | null = null;
                 for (const cand of videoCandidates) {
                     try {
                         const support = await VideoEncoder.isConfigSupported({
@@ -1797,7 +1807,8 @@ export default function App() {
                             width: exportWidth,
                             height: exportHeight,
                             bitrate: bitrateMap[quality],
-                            framerate: fps
+                            framerate: fps,
+                            avc: { format: 'avc' }
                         });
                         if (support.supported) {
                             selectedVideo = cand;
@@ -1809,12 +1820,12 @@ export default function App() {
                 }
 
                 if (selectedVideo) {
-                    // Determine supported audio codec (if audio tracks exist)
-                    let selectedAudio: { encoderCodec: string; muxerCodec: 'aac' | 'opus'; sampleRate: number } | null = null;
+                    // Determine supported AAC audio codec
+                    let selectedAudio: { encoderCodec: string; muxerCodec: 'aac'; sampleRate: number } | null = null;
                     if (audioTracks.length > 0 && typeof AudioEncoder !== 'undefined') {
                         const audioCandidates = [
                             { encoderCodec: 'mp4a.40.2', muxerCodec: 'aac' as const, sampleRate: 44100 },
-                            { encoderCodec: 'opus', muxerCodec: 'opus' as const, sampleRate: 48000 }
+                            { encoderCodec: 'mp4a.40.2', muxerCodec: 'aac' as const, sampleRate: 48000 }
                         ];
 
                         for (const cand of audioCandidates) {
@@ -1877,7 +1888,8 @@ export default function App() {
                         width: exportWidth,
                         height: exportHeight,
                         bitrate: bitrateMap[quality],
-                        framerate: fps
+                        framerate: fps,
+                        avc: { format: 'avc' }
                     });
 
                     let audioEncoder: AudioEncoder | null = null;
@@ -2054,14 +2066,17 @@ export default function App() {
 
                 const mp4MimeTypes = [
                     'video/mp4;codecs=avc1',
+                    'video/mp4;codecs=avc1.42001e',
+                    'video/mp4;codecs=avc1.4d401f',
                     'video/mp4;codecs=h264',
-                    'video/mp4;codecs=vp9',
-                    'video/mp4',
-                    'video/webm;codecs=vp9',
-                    'video/webm'
+                    'video/mp4'
                 ];
 
-                const selectedMimeType = mp4MimeTypes.find(type => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) || 'video/webm';
+                const supportedMp4Mime = mp4MimeTypes.find(type => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type));
+                const selectedMimeType = supportedMp4Mime || 'video/webm;codecs=vp9';
+                const isRealMp4 = Boolean(supportedMp4Mime);
+                const fileExt = isRealMp4 ? 'mp4' : 'webm';
+                const blobMimeType = isRealMp4 ? 'video/mp4' : 'video/webm';
 
                 const mediaRecorder = new MediaRecorder(stream, {
                     mimeType: selectedMimeType,
@@ -2074,10 +2089,10 @@ export default function App() {
                 };
 
                 mediaRecorder.onstop = () => {
-                    const blob = new Blob(chunks, { type: 'video/mp4' });
+                    const blob = new Blob(chunks, { type: blobMimeType });
                     const url = URL.createObjectURL(blob);
                     
-                    setExportedFile({ url, name: `${projectName}.mp4`, blob });
+                    setExportedFile({ url, name: `${projectName}.${fileExt}`, blob });
                     setIsExporting(false);
                     setExportProgress(100);
                 };
@@ -4356,6 +4371,124 @@ export default function App() {
             </div>
           )}
         </div>
+      ) : workspaceMode === 'adobe-animate' ? (
+        <AdobeAnimateWorkspace
+          projectName={projectName}
+          setProjectName={(name) => {
+            setProjectName(name);
+            setHasUnsavedChanges(true);
+          }}
+          hasUnsavedChanges={hasUnsavedChanges}
+          canvasWidth={canvasSize.width}
+          canvasHeight={canvasSize.height}
+          setCanvasSize={setCanvasSize}
+          fps={fps}
+          setFps={setFps}
+          background={background}
+          setBackground={setBackground}
+          backgroundImage={backgroundImage}
+          workspaceMode={workspaceMode}
+          onSetWorkspaceMode={setWorkspaceMode}
+          onSaveProject={saveProject}
+          onExportMovie={() => setIsExportModalOpen(true)}
+          onOpenProjectSettings={() => setIsSettingsOpen(true)}
+          onOpenGlobalSettings={() => setIsGlobalSettingsOpen(true)}
+          onTestMovie={() => setIsTestingMovie(true)}
+          onOpenCodeEditor={() => setIsScriptEditorOpen(true)}
+          onOpenHelp={() => setIsHelpOpen(true)}
+          onOpenTutorial={() => setIsTutorialOpen(true)}
+          onOpenAssetLibrary={() => setIsAssetLibraryOpen(true)}
+          onOpenBackpack={() => setIsBackpackOpen(true)}
+          onOpenSoundLibrary={() => setIsSoundLibraryOpen(true)}
+          onOpenAudioEditor={() => setIsAudioEditorOpen(true)}
+          onOpenRecorder={() => setIsAudioRecorderOpen(true)}
+          onOpenSpritesheetExport={() => setIsSpritesheetExportOpen(true)}
+          onOpenFrameManager={() => setIsFrameManagerOpen(true)}
+          onExitToMenu={handleGoHome}
+          frames={frames}
+          currentFrameIndex={currentFrameIndex}
+          onSelectFrame={handleSelectFrame}
+          onAddFrame={addFrame}
+          onDeleteFrame={deleteFrame}
+          onCopyFrame={copyFrame}
+          onTweenFrame={tweenFrame}
+          onUpdateFrameDuration={handleUpdateFrameDuration}
+          isPlaying={isPlaying}
+          onTogglePlay={() => setIsPlaying(!isPlaying)}
+          isLooping={isLooping}
+          onToggleLoop={() => setIsLooping(!isLooping)}
+          onionSkin={onionSkin}
+          onToggleOnionSkin={() => setOnionSkin(!onionSkin)}
+          onionSkinSettings={onionSkinSettings}
+          layers={layers}
+          layerFolders={layerFolders}
+          activeLayerId={activeLayerId}
+          onSelectLayer={setActiveLayerId}
+          onAddLayer={addLayer}
+          onAddLayerFolder={addLayerFolder}
+          onRemoveLayer={removeLayer}
+          onToggleLayerVisibility={toggleLayerVisibility}
+          onToggleLayerLock={toggleLayerLock}
+          onRenameLayer={renameLayer}
+          onUpdateLayer={handleUpdateLayer}
+          onUpdateLayerSettings={updateLayerSettings}
+          audioTracks={audioTracks}
+          onAddAudioTrack={handleAddAudioTrack}
+          onRemoveAudioTrack={handleRemoveAudioTrack}
+          onUpdateAudioTrack={handleUpdateAudioTrack}
+          currentTool={tool}
+          onSelectTool={setTool}
+          currentBrushType={brushType}
+          onSelectBrushType={setBrushType}
+          currentColor={color}
+          onChangeColor={setColor}
+          strokeWidth={currentStrokeWidth}
+          onChangeStrokeWidth={handleStrokeWidthChange}
+          fillOpacity={fillOpacity}
+          onChangeFillOpacity={setFillOpacity}
+          fillTolerance={fillTolerance}
+          onChangeFillTolerance={setFillTolerance}
+          smoothing={smoothing}
+          onChangeSmoothing={setSmoothing}
+          shapeType={shapeType}
+          onSelectShapeType={setShapeType}
+          showGrid={showGrid}
+          onToggleGrid={() => setShowGrid(!showGrid)}
+          isFocusMode={isFocusMode}
+          onToggleFocusMode={() => setIsFocusMode(!isFocusMode)}
+          symmetryMode={symmetryMode}
+          onSelectSymmetryMode={setSymmetryMode}
+          textToolFont={textToolFont}
+          onSelectTextToolFont={setTextToolFont}
+          textToolBold={textToolBold}
+          setTextToolBold={setTextToolBold}
+          textToolItalic={textToolItalic}
+          setTextToolItalic={setTextToolItalic}
+          selection={selection}
+          onSelectionCreate={handleSelectionCreate}
+          onSelectionUpdate={setSelection}
+          onSelectionCommit={handleSelectionCommit}
+          onSelectionDelete={handleSelectionDelete}
+          onSelectionMakeSymbol={handleMakeSymbol}
+          onFlipHorizontal={() => setSelection(selection ? {...selection, scaleX: selection.scaleX * -1} : null)}
+          onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)}
+          onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)}
+          actors={actors}
+          onAddActor={(newActor) => setActors(prev => [...prev, newActor])}
+          onRemoveActor={(id) => setActors(prev => prev.filter(a => a.id !== id))}
+          onEnterSymbolEditMode={enterSymbolEditMode}
+          backpackItems={backpackItems}
+          onStampBackpackItem={handleStampOnLayer}
+          onImportImage={handleImportImage}
+          onImportVideo={(file) => { setImportingVideoFile(file); setIsVideoImportOpen(true); }}
+          onUndo={undo}
+          onRedo={redo}
+          deviceType={deviceType}
+          cameraMode={cameraMode}
+          onToggleCameraMode={() => setCameraMode(!cameraMode)}
+          onApplyMotionPath={handleApplyMotionPath}
+          canvasRef={canvasRef}
+        />
       ) : (
         <div key={projectId} className="flex flex-col h-full overflow-hidden relative">
       {!isFocusMode && (
@@ -4978,6 +5111,8 @@ export default function App() {
         setDeviceType={setDeviceType}
         theme={theme}
         setTheme={setTheme}
+        workspaceMode={workspaceMode}
+        setWorkspaceMode={setWorkspaceMode}
       />
       
       <AssetLibraryModal
