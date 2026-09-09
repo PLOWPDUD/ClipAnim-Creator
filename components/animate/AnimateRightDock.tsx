@@ -55,6 +55,7 @@ interface AnimateRightDockProps {
   onSelectionCommit: () => void;
   onSelectionDelete: () => void;
   onSelectionMakeSymbol?: () => void;
+  onOpenProjectSettings?: () => void;
 }
 
 export const AnimateRightDock: React.FC<AnimateRightDockProps> = ({
@@ -101,7 +102,8 @@ export const AnimateRightDock: React.FC<AnimateRightDockProps> = ({
   onFlipHorizontal,
   onFlipVertical,
   onRotate,
-  onSelectionMakeSymbol
+  onSelectionMakeSymbol,
+  onOpenProjectSettings
 }) => {
   const [activeTab, setActiveTab] = useState<'properties' | 'library' | 'layers' | 'backpack'>('properties');
   const [selectedActorId, setSelectedActorId] = useState<string | null>(actors[0]?.id || null);
@@ -513,6 +515,17 @@ export const AnimateRightDock: React.FC<AnimateRightDockProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Full Document & Project Settings Button */}
+              {onOpenProjectSettings && (
+                <button
+                  onClick={onOpenProjectSettings}
+                  className="w-full mt-2 py-2 px-3 bg-[#2a2a2a] hover:bg-[#383838] border border-[#3e3e3e] text-amber-300 hover:text-white rounded-md font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm"
+                >
+                  <Icons.SlidersHorizontal size={14} className="text-amber-400" />
+                  <span>Document & Project Settings...</span>
+                </button>
+              )}
             </div>
 
           </div>

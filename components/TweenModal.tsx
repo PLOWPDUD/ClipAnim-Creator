@@ -28,8 +28,8 @@ export const TweenModal: React.FC<TweenModalProps> = ({
   isOpen, 
   onClose, 
   onGenerate,
-  frameAThumbnail: _frameAThumbnail,
-  frameBThumbnail: _frameBThumbnail
+  frameAThumbnail,
+  frameBThumbnail
 }) => {
   // Active Tween Type
   const [tweenType, setTweenType] = useState<TweenType>('motion');
@@ -61,7 +61,7 @@ export const TweenModal: React.FC<TweenModalProps> = ({
 
   // Live Preview Canvas State
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [previewProgress, setPreviewProgress] = useState(0);
+  const progressTextRef = useRef<HTMLSpanElement | null>(null);
 
   // Easing presets
   const easingOptions = [
@@ -141,7 +141,9 @@ export const TweenModal: React.FC<TweenModalProps> = ({
       const rawT = elapsed / duration;
       // Ping-pong for preview
       const t = rawT < 0.5 ? rawT * 2 : (1 - rawT) * 2;
-      setPreviewProgress(t);
+      if (progressTextRef.current) {
+        progressTextRef.current.textContent = `Loop Progress: ${Math.round(t * 100)}%`;
+      }
 
       const canvas = previewCanvasRef.current;
       if (canvas) {
@@ -369,7 +371,7 @@ export const TweenModal: React.FC<TweenModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200">
       <div className="bg-[#151518] rounded-2xl w-full max-w-xl shadow-2xl border border-white/10 flex flex-col max-h-[92vh] overflow-hidden text-gray-200">
         
         {/* Header */}
@@ -415,6 +417,47 @@ export const TweenModal: React.FC<TweenModalProps> = ({
         {/* Scrollable Body */}
         <div className="p-5 space-y-5 overflow-y-auto custom-scrollbar flex-1 text-sm">
           
+          {/* Keyframe Pair Preview Indicator */}
+          {(frameAThumbnail || frameBThumbnail) && (
+            <div className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="w-12 h-9 rounded-lg overflow-hidden border border-white/20 bg-black/50 shrink-0 flex items-center justify-center">
+                  {frameAThumbnail ? (
+                    <img src={frameAThumbnail} alt="Start Keyframe" className="w-full h-full object-contain" />
+                  ) : (
+                    <span className="text-[9px] text-gray-500 font-mono">Frame A</span>
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white">Start Keyframe</div>
+                  <div className="text-[10px] text-gray-400">Origin pose</div>
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center px-2">
+                <div className="flex items-center gap-1 text-purple-400">
+                  <div className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                  <Icons.ArrowRight size={14} />
+                </div>
+                <span className="text-[9px] text-purple-300 font-bold uppercase tracking-wider">{numFrames} in-betweens</span>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <div className="text-right">
+                  <div className="text-xs font-bold text-white">End Keyframe</div>
+                  <div className="text-[10px] text-gray-400">Target pose</div>
+                </div>
+                <div className="w-12 h-9 rounded-lg overflow-hidden border border-white/20 bg-black/50 shrink-0 flex items-center justify-center">
+                  {frameBThumbnail ? (
+                    <img src={frameBThumbnail} alt="End Keyframe" className="w-full h-full object-contain" />
+                  ) : (
+                    <span className="text-[9px] text-gray-500 font-mono">Frame B</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* TWEEN TYPE SELECTOR TABS */}
           <div className="space-y-1.5">
             <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">
@@ -493,8 +536,8 @@ export const TweenModal: React.FC<TweenModalProps> = ({
                 <Icons.Play size={12} className="text-emerald-400" />
                 <span>Live Interactive Simulation</span>
               </span>
-              <span className="font-mono text-[10px] text-gray-400">
-                Loop Progress: {Math.round(previewProgress * 100)}%
+              <span ref={progressTextRef} className="font-mono text-[10px] text-gray-400">
+                Loop Progress: 0%
               </span>
             </div>
             

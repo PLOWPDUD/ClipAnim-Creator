@@ -40,6 +40,8 @@ interface AnimateTimelineProps {
   onOpenRecorder?: () => void;
   onOpenBackpack?: () => void;
   onOpenFrameManager?: () => void;
+  framebarPosition?: 'top' | 'bottom';
+  onToggleFramebarPosition?: () => void;
 }
 
 export const AnimateTimeline: React.FC<AnimateTimelineProps> = ({
@@ -72,7 +74,9 @@ export const AnimateTimeline: React.FC<AnimateTimelineProps> = ({
   onOpenAudioEditor,
   onOpenRecorder,
   onOpenBackpack,
-  onOpenFrameManager
+  onOpenFrameManager,
+  framebarPosition = 'top',
+  onToggleFramebarPosition
 }) => {
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [layerNameInput, setLayerNameInput] = useState('');
@@ -128,7 +132,7 @@ export const AnimateTimeline: React.FC<AnimateTimelineProps> = ({
   const rulerTicks = Array.from({ length: totalRulerFrames }, (_, i) => i);
 
   return (
-    <div className="bg-[#242424] border-b border-[#141414] select-none text-gray-200 text-xs font-sans shrink-0 flex flex-col z-30 shadow-md">
+    <div className={`bg-[#242424] ${framebarPosition === 'bottom' ? 'border-t border-[#141414]' : 'border-b border-[#141414]'} select-none text-gray-200 text-xs font-sans shrink-0 flex flex-col z-30 shadow-md`}>
       
       {/* Top Header & Track Bar */}
       <div className="flex h-36 border-b border-[#181818] overflow-hidden">
@@ -141,6 +145,16 @@ export const AnimateTimeline: React.FC<AnimateTimelineProps> = ({
             <div className="flex items-center gap-1.5">
               <Icons.Layers size={13} className="text-[#E34F26]" />
               <span className="uppercase tracking-wider text-[10px] text-gray-300">Layers</span>
+              {onToggleFramebarPosition && (
+                <button
+                  onClick={onToggleFramebarPosition}
+                  className="ml-1 px-1 py-0.5 text-purple-300 hover:text-white bg-purple-500/20 hover:bg-purple-500/30 rounded border border-purple-500/30 text-[10px] transition-colors flex items-center gap-0.5"
+                  title={framebarPosition === 'top' ? "Move Framebar Down (Bottom Dock)" : "Move Framebar Up (Top Dock)"}
+                >
+                  {framebarPosition === 'top' ? <Icons.ArrowDown size={11} /> : <Icons.ArrowUp size={11} />}
+                  <span className="text-[9px] font-semibold uppercase">{framebarPosition === 'top' ? 'Down' : 'Up'}</span>
+                </button>
+              )}
             </div>
 
             {/* Quick Actions & Column Toggles */}
@@ -559,6 +573,27 @@ export const AnimateTimeline: React.FC<AnimateTimelineProps> = ({
               title="Open Frame Manager Sheet"
             >
               <Icons.LayoutGrid size={13} />
+            </button>
+          )}
+
+          {/* MOVE FRAMEBAR UP/DOWN */}
+          {onToggleFramebarPosition && (
+            <button
+              onClick={onToggleFramebarPosition}
+              className="flex items-center gap-1 px-2 py-0.5 bg-[#2a2038] hover:bg-[#3b2d50] text-purple-300 hover:text-purple-100 rounded border border-purple-500/40 text-[11px] font-semibold transition-colors shadow-sm ml-1"
+              title={framebarPosition === 'top' ? "Move Framebar to Bottom (Down)" : "Move Framebar to Top (Up)"}
+            >
+              {framebarPosition === 'top' ? (
+                <>
+                  <Icons.ArrowDown size={12} className="text-purple-400" />
+                  <span className="hidden sm:inline">Move Down</span>
+                </>
+              ) : (
+                <>
+                  <Icons.ArrowUp size={12} className="text-purple-400" />
+                  <span className="hidden sm:inline">Move Up</span>
+                </>
+              )}
             </button>
           )}
         </div>

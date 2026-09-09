@@ -33,12 +33,15 @@ interface AnimateHeaderProps {
   onInsertBlankFrame?: () => void;
   onDeleteFrame?: () => void;
   onConvertToSymbol?: () => void;
+  onTweenFrame?: () => void;
   onTogglePlay?: () => void;
   isPlaying?: boolean;
   onImportImage: (file: File) => void;
   onImportVideo: (file: File) => void;
   onExitToMenu: () => void;
   actorsCount: number;
+  framebarPosition?: 'top' | 'bottom';
+  onToggleFramebarPosition?: () => void;
 }
 
 export const AnimateHeader: React.FC<AnimateHeaderProps> = ({
@@ -72,12 +75,15 @@ export const AnimateHeader: React.FC<AnimateHeaderProps> = ({
   onInsertBlankFrame,
   onDeleteFrame,
   onConvertToSymbol,
+  onTweenFrame,
   onTogglePlay,
   isPlaying,
   onImportImage,
   onImportVideo,
   onExitToMenu,
-  actorsCount
+  actorsCount,
+  framebarPosition = 'top',
+  onToggleFramebarPosition
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -250,6 +256,44 @@ export const AnimateHeader: React.FC<AnimateHeaderProps> = ({
               )}
             </div>
 
+            {/* VIEW MENU */}
+            <div className="relative">
+              <button
+                onClick={() => setActiveMenu(activeMenu === 'view' ? null : 'view')}
+                onMouseEnter={() => handleMenuHover('view')}
+                className={`px-2 py-1 rounded text-xs transition-colors ${
+                  activeMenu === 'view' ? 'bg-[#383838] text-white' : 'text-gray-300 hover:text-white hover:bg-[#2c2c2c]'
+                }`}
+              >
+                View
+              </button>
+              {activeMenu === 'view' && (
+                <div className="absolute left-0 top-full mt-0.5 w-64 bg-[#282828] border border-[#3e3e3e] rounded-md shadow-2xl py-1 z-50 text-gray-200 text-xs">
+                  {onToggleFramebarPosition && (
+                    <button 
+                      onClick={() => { onToggleFramebarPosition(); setActiveMenu(null); }}
+                      className="w-full px-3 py-1.5 hover:bg-[#0078d7] hover:text-white flex items-center justify-between transition-colors text-purple-300 font-medium"
+                    >
+                      <span className="flex items-center gap-2">
+                        {framebarPosition === 'top' ? <Icons.ArrowDown size={13} /> : <Icons.ArrowUp size={13} />}
+                        Framebar Position ({framebarPosition === 'top' ? 'Top ↑' : 'Bottom ↓'})
+                      </span>
+                      <span className="text-[10px] text-purple-300 font-mono font-bold bg-purple-500/20 px-1.5 py-0.5 rounded">
+                        {framebarPosition === 'top' ? 'Move Down' : 'Move Up'}
+                      </span>
+                    </button>
+                  )}
+                  <div className="h-[1px] bg-[#383838] my-1" />
+                  <button 
+                    onClick={() => { onOpenProjectSettings(); setActiveMenu(null); }}
+                    className="w-full px-3 py-1.5 hover:bg-[#0078d7] hover:text-white flex items-center justify-between transition-colors"
+                  >
+                    <span className="flex items-center gap-2"><Icons.Grid size={13} /> Grid & Stage Settings...</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* INSERT MENU */}
             <div className="relative">
               <button
@@ -276,6 +320,13 @@ export const AnimateHeader: React.FC<AnimateHeaderProps> = ({
                   >
                     <span className="flex items-center gap-2"><Icons.Plus size={13} /> Blank Keyframe</span>
                     <span className="text-[10px] text-gray-400 font-mono">F7</span>
+                  </button>
+                  <div className="h-[1px] bg-[#383838] my-1" />
+                  <button 
+                    onClick={() => { onTweenFrame?.(); setActiveMenu(null); }}
+                    className="w-full px-3 py-1.5 hover:bg-[#0078d7] hover:text-white flex items-center justify-between transition-colors text-purple-300 font-medium"
+                  >
+                    <span className="flex items-center gap-2"><Icons.Sparkles size={13} /> Create Tween...</span>
                   </button>
                   <div className="h-[1px] bg-[#383838] my-1" />
                   <button 
@@ -450,6 +501,16 @@ export const AnimateHeader: React.FC<AnimateHeaderProps> = ({
         {/* Right: Secondary "Classic UI" Button + Workspace Badges + Quick Actions */}
         <div className="flex items-center gap-2 shrink-0">
           
+          {/* Project Settings Button */}
+          <button
+            onClick={onOpenProjectSettings}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-[#282828] hover:bg-[#383838] text-gray-200 hover:text-white border border-[#444] rounded-md text-xs font-semibold transition-all shadow-sm"
+            title="Open Document & Project Settings (Ctrl+J)"
+          >
+            <Icons.SlidersHorizontal size={13} className="text-amber-400" />
+            <span className="hidden md:inline">Project Settings</span>
+          </button>
+
           {/* THE REQUESTED DEDICATED SECONDARY CLASSIC BUTTON */}
           <button
             onClick={() => onSetWorkspaceMode('classic')}

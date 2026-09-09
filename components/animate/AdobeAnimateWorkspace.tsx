@@ -262,9 +262,65 @@ export const AdobeAnimateWorkspace: React.FC<AdobeAnimateWorkspaceProps> = ({
   onApplyMotionPath,
   canvasRef
 }) => {
+  const [framebarPosition, setFramebarPosition] = React.useState<'top' | 'bottom'>(() => {
+    const saved = localStorage.getItem('clipanim_framebar_pos');
+    return (saved as 'top' | 'bottom') || 'top';
+  });
+
+  const toggleFramebarPosition = () => {
+    setFramebarPosition(prev => {
+      const next = prev === 'top' ? 'bottom' : 'top';
+      localStorage.setItem('clipanim_framebar_pos', next);
+      return next;
+    });
+  };
+
   const currentFrame = frames[currentFrameIndex] || frames[0];
   const beforeFrames = onionSkin ? frames.slice(Math.max(0, currentFrameIndex - onionSkinSettings.numBefore), currentFrameIndex) : [];
   const afterFrames = onionSkin ? frames.slice(currentFrameIndex + 1, currentFrameIndex + 1 + onionSkinSettings.numAfter) : [];
+
+  const renderTimeline = () => (
+    <AnimateTimeline
+      frames={frames}
+      currentFrameIndex={currentFrameIndex}
+      onSelectFrame={onSelectFrame}
+      onAddFrame={onAddFrame}
+      onDeleteFrame={onDeleteFrame}
+      onCopyFrame={onCopyFrame}
+      onTweenFrame={onTweenFrame}
+      isPlaying={isPlaying}
+      onTogglePlay={onTogglePlay}
+      isLooping={isLooping}
+      onToggleLoop={onToggleLoop}
+      audioTracks={audioTracks}
+      onAddAudioTrack={onAddAudioTrack}
+      onRemoveAudioTrack={onRemoveAudioTrack}
+      onUpdateAudioTrack={onUpdateAudioTrack}
+      onUpdateFrameDuration={onUpdateFrameDuration}
+      fps={fps}
+      layers={layers}
+      layerFolders={layerFolders}
+      activeLayerId={activeLayerId}
+      onSelectLayer={onSelectLayer}
+      onAddLayer={onAddLayer}
+      onAddLayerFolder={onAddLayerFolder}
+      onRemoveLayer={onRemoveLayer}
+      onToggleLayerVisibility={onToggleLayerVisibility}
+      onToggleLayerLock={onToggleLayerLock}
+      onRenameLayer={onRenameLayer}
+      onionSkin={onionSkin}
+      onToggleOnionSkin={onToggleOnionSkin}
+      background={background}
+      backgroundImage={backgroundImage}
+      onOpenSoundLibrary={onOpenSoundLibrary}
+      onOpenAudioEditor={onOpenAudioEditor}
+      onOpenRecorder={onOpenRecorder}
+      onOpenBackpack={onOpenBackpack}
+      onOpenFrameManager={onOpenFrameManager}
+      framebarPosition={framebarPosition}
+      onToggleFramebarPosition={toggleFramebarPosition}
+    />
+  );
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#1a1a1a] text-gray-200 overflow-hidden font-sans select-none">
@@ -301,53 +357,19 @@ export const AdobeAnimateWorkspace: React.FC<AdobeAnimateWorkspaceProps> = ({
         onInsertBlankFrame={onAddFrame}
         onDeleteFrame={() => onDeleteFrame(currentFrameIndex)}
         onConvertToSymbol={() => onSelectionMakeSymbol?.()}
+        onTweenFrame={() => onTweenFrame(currentFrameIndex)}
         onTogglePlay={onTogglePlay}
         isPlaying={isPlaying}
         onImportImage={onImportImage}
         onImportVideo={onImportVideo}
         onExitToMenu={onExitToMenu}
         actorsCount={actors.length}
+        framebarPosition={framebarPosition}
+        onToggleFramebarPosition={toggleFramebarPosition}
       />
 
-      {/* 2. Adobe Animate Top Timeline (Docked above stage) */}
-      <AnimateTimeline
-        frames={frames}
-        currentFrameIndex={currentFrameIndex}
-        onSelectFrame={onSelectFrame}
-        onAddFrame={onAddFrame}
-        onDeleteFrame={onDeleteFrame}
-        onCopyFrame={onCopyFrame}
-        onTweenFrame={onTweenFrame}
-        isPlaying={isPlaying}
-        onTogglePlay={onTogglePlay}
-        isLooping={isLooping}
-        onToggleLoop={onToggleLoop}
-        audioTracks={audioTracks}
-        onAddAudioTrack={onAddAudioTrack}
-        onRemoveAudioTrack={onRemoveAudioTrack}
-        onUpdateAudioTrack={onUpdateAudioTrack}
-        onUpdateFrameDuration={onUpdateFrameDuration}
-        fps={fps}
-        layers={layers}
-        layerFolders={layerFolders}
-        activeLayerId={activeLayerId}
-        onSelectLayer={onSelectLayer}
-        onAddLayer={onAddLayer}
-        onAddLayerFolder={onAddLayerFolder}
-        onRemoveLayer={onRemoveLayer}
-        onToggleLayerVisibility={onToggleLayerVisibility}
-        onToggleLayerLock={onToggleLayerLock}
-        onRenameLayer={onRenameLayer}
-        onionSkin={onionSkin}
-        onToggleOnionSkin={onToggleOnionSkin}
-        background={background}
-        backgroundImage={backgroundImage}
-        onOpenSoundLibrary={onOpenSoundLibrary}
-        onOpenAudioEditor={onOpenAudioEditor}
-        onOpenRecorder={onOpenRecorder}
-        onOpenBackpack={onOpenBackpack}
-        onOpenFrameManager={onOpenFrameManager}
-      />
+      {/* 2. Framebar Timeline Top (when docked above stage) */}
+      {framebarPosition === 'top' && renderTimeline()}
 
       {/* 3. Middle Work Area: Toolbar + Stage Canvas + Right Dock */}
       <div className="flex-1 flex overflow-hidden relative">
@@ -484,9 +506,13 @@ export const AdobeAnimateWorkspace: React.FC<AdobeAnimateWorkspaceProps> = ({
           onSelectionCommit={() => onSelectionCommit()}
           onSelectionDelete={onSelectionDelete}
           onSelectionMakeSymbol={() => onSelectionMakeSymbol?.()}
+          onOpenProjectSettings={onOpenProjectSettings}
         />
 
       </div>
+
+      {/* 4. Framebar Timeline Bottom (when docked below stage) */}
+      {framebarPosition === 'bottom' && renderTimeline()}
 
     </div>
   );

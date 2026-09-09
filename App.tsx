@@ -3324,8 +3324,23 @@ export default function App() {
   };
 
   const tweenFrame = (index: number) => {
-    if (index >= frames.length - 1) return; // Cannot tween the last frame
-    setTweenTargetIndex(index);
+    let targetIdx = index;
+    if (frames.length <= 1) {
+      // If only 1 frame exists, duplicate frame 0 to frame 1 so the user has a keyframe pair to interpolate between
+      const frameToCopy = frames[0];
+      const newFrame: Frame = { 
+        ...frameToCopy, 
+        id: crypto.randomUUID(), 
+        layers: { ...frameToCopy.layers } 
+      };
+      const newFrames = [frameToCopy, newFrame];
+      updateFramesWithHistory(newFrames);
+      targetIdx = 0;
+    } else if (index >= frames.length - 1) {
+      // If on the last frame, tween between previous keyframe and current keyframe
+      targetIdx = Math.max(0, index - 1);
+    }
+    setTweenTargetIndex(targetIdx);
   };
 
   const executeTween = async (
@@ -3343,15 +3358,16 @@ export default function App() {
     tweenType: TweenType = 'motion',
     options?: Partial<TweenOptions>
   ) => {
-    if (index >= frames.length - 1) return; // Cannot tween the last frame
+    if (frames.length < 2) return;
+    const targetIndex = index >= frames.length - 1 ? Math.max(0, frames.length - 2) : Math.max(0, index);
     
     const originalOnionSkin = onionSkin;
     if (!includeOnionSkin) {
         setOnionSkin(false);
     }
 
-    const frameA = frames[index];
-    const frameB = frames[index + 1];
+    const frameA = frames[targetIndex];
+    const frameB = frames[targetIndex + 1];
     
     const generatedFrames: Frame[] = [];
 
@@ -3458,9 +3474,9 @@ export default function App() {
     }
 
     const newFrames = [...frames];
-    newFrames.splice(index + 1, 0, ...generatedFrames);
+    newFrames.splice(targetIndex + 1, 0, ...generatedFrames);
     updateFramesWithHistory(newFrames);
-    setCurrentFrameIndex(index + numTweens + 1);
+    setCurrentFrameIndex(targetIndex + numTweens + 1);
     setHasUnsavedChanges(true);
 
     if (!includeOnionSkin) {
@@ -4371,125 +4387,127 @@ export default function App() {
             </div>
           )}
         </div>
-      ) : workspaceMode === 'adobe-animate' ? (
-        <AdobeAnimateWorkspace
-          projectName={projectName}
-          setProjectName={(name) => {
-            setProjectName(name);
-            setHasUnsavedChanges(true);
-          }}
-          hasUnsavedChanges={hasUnsavedChanges}
-          canvasWidth={canvasSize.width}
-          canvasHeight={canvasSize.height}
-          setCanvasSize={setCanvasSize}
-          fps={fps}
-          setFps={setFps}
-          background={background}
-          setBackground={setBackground}
-          backgroundImage={backgroundImage}
-          workspaceMode={workspaceMode}
-          onSetWorkspaceMode={setWorkspaceMode}
-          onSaveProject={saveProject}
-          onExportMovie={() => setIsExportModalOpen(true)}
-          onOpenProjectSettings={() => setIsSettingsOpen(true)}
-          onOpenGlobalSettings={() => setIsGlobalSettingsOpen(true)}
-          onTestMovie={() => setIsTestingMovie(true)}
-          onOpenCodeEditor={() => setIsScriptEditorOpen(true)}
-          onOpenHelp={() => setIsHelpOpen(true)}
-          onOpenTutorial={() => setIsTutorialOpen(true)}
-          onOpenAssetLibrary={() => setIsAssetLibraryOpen(true)}
-          onOpenBackpack={() => setIsBackpackOpen(true)}
-          onOpenSoundLibrary={() => setIsSoundLibraryOpen(true)}
-          onOpenAudioEditor={() => setIsAudioEditorOpen(true)}
-          onOpenRecorder={() => setIsAudioRecorderOpen(true)}
-          onOpenSpritesheetExport={() => setIsSpritesheetExportOpen(true)}
-          onOpenFrameManager={() => setIsFrameManagerOpen(true)}
-          onExitToMenu={handleGoHome}
-          frames={frames}
-          currentFrameIndex={currentFrameIndex}
-          onSelectFrame={handleSelectFrame}
-          onAddFrame={addFrame}
-          onDeleteFrame={deleteFrame}
-          onCopyFrame={copyFrame}
-          onTweenFrame={tweenFrame}
-          onUpdateFrameDuration={handleUpdateFrameDuration}
-          isPlaying={isPlaying}
-          onTogglePlay={() => setIsPlaying(!isPlaying)}
-          isLooping={isLooping}
-          onToggleLoop={() => setIsLooping(!isLooping)}
-          onionSkin={onionSkin}
-          onToggleOnionSkin={() => setOnionSkin(!onionSkin)}
-          onionSkinSettings={onionSkinSettings}
-          layers={layers}
-          layerFolders={layerFolders}
-          activeLayerId={activeLayerId}
-          onSelectLayer={setActiveLayerId}
-          onAddLayer={addLayer}
-          onAddLayerFolder={addLayerFolder}
-          onRemoveLayer={removeLayer}
-          onToggleLayerVisibility={toggleLayerVisibility}
-          onToggleLayerLock={toggleLayerLock}
-          onRenameLayer={renameLayer}
-          onUpdateLayer={handleUpdateLayer}
-          onUpdateLayerSettings={updateLayerSettings}
-          audioTracks={audioTracks}
-          onAddAudioTrack={handleAddAudioTrack}
-          onRemoveAudioTrack={handleRemoveAudioTrack}
-          onUpdateAudioTrack={handleUpdateAudioTrack}
-          currentTool={tool}
-          onSelectTool={setTool}
-          currentBrushType={brushType}
-          onSelectBrushType={setBrushType}
-          currentColor={color}
-          onChangeColor={setColor}
-          strokeWidth={currentStrokeWidth}
-          onChangeStrokeWidth={handleStrokeWidthChange}
-          fillOpacity={fillOpacity}
-          onChangeFillOpacity={setFillOpacity}
-          fillTolerance={fillTolerance}
-          onChangeFillTolerance={setFillTolerance}
-          smoothing={smoothing}
-          onChangeSmoothing={setSmoothing}
-          shapeType={shapeType}
-          onSelectShapeType={setShapeType}
-          showGrid={showGrid}
-          onToggleGrid={() => setShowGrid(!showGrid)}
-          isFocusMode={isFocusMode}
-          onToggleFocusMode={() => setIsFocusMode(!isFocusMode)}
-          symmetryMode={symmetryMode}
-          onSelectSymmetryMode={setSymmetryMode}
-          textToolFont={textToolFont}
-          onSelectTextToolFont={setTextToolFont}
-          textToolBold={textToolBold}
-          setTextToolBold={setTextToolBold}
-          textToolItalic={textToolItalic}
-          setTextToolItalic={setTextToolItalic}
-          selection={selection}
-          onSelectionCreate={handleSelectionCreate}
-          onSelectionUpdate={setSelection}
-          onSelectionCommit={handleSelectionCommit}
-          onSelectionDelete={handleSelectionDelete}
-          onSelectionMakeSymbol={handleMakeSymbol}
-          onFlipHorizontal={() => setSelection(selection ? {...selection, scaleX: selection.scaleX * -1} : null)}
-          onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)}
-          onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)}
-          actors={actors}
-          onAddActor={(newActor) => setActors(prev => [...prev, newActor])}
-          onRemoveActor={(id) => setActors(prev => prev.filter(a => a.id !== id))}
-          onEnterSymbolEditMode={enterSymbolEditMode}
-          backpackItems={backpackItems}
-          onStampBackpackItem={handleStampOnLayer}
-          onImportImage={handleImportImage}
-          onImportVideo={(file) => { setImportingVideoFile(file); setIsVideoImportOpen(true); }}
-          onUndo={undo}
-          onRedo={redo}
-          deviceType={deviceType}
-          cameraMode={cameraMode}
-          onToggleCameraMode={() => setCameraMode(!cameraMode)}
-          onApplyMotionPath={handleApplyMotionPath}
-          canvasRef={canvasRef}
-        />
       ) : (
+        <div className="w-full h-full relative overflow-hidden flex flex-col">
+          {workspaceMode === 'adobe-animate' ? (
+            <AdobeAnimateWorkspace
+              projectName={projectName}
+              setProjectName={(name) => {
+                setProjectName(name);
+                setHasUnsavedChanges(true);
+              }}
+              hasUnsavedChanges={hasUnsavedChanges}
+              canvasWidth={canvasSize.width}
+              canvasHeight={canvasSize.height}
+              setCanvasSize={setCanvasSize}
+              fps={fps}
+              setFps={setFps}
+              background={background}
+              setBackground={setBackground}
+              backgroundImage={backgroundImage}
+              workspaceMode={workspaceMode}
+              onSetWorkspaceMode={setWorkspaceMode}
+              onSaveProject={saveProject}
+              onExportMovie={() => setIsExportModalOpen(true)}
+              onOpenProjectSettings={() => setIsSettingsOpen(true)}
+              onOpenGlobalSettings={() => setIsGlobalSettingsOpen(true)}
+              onTestMovie={() => setIsTestingMovie(true)}
+              onOpenCodeEditor={() => setIsScriptEditorOpen(true)}
+              onOpenHelp={() => setIsHelpOpen(true)}
+              onOpenTutorial={() => setIsTutorialOpen(true)}
+              onOpenAssetLibrary={() => setIsAssetLibraryOpen(true)}
+              onOpenBackpack={() => setIsBackpackOpen(true)}
+              onOpenSoundLibrary={() => setIsSoundLibraryOpen(true)}
+              onOpenAudioEditor={() => setIsAudioEditorOpen(true)}
+              onOpenRecorder={() => setIsAudioRecorderOpen(true)}
+              onOpenSpritesheetExport={() => setIsSpritesheetExportOpen(true)}
+              onOpenFrameManager={() => setIsFrameManagerOpen(true)}
+              onExitToMenu={handleGoHome}
+              frames={frames}
+              currentFrameIndex={currentFrameIndex}
+              onSelectFrame={handleSelectFrame}
+              onAddFrame={addFrame}
+              onDeleteFrame={deleteFrame}
+              onCopyFrame={copyFrame}
+              onTweenFrame={tweenFrame}
+              onUpdateFrameDuration={handleUpdateFrameDuration}
+              isPlaying={isPlaying}
+              onTogglePlay={() => setIsPlaying(!isPlaying)}
+              isLooping={isLooping}
+              onToggleLoop={() => setIsLooping(!isLooping)}
+              onionSkin={onionSkin}
+              onToggleOnionSkin={() => setOnionSkin(!onionSkin)}
+              onionSkinSettings={onionSkinSettings}
+              layers={layers}
+              layerFolders={layerFolders}
+              activeLayerId={activeLayerId}
+              onSelectLayer={setActiveLayerId}
+              onAddLayer={addLayer}
+              onAddLayerFolder={addLayerFolder}
+              onRemoveLayer={removeLayer}
+              onToggleLayerVisibility={toggleLayerVisibility}
+              onToggleLayerLock={toggleLayerLock}
+              onRenameLayer={renameLayer}
+              onUpdateLayer={handleUpdateLayer}
+              onUpdateLayerSettings={updateLayerSettings}
+              audioTracks={audioTracks}
+              onAddAudioTrack={handleAddAudioTrack}
+              onRemoveAudioTrack={handleRemoveAudioTrack}
+              onUpdateAudioTrack={handleUpdateAudioTrack}
+              currentTool={tool}
+              onSelectTool={setTool}
+              currentBrushType={brushType}
+              onSelectBrushType={setBrushType}
+              currentColor={color}
+              onChangeColor={setColor}
+              strokeWidth={currentStrokeWidth}
+              onChangeStrokeWidth={handleStrokeWidthChange}
+              fillOpacity={fillOpacity}
+              onChangeFillOpacity={setFillOpacity}
+              fillTolerance={fillTolerance}
+              onChangeFillTolerance={setFillTolerance}
+              smoothing={smoothing}
+              onChangeSmoothing={setSmoothing}
+              shapeType={shapeType}
+              onSelectShapeType={setShapeType}
+              showGrid={showGrid}
+              onToggleGrid={() => setShowGrid(!showGrid)}
+              isFocusMode={isFocusMode}
+              onToggleFocusMode={() => setIsFocusMode(!isFocusMode)}
+              symmetryMode={symmetryMode}
+              onSelectSymmetryMode={setSymmetryMode}
+              textToolFont={textToolFont}
+              onSelectTextToolFont={setTextToolFont}
+              textToolBold={textToolBold}
+              setTextToolBold={setTextToolBold}
+              textToolItalic={textToolItalic}
+              setTextToolItalic={setTextToolItalic}
+              selection={selection}
+              onSelectionCreate={handleSelectionCreate}
+              onSelectionUpdate={setSelection}
+              onSelectionCommit={handleSelectionCommit}
+              onSelectionDelete={handleSelectionDelete}
+              onSelectionMakeSymbol={handleMakeSymbol}
+              onFlipHorizontal={() => setSelection(selection ? {...selection, scaleX: selection.scaleX * -1} : null)}
+              onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)}
+              onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)}
+              actors={actors}
+              onAddActor={(newActor) => setActors(prev => [...prev, newActor])}
+              onRemoveActor={(id) => setActors(prev => prev.filter(a => a.id !== id))}
+              onEnterSymbolEditMode={enterSymbolEditMode}
+              backpackItems={backpackItems}
+              onStampBackpackItem={handleStampOnLayer}
+              onImportImage={handleImportImage}
+              onImportVideo={(file) => { setImportingVideoFile(file); setIsVideoImportOpen(true); }}
+              onUndo={undo}
+              onRedo={redo}
+              deviceType={deviceType}
+              cameraMode={cameraMode}
+              onToggleCameraMode={() => setCameraMode(!cameraMode)}
+              onApplyMotionPath={handleApplyMotionPath}
+              canvasRef={canvasRef}
+            />
+          ) : (
         <div key={projectId} className="flex flex-col h-full overflow-hidden relative">
       {!isFocusMode && (
         <header className="h-14 bg-[#1e1e1e] border-b border-gray-700 shrink-0 z-30 overflow-x-auto overflow-y-hidden">
@@ -4718,47 +4736,6 @@ export default function App() {
                 actors={actors.filter(a => a.targetFrame === undefined || a.targetFrame === currentFrameIndex)}
                 onSelectActor={handleSelectActor}
             />
-            <TweenModal
-                isOpen={tweenTargetIndex !== null}
-                onClose={() => setTweenTargetIndex(null)}
-                onGenerate={(numTweens, easing, includeOnionSkin, interpolatePosition, interpolateScale, interpolateRotation, motionBlur, motionBlurStrength, motionBlurSamples, motionBlurShutterAngle, tweenType, options) => {
-                    if (tweenTargetIndex !== null) {
-                        executeTween(
-                          tweenTargetIndex, 
-                          numTweens, 
-                          easing, 
-                          includeOnionSkin, 
-                          interpolatePosition, 
-                          interpolateScale, 
-                          interpolateRotation,
-                          motionBlur,
-                          motionBlurStrength,
-                          motionBlurSamples,
-                          motionBlurShutterAngle,
-                          tweenType || 'motion',
-                          options
-                        );
-                    }
-                }}
-            />
-            <TweenModal
-                isOpen={pendingMotionPath !== null}
-                onClose={() => setPendingMotionPath(null)}
-                onGenerate={(numTweens, easing, _includeOnionSkin, _interpolatePosition, _interpolateScale, _interpolateRotation, motionBlur, motionBlurStrength, motionBlurSamples, motionBlurShutterAngle) => {
-                    if (pendingMotionPath) {
-                        finalizeMotionPath(
-                          pendingMotionPath, 
-                          numTweens, 
-                          easing,
-                          motionBlur,
-                          motionBlurStrength,
-                          motionBlurSamples,
-                          motionBlurShutterAngle
-                        );
-                        setPendingMotionPath(null);
-                    }
-                }}
-            />
             {/* Quick Floating Backpack Stamp Dock */}
             <QuickBackpackDock
               isOpen={isQuickBackpackDockOpen}
@@ -4821,6 +4798,51 @@ export default function App() {
       />
         </div>
       )}
+
+      {/* Shared Tweening Modals - Active in both Classic and Adobe Animate modes */}
+      <TweenModal
+        isOpen={tweenTargetIndex !== null}
+        onClose={() => setTweenTargetIndex(null)}
+        frameAThumbnail={tweenTargetIndex !== null && frames[tweenTargetIndex] ? frames[tweenTargetIndex].thumbnailUrl : null}
+        frameBThumbnail={tweenTargetIndex !== null && frames[tweenTargetIndex + 1] ? frames[tweenTargetIndex + 1].thumbnailUrl : null}
+        onGenerate={(numTweens, easing, includeOnionSkin, interpolatePosition, interpolateScale, interpolateRotation, motionBlur, motionBlurStrength, motionBlurSamples, motionBlurShutterAngle, tweenType, options) => {
+          if (tweenTargetIndex !== null) {
+            executeTween(
+              tweenTargetIndex, 
+              numTweens, 
+              easing, 
+              includeOnionSkin, 
+              interpolatePosition, 
+              interpolateScale, 
+              interpolateRotation,
+              motionBlur,
+              motionBlurStrength,
+              motionBlurSamples,
+              motionBlurShutterAngle,
+              tweenType || 'motion',
+              options
+            );
+          }
+        }}
+      />
+      <TweenModal
+        isOpen={pendingMotionPath !== null}
+        onClose={() => setPendingMotionPath(null)}
+        onGenerate={(numTweens, easing, _includeOnionSkin, _interpolatePosition, _interpolateScale, _interpolateRotation, motionBlur, motionBlurStrength, motionBlurSamples, motionBlurShutterAngle) => {
+          if (pendingMotionPath) {
+            finalizeMotionPath(
+              pendingMotionPath, 
+              numTweens, 
+              easing,
+              motionBlur,
+              motionBlurStrength,
+              motionBlurSamples,
+              motionBlurShutterAngle
+            );
+            setPendingMotionPath(null);
+          }
+        }}
+      />
 
       {showExitConfirm && view === 'editor' && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -5098,22 +5120,6 @@ export default function App() {
         actors={actors}
         audioTracks={audioTracks}
       />
-      <GlobalSettingsModal 
-        isOpen={isGlobalSettingsOpen} 
-        onClose={() => setIsGlobalSettingsOpen(false)} 
-        accentColor={accentColor}
-        setAccentColor={setAccentColor}
-        uiFont={uiFont}
-        setUiFont={setUiFont}
-        shortcuts={shortcuts}
-        setShortcuts={setShortcuts}
-        deviceType={deviceType}
-        setDeviceType={setDeviceType}
-        theme={theme}
-        setTheme={setTheme}
-        workspaceMode={workspaceMode}
-        setWorkspaceMode={setWorkspaceMode}
-      />
       
       <AssetLibraryModal
         isOpen={isAssetLibraryOpen}
@@ -5141,6 +5147,26 @@ export default function App() {
         accept="image/*" 
         className="hidden" 
         onChange={handleImportGeneralImage}
+      />
+        </div>
+      )}
+
+      {/* Unconditional Global Modals */}
+      <GlobalSettingsModal 
+        isOpen={isGlobalSettingsOpen} 
+        onClose={() => setIsGlobalSettingsOpen(false)} 
+        accentColor={accentColor}
+        setAccentColor={setAccentColor}
+        uiFont={uiFont}
+        setUiFont={setUiFont}
+        shortcuts={shortcuts}
+        setShortcuts={setShortcuts}
+        deviceType={deviceType}
+        setDeviceType={setDeviceType}
+        theme={theme}
+        setTheme={setTheme}
+        workspaceMode={workspaceMode}
+        setWorkspaceMode={setWorkspaceMode}
       />
     </div>
   );
