@@ -616,7 +616,7 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({
   const rank = getMasteryRank();
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 backdrop-blur-md animate-in fade-in duration-200 p-2 sm:p-4 md:p-6 select-none">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 backdrop-blur-md animate-in fade-in duration-200 p-2 sm:p-4 md:p-6 select-none">
       <div className="bg-[#161618] w-[1140px] max-w-full h-[94vh] max-h-[880px] rounded-3xl shadow-2xl border border-gray-800 flex flex-col overflow-hidden text-white relative">
         
         {/* Top Header */}

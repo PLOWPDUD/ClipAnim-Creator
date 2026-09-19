@@ -3,14 +3,22 @@ import { useTranslation } from 'react-i18next';
 import { Icons } from '../Icons';
 import { Frame, Layer, LayerFolder, BackgroundSettings } from '../types';
 import { compositeLayers } from '../utils/drawingUtils';
+import { processIconToResolutions, buildIcoFileBinary, generateDefaultGameIconCanvas, convertCustomHtmlToExe } from '../utils/windowsExeExporter';
 
-export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'png' | 'avi' | 'project-zip' | 'html';
+export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'png' | 'avi' | 'project-zip' | 'html' | 'exe' | 'desktop-package';
 export type ExportQuality = 'low' | 'medium' | 'high';
+
+export interface ExeExportOptions {
+  customIconDataUrl?: string | null;
+  customIconBlob?: Blob | null;
+  publisher?: string;
+  gameTitle?: string;
+}
 
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (format: ExportFormat, quality: ExportQuality, transparent: boolean) => void;
+  onExport: (format: ExportFormat, quality: ExportQuality, transparent: boolean, exeOptions?: ExeExportOptions) => void;
   onCancel: () => void;
   isExporting: boolean;
   progress: number;
@@ -65,6 +73,40 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [isTheaterMode, setIsTheaterMode] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<'fit' | '100%' | '150%'>('fit');
+
+  // Windows EXE Export & Icon States
+  const [isExeMode, setIsExeMode] = useState(false);
+  const [exeSubTab, setExeSubTab] = useState<'project' | 'converter'>('project');
+  const [customIconDataUrl, setCustomIconDataUrl] = useState<string | null>(null);
+  const [customIconBlob, setCustomIconBlob] = useState<Blob | null>(null);
+  const [customIconFileName, setCustomIconFileName] = useState<string | null>(null);
+  const [exePublisher, setExePublisher] = useState<string>('');
+  const [defaultIconUrl, setDefaultIconUrl] = useState<string>('');
+  const [isGeneratingIco, setIsGeneratingIco] = useState(false);
+  const [isDraggingIcon, setIsDraggingIcon] = useState(false);
+  const iconInputRef = useRef<HTMLInputElement>(null);
+
+  // HTML to EXE Converter States
+  const [converterHtmlFile, setConverterHtmlFile] = useState<File | null>(null);
+  const [converterHtmlContent, setConverterHtmlContent] = useState<string>('');
+  const [converterTitle, setConverterTitle] = useState<string>('MyGame');
+  const [converterWidth, setConverterWidth] = useState<number>(1280);
+  const [converterHeight, setConverterHeight] = useState<number>(720);
+  const [converterFullscreen, setConverterFullscreen] = useState<boolean>(false);
+  const [converterResizable, setConverterResizable] = useState<boolean>(true);
+  const [isConverting, setIsConverting] = useState<boolean>(false);
+  const [conversionProgress, setConversionProgress] = useState<number>(0);
+  const [isDraggingConverterFile, setIsDraggingConverterFile] = useState<boolean>(false);
+  const converterFileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    try {
+      const cvs = generateDefaultGameIconCanvas(256);
+      setDefaultIconUrl(cvs.toDataURL('image/png'));
+    } catch (e) {
+      console.warn('Could not generate default icon preview:', e);
+    }
+  }, []);
 
   const scrubberRef = useRef<HTMLDivElement>(null);
   const isDraggingScrubberRef = useRef(false);
@@ -301,12 +343,101 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
+  const handleIconFile = (file: File) => {
+    if (!file) return;
+    setCustomIconBlob(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCustomIconDataUrl(reader.result as string);
+      setCustomIconFileName(file.name);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleConverterFile = (file: File) => {
+    if (!file) return;
+    setConverterHtmlFile(file);
+    const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_\-]/g, '_');
+    if (baseName) setConverterTitle(baseName);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setConverterHtmlContent(reader.result as string);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleConvertHtmlToExe = async () => {
+    if (!converterHtmlContent.trim()) {
+      alert('Please upload or provide HTML content first.');
+      return;
+    }
+
+    setIsConverting(true);
+    setConversionProgress(10);
+    try {
+      const result = await convertCustomHtmlToExe({
+        htmlContent: converterHtmlContent,
+        gameTitle: converterTitle || 'MyConvertedApp',
+        width: converterWidth,
+        height: converterHeight,
+        fullscreen: converterFullscreen,
+        resizable: converterResizable,
+        customIconBlob: customIconBlob,
+        onProgress: (pct) => setConversionProgress(pct),
+      });
+
+      // Trigger download of the generated Windows App zip
+      const a = document.createElement('a');
+      a.href = result.url;
+      a.download = result.filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(result.url), 10000);
+    } catch (err) {
+      console.error('Conversion failed:', err);
+      alert('Failed to convert HTML to Windows Executable.');
+    } finally {
+      setIsConverting(false);
+      setConversionProgress(0);
+    }
+  };
+
+  const handleUseFrame1AsIcon = () => {
+    if (previewFrames && previewFrames.length > 0) {
+      setCustomIconDataUrl(previewFrames[0]);
+      setCustomIconFileName('Frame1_Artwork.png');
+    }
+  };
+
+  const handleDownloadStandaloneIco = async () => {
+    setIsGeneratingIco(true);
+    try {
+      const resolutions = [16, 32, 48, 64, 128, 256];
+      const icons = await processIconToResolutions(customIconDataUrl, resolutions);
+      const icoBytes = buildIcoFileBinary(icons);
+      const icoBlob = new Blob([icoBytes.buffer as ArrayBuffer], { type: 'image/x-icon' });
+      const url = URL.createObjectURL(icoBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cleanName = projectName.replace(/[^a-zA-Z0-9_\-]/g, '_').trim() || 'Game';
+      a.download = `${cleanName}.ico`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (err) {
+      console.error('Failed to generate .ico:', err);
+      alert('Failed to generate .ico file.');
+    } finally {
+      setIsGeneratingIco(false);
+    }
+  };
+
   const allFormats: { id: ExportFormat; label: string; icon: React.ElementType; color: string; desc: string; badge?: string }[] = [
     { id: 'mp4', label: t('export.mp4', 'MP4 Video'), icon: Icons.FileVideo, color: 'text-blue-400', desc: t('export.mp4Desc', 'High quality H.264 standard video for YouTube, Instagram, and TikTok'), badge: 'Standard' },
     { id: 'webm', label: t('export.webm', 'WebM Video'), icon: Icons.FileVideo, color: 'text-emerald-400', desc: t('export.webmDesc', 'Lightweight modern web video format with optional alpha transparency'), badge: 'Alpha Ready' },
     { id: 'gif', label: t('export.gif', 'Animated GIF'), icon: Icons.Image, color: 'text-amber-400', desc: t('export.gifDesc', 'Looping animated GIF perfect for Discord, Reddit, and stickers'), badge: 'Looping' },
     { id: 'png-seq', label: t('export.pngSeq', 'PNG Sequence (.zip)'), icon: Icons.FileArchive, color: 'text-rose-400', desc: t('export.pngSeqDesc', 'Lossless transparent frame images zipped for Premiere, After Effects, Blender'), badge: 'Pro Zip' },
     { id: 'png', label: t('export.png', 'PNG Image'), icon: Icons.Image, color: 'text-purple-400', desc: t('export.pngDesc', 'Export full-resolution crisp static PNG artwork'), badge: 'Single Frame' },
+    { id: 'exe', label: t('export.exe', 'Windows Standalone Game (.exe)'), icon: Icons.Monitor, color: 'text-violet-400', desc: t('export.exeDesc', 'Native Windows binary executable (.exe) with custom icon for direct desktop launching'), badge: 'Desktop EXE' },
     { id: 'html', label: t('export.html', 'Playable HTML5 Game (.html)'), icon: Icons.Gamepad2, color: 'text-cyan-400', desc: t('export.htmlDesc', 'Self-contained offline playable interactive game file for itch.io or web sharing'), badge: 'Interactive' },
     { id: 'project-zip', label: t('export.projectZip', 'Project Backup (.zip)'), icon: Icons.FileArchive, color: 'text-purple-400', desc: t('export.projectZipDesc', 'Complete editable project archive with all frames, layers, audio, and settings'), badge: 'Full Source' },
     { id: 'avi', label: t('export.avi', 'AVI Video'), icon: Icons.FileVideo, color: 'text-indigo-400', desc: t('export.aviDesc', 'Raw video container for legacy desktop video editors') },
@@ -360,26 +491,46 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         {/* Success Finished Overlay */}
         {!isExporting && exportedFile && (
           <div className="absolute inset-0 z-50 bg-[#141414]/98 flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-200">
-             <div className="w-24 h-24 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(16,185,129,0.3)]">
-                 <Icons.Check className="text-emerald-400" size={48} />
+             <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-2xl ${
+               exportedFile.name.endsWith('.exe') 
+                 ? 'bg-violet-500/20 border border-violet-500/50 shadow-[0_0_40px_rgba(139,92,246,0.35)]' 
+                 : 'bg-emerald-500/20 border border-emerald-500/40 shadow-[0_0_40px_rgba(16,185,129,0.3)]'
+             }`}>
+                 {exportedFile.name.endsWith('.exe') ? (
+                   <Icons.Monitor className="text-violet-400" size={48} />
+                 ) : (
+                   <Icons.Check className="text-emerald-400" size={48} />
+                 )}
              </div>
-             <h2 className="text-3xl font-bold text-white mb-2">{t('export.success', 'Export Complete!')}</h2>
-             <p className="text-gray-400 text-sm mb-8 max-w-md">{t('export.successDesc', 'Your file has been rendered and is ready to download or share.')}</p>
+             <h2 className="text-3xl font-bold text-white mb-2">
+               {exportedFile.name.endsWith('.exe') ? 'Windows .exe Binary Generated!' : t('export.success', 'Export Complete!')}
+             </h2>
+             <p className="text-gray-400 text-sm mb-8 max-w-md">
+               {exportedFile.name.endsWith('.exe') 
+                 ? 'Your native Windows game executable (.exe) has been built with your custom embedded icon. Double-click to launch and play on Windows!' 
+                 : t('export.successDesc', 'Your file has been rendered and is ready to download or share.')}
+             </p>
              
              <div className="flex flex-wrap gap-4 justify-center">
-                 <button 
-                     onClick={handleShare}
-                     className="px-8 py-4 rounded-2xl bg-gradient-to-r from-red-600 to-[#FF3B30] hover:opacity-90 text-white font-bold transition-all flex items-center gap-2.5 shadow-[0_0_25px_rgba(255,59,48,0.4)] hover:scale-105 active:scale-95"
-                 >
-                     <Icons.Share2 size={20} />
-                     <span>{t('common.share', 'Share File')}</span>
-                 </button>
+                 {!exportedFile.name.endsWith('.exe') && (
+                   <button 
+                       onClick={handleShare}
+                       className="px-8 py-4 rounded-2xl bg-gradient-to-r from-red-600 to-[#FF3B30] hover:opacity-90 text-white font-bold transition-all flex items-center gap-2.5 shadow-[0_0_25px_rgba(255,59,48,0.4)] hover:scale-105 active:scale-95"
+                   >
+                       <Icons.Share2 size={20} />
+                       <span>{t('common.share', 'Share File')}</span>
+                   </button>
+                 )}
                  <button 
                      onClick={handleDownload}
-                     className="px-8 py-4 rounded-2xl bg-gray-800 hover:bg-gray-700 text-white font-bold transition-all flex items-center gap-2.5 border border-gray-700 shadow-lg hover:scale-105 active:scale-95"
+                     className={`px-8 py-4 rounded-2xl font-bold transition-all flex items-center gap-2.5 shadow-lg hover:scale-105 active:scale-95 text-white ${
+                       exportedFile.name.endsWith('.exe')
+                         ? 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-[0_0_30px_rgba(139,92,246,0.5)]'
+                         : 'bg-gray-800 hover:bg-gray-700 border border-gray-700'
+                     }`}
                  >
                      <Icons.Download size={20} />
-                     <span>{t('common.download', 'Download File')}</span>
+                     <span>{exportedFile.name.endsWith('.exe') ? 'Download Windows .exe' : t('common.download', 'Download File')}</span>
                  </button>
              </div>
              
@@ -727,133 +878,555 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {/* RIGHT PANEL: EXPORT FORMATS & SETTINGS */}
           <div className={`${isTheaterMode ? 'hidden' : 'w-full lg:w-[42%]'} p-6 sm:p-7 flex flex-col bg-[#1a1a1a] overflow-y-auto no-scrollbar`}>
             
-            {/* Project Name & Resolution Summary */}
-            <div className="mb-5 space-y-3">
-              <div>
-                <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
-                  File Name
-                </label>
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="text" 
-                    value={projectName}
-                    onChange={(e) => setProjectName(e.target.value)}
-                    placeholder="My Animation"
-                    className="flex-1 bg-gray-900 text-white rounded-xl px-3.5 py-2.5 text-sm font-semibold border border-gray-700 hover:border-gray-500 focus:border-[#FF3B30] focus:outline-none transition-colors shadow-inner"
-                  />
-                </div>
-              </div>
+            {isExeMode ? (
+              /* WINDOWS STANDALONE EXE CONFIGURATION STUDIO */
+              <div className="space-y-4 flex flex-col h-full animate-in fade-in duration-200">
+                {/* Header with Back button & Sub-tabs */}
+                <div className="flex items-center justify-between pb-3 border-b border-gray-800 flex-wrap gap-2">
+                  <button
+                    onClick={() => setIsExeMode(false)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-300 hover:text-white hover:bg-gray-800 border border-gray-800 transition-colors"
+                  >
+                    <Icons.ChevronLeft size={16} />
+                    <span>Back to Formats</span>
+                  </button>
 
-              {/* Transparent Background Toggle */}
-              <div className="p-3.5 rounded-2xl bg-gray-900/80 border border-gray-800">
-                <label className="flex items-center gap-3 cursor-pointer group select-none">
-                  <div className={`relative w-11 h-6 rounded-full transition-colors ${transparent ? 'bg-[#FF3B30]' : 'bg-gray-700'}`}>
-                    <div className={`absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform ${transparent ? 'translate-x-5' : ''}`} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-xs font-bold text-white group-hover:text-gray-200 transition-colors">
-                      {t('export.transparent', 'Transparent Background (Alpha Channel)')}
-                    </div>
-                    <div className="text-[10px] text-gray-400 mt-0.5">
-                      Omit solid background for WebM video, animated GIF, and PNG sequences
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    className="hidden"
-                    checked={transparent}
-                    onChange={(e) => setTransparent(e.target.checked)}
-                  />
-                </label>
-              </div>
-
-              {/* Quality Preset Radio selector */}
-              <div>
-                <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-2">
-                  {t('export.quality', 'Export Quality & Bitrate')}
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {qualityOptions.map((opt) => (
+                  {/* Mode Sub-Tabs */}
+                  <div className="flex items-center bg-gray-900 p-1 rounded-xl border border-gray-800 text-xs font-semibold">
                     <button
-                      key={opt.id}
-                      onClick={() => setQuality(opt.id)}
-                      className={`p-2.5 rounded-xl border text-center transition-all ${
-                        quality === opt.id 
-                          ? 'bg-[#FF3B30]/15 border-[#FF3B30] text-white shadow-md' 
-                          : 'bg-gray-900/60 border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200'
+                      onClick={() => setExeSubTab('project')}
+                      className={`px-3 py-1 rounded-lg transition-all ${
+                        exeSubTab === 'project'
+                          ? 'bg-violet-600 text-white shadow'
+                          : 'text-gray-400 hover:text-white'
                       }`}
                     >
-                      <div className="font-bold text-xs capitalize">{opt.id}</div>
-                      <div className="text-[9px] opacity-60 leading-tight mt-0.5 truncate">{opt.id === 'low' ? 'Small File' : opt.id === 'medium' ? 'Standard HD' : 'Maximum Bitrate'}</div>
+                      Project to .EXE
                     </button>
-                  ))}
+                    <button
+                      onClick={() => setExeSubTab('converter')}
+                      className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                        exeSubTab === 'converter'
+                          ? 'bg-violet-600 text-white shadow'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      <Icons.Sparkles size={12} />
+                      <span>HTML to EXE Converter</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Export Format Actions List */}
-            <div className="space-y-2.5 flex-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
-                Choose Format to Render
-              </label>
-
-              {/* Adobe Animate / FNF Spritesheet Button (if available) */}
-              {onOpenSpritesheetExport && (
-                <button 
-                  onClick={() => {
-                    onClose();
-                    onOpenSpritesheetExport();
-                  }}
-                  className="w-full group bg-gradient-to-r from-red-950/50 via-red-900/30 to-gray-900 border border-red-500/40 hover:border-red-400 p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover:scale-[1.01] active:scale-[0.99] text-left shadow-lg"
-                >
-                  <div className="p-2.5 rounded-xl bg-red-600/20 text-red-400 group-hover:scale-110 transition-transform">
-                    <Icons.Sparkles size={22} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-white text-sm group-hover:text-red-300 transition-colors">Spritesheet + Starling XML</span>
-                      <span className="bg-red-500/20 text-red-300 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase border border-red-500/30">Adobe Animate / FNF</span>
+                {exeSubTab === 'project' ? (
+                  <>
+                    {/* Title and Explanation */}
+                    <div>
+                      <h3 className="text-base font-bold text-white flex items-center gap-2">
+                        <Icons.Monitor className="text-violet-400" size={20} />
+                        Windows Game Executable (.exe)
+                      </h3>
+                      <p className="text-xs text-gray-400 mt-1">
+                        100% Native Windows Application. Embeds your artwork into an isolated game window with zero Microsoft Edge browser UI, tabs, or address bars.
+                      </p>
                     </div>
-                    <div className="text-[11px] text-gray-400 mt-0.5">Pack animated symbols into texture atlas with Sparrow / Starling XML</div>
-                  </div>
-                  <Icons.ChevronRight size={18} className="text-gray-500 group-hover:text-white transition-colors" />
-                </button>
-              )}
 
-              {/* Format Cards */}
-              <div className="space-y-2">
-                {formats.map((format) => (
-                  <button 
-                    key={format.id}
-                    onClick={() => onExport(format.id, quality, transparent)}
-                    className="w-full group bg-gray-900/80 hover:bg-gray-800 border border-gray-800 hover:border-[#FF3B30] p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover:scale-[1.01] active:scale-[0.99] text-left shadow-sm"
-                  >
-                    <div className={`p-2.5 rounded-xl bg-black/50 group-hover:scale-110 transition-transform ${format.color}`}>
-                      <format.icon size={22} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-white text-sm group-hover:text-[#FF3B30] transition-colors">{format.label}</span>
-                        {format.badge && (
-                          <span className="bg-gray-800 text-gray-300 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase border border-gray-700">
-                            {format.badge}
-                          </span>
-                        )}
+                    {/* ICON UPLOAD & REALISTIC WINDOWS DESKTOP SIMULATOR */}
+                    <div className="p-4 rounded-2xl bg-gray-900/90 border border-gray-800 space-y-3.5 shadow-inner">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <Icons.Sparkles size={13} className="text-violet-400" />
+                          Application Icon (.ico / custom)
+                        </label>
+                        <span className="text-[10px] text-gray-400 font-mono">
+                          {customIconDataUrl ? 'Custom Icon Active' : 'Default Gamepad Icon'}
+                        </span>
                       </div>
-                      <div className="text-[11px] text-gray-400 mt-0.5 truncate">{format.desc}</div>
-                    </div>
-                    <Icons.Download size={18} className="text-gray-500 group-hover:text-white transition-colors shrink-0" />
-                  </button>
-                ))}
-              </div>
-            </div>
 
-            {/* Bottom Disclaimer and Tips */}
-            <div className="mt-5 pt-4 border-t border-gray-800/80 text-[10px] text-gray-500 space-y-1">
-              <p>
-                💡 <span className="font-bold text-gray-400">Pro Tip:</span> All video, GIF, and sprite exports are processed 100% locally on your browser with hardware acceleration.
-              </p>
-            </div>
+                      {/* Windows Explorer & Desktop Realistic Preview Stage */}
+                      <div className="p-3.5 rounded-xl bg-gradient-to-b from-[#161b22] to-[#0d1117] border border-gray-800 flex items-center justify-around gap-3">
+                        {/* Windows Desktop Tile Simulation */}
+                        <div className="flex flex-col items-center gap-1.5 group/tile">
+                          <div className="relative w-16 h-16 rounded-xl bg-black/40 border border-white/10 p-1 flex items-center justify-center shadow-lg group-hover/tile:scale-105 transition-transform">
+                            <img 
+                              src={customIconDataUrl || defaultIconUrl} 
+                              alt="Desktop Icon" 
+                              className="w-14 h-14 object-contain select-none drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]" 
+                            />
+                            <div className="absolute -bottom-1 -right-1 bg-violet-600 text-white rounded-full p-0.5 border border-black shadow">
+                              <Icons.Monitor size={10} />
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-medium text-gray-300 max-w-[90px] truncate text-center font-mono">
+                            {projectName.replace(/[^a-zA-Z0-9_\-]/g, '_') || 'Game'}.exe
+                          </span>
+                        </div>
+
+                        {/* Windows Taskbar Preview */}
+                        <div className="flex flex-col items-center gap-2 border-l border-gray-800/80 pl-3">
+                          <span className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">Taskbar Preview</span>
+                          <div className="flex items-center gap-2 bg-[#1f242c] px-3 py-1.5 rounded-lg border border-gray-700/60 shadow">
+                            <img 
+                              src={customIconDataUrl || defaultIconUrl} 
+                              alt="Taskbar Icon" 
+                              className="w-5 h-5 object-contain" 
+                            />
+                            <span className="text-[11px] font-semibold text-gray-200 max-w-[90px] truncate">
+                              {projectName || 'Game'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 text-[9px] font-mono text-gray-400">
+                            <span>256px</span>•<span>48px</span>•<span>32px</span>•<span>16px</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Drag & Drop Upload Zone */}
+                      <div 
+                        onDragOver={(e) => { e.preventDefault(); setIsDraggingIcon(true); }}
+                        onDragLeave={() => setIsDraggingIcon(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setIsDraggingIcon(false);
+                          if (e.dataTransfer.files?.[0]) {
+                            handleIconFile(e.dataTransfer.files[0]);
+                          }
+                        }}
+                        onClick={() => iconInputRef.current?.click()}
+                        className={`border-2 border-dashed rounded-xl p-3.5 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1.5 ${
+                          isDraggingIcon 
+                            ? 'border-violet-400 bg-violet-950/30' 
+                            : 'border-gray-700 hover:border-violet-500/70 hover:bg-gray-800/50'
+                        }`}
+                      >
+                        <input 
+                          ref={iconInputRef}
+                          type="file" 
+                          accept="image/*,.ico" 
+                          onChange={(e) => {
+                            if (e.target.files?.[0]) handleIconFile(e.target.files[0]);
+                          }}
+                          className="hidden" 
+                        />
+                        <Icons.Upload size={20} className={isDraggingIcon ? 'text-violet-400 animate-bounce' : 'text-gray-400'} />
+                        <div className="text-xs font-bold text-white">
+                          {customIconFileName ? (
+                            <span className="text-violet-300 font-mono truncate max-w-[220px] inline-block">{customIconFileName}</span>
+                          ) : (
+                            'Click to upload or drag & drop icon'
+                          )}
+                        </div>
+                        <div className="text-[10px] text-gray-400">
+                          Supports .ico, .png, .jpg, .webp, .svg (Embedded into native runner)
+                        </div>
+                      </div>
+
+                      {/* Quick Action Buttons */}
+                      <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                        {previewFrames.length > 0 && (
+                          <button
+                            onClick={handleUseFrame1AsIcon}
+                            className="flex-1 py-1.5 px-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 border border-gray-700 transition-colors"
+                            title="Use current Frame 1 artwork as application icon"
+                          >
+                            <Icons.Image size={13} className="text-emerald-400" />
+                            <span>Use Frame 1 Drawing</span>
+                          </button>
+                        )}
+
+                        {customIconDataUrl && (
+                          <button
+                            onClick={() => {
+                              setCustomIconDataUrl(null);
+                              setCustomIconBlob(null);
+                              setCustomIconFileName(null);
+                            }}
+                            className="py-1.5 px-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-red-400 hover:text-red-300 text-xs font-semibold flex items-center gap-1 border border-gray-700 transition-colors"
+                            title="Reset icon to default arcade gamepad"
+                          >
+                            <Icons.RotateCw size={13} />
+                            <span>Reset</span>
+                          </button>
+                        )}
+
+                        <button
+                          onClick={handleDownloadStandaloneIco}
+                          disabled={isGeneratingIco}
+                          className="py-1.5 px-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs font-semibold flex items-center gap-1 border border-gray-700 transition-colors"
+                          title="Download multi-resolution .ico file directly"
+                        >
+                          <Icons.Download size={13} className="text-violet-400" />
+                          <span>{isGeneratingIco ? 'Generating...' : 'Get .ICO'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* METADATA SETTINGS */}
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                          File Name
+                        </label>
+                        <input 
+                          type="text" 
+                          value={projectName}
+                          onChange={(e) => setProjectName(e.target.value)}
+                          placeholder="My Animation"
+                          className="w-full bg-gray-900 text-white rounded-xl px-3.5 py-2 text-xs font-semibold border border-gray-700 hover:border-gray-500 focus:border-violet-500 focus:outline-none transition-colors"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                          Publisher / Author (Optional)
+                        </label>
+                        <input 
+                          type="text" 
+                          value={exePublisher}
+                          onChange={(e) => setExePublisher(e.target.value)}
+                          placeholder="e.g. My Indie Game Studio"
+                          className="w-full bg-gray-900 text-white rounded-xl px-3.5 py-2 text-xs font-medium border border-gray-700 hover:border-gray-500 focus:border-violet-500 focus:outline-none transition-colors"
+                        />
+                      </div>
+
+                      {/* Architecture Spec Card */}
+                      <div className="p-3 rounded-xl bg-violet-950/20 border border-violet-900/40 text-[11px] text-violet-200/90 space-y-1.5">
+                        <div className="flex items-center gap-1.5 font-bold text-violet-300">
+                          <Icons.Check size={14} className="text-emerald-400" />
+                          Zero-Browser Native Window Engine
+                        </div>
+                        <p className="text-[10px] text-gray-400 leading-relaxed">
+                          Compiles into an actual Windows desktop application with its own native window, game icon, and taskbar entry. Never opens Microsoft Edge or web browser tabs.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="pt-2 mt-auto space-y-2">
+                      <button
+                        onClick={() => onExport('exe', quality, transparent, {
+                          customIconDataUrl,
+                          customIconBlob,
+                          publisher: exePublisher,
+                          gameTitle: projectName
+                        })}
+                        className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold text-sm flex items-center justify-center gap-2.5 shadow-[0_0_25px_rgba(139,92,246,0.4)] transition-all hover:scale-[1.01] active:scale-[0.99]"
+                      >
+                        <Icons.Download size={18} />
+                        <span>Compile & Export Windows .exe</span>
+                      </button>
+
+                      <button
+                        onClick={() => onExport('desktop-package', quality, transparent, {
+                          customIconDataUrl,
+                          customIconBlob,
+                          publisher: exePublisher,
+                          gameTitle: projectName
+                        })}
+                        className="w-full py-2.5 px-3.5 rounded-xl bg-gray-900 hover:bg-gray-800 border border-violet-500/40 hover:border-violet-400 text-violet-200 text-xs font-semibold flex items-center justify-between transition-all"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Icons.Package size={15} className="text-violet-400" />
+                          <span>Zero-Browser Standalone Package (.zip)</span>
+                        </div>
+                        <span className="text-[10px] text-gray-400 bg-gray-800 px-2 py-0.5 rounded border border-gray-700">Steam / itch.io</span>
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* HTML TO EXE CONVERTER INTERACTIVE TOOL */
+                  <div className="space-y-3.5 flex flex-col h-full animate-in fade-in duration-200">
+                    <div>
+                      <h3 className="text-base font-bold text-white flex items-center gap-2">
+                        <Icons.Sparkles className="text-violet-400" size={20} />
+                        HTML to EXE Converter
+                      </h3>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Convert any HTML5 game or webpage into a standalone Windows executable (.exe) application.
+                      </p>
+                    </div>
+
+                    {/* Drag & Drop HTML file */}
+                    <div 
+                      onDragOver={(e) => { e.preventDefault(); setIsDraggingConverterFile(true); }}
+                      onDragLeave={() => setIsDraggingConverterFile(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingConverterFile(false);
+                        if (e.dataTransfer.files?.[0]) {
+                          handleConverterFile(e.dataTransfer.files[0]);
+                        }
+                      }}
+                      onClick={() => converterFileInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1.5 ${
+                        isDraggingConverterFile
+                          ? 'border-violet-400 bg-violet-950/30'
+                          : converterHtmlFile
+                          ? 'border-emerald-500/60 bg-emerald-950/20'
+                          : 'border-gray-700 hover:border-violet-500/70 hover:bg-gray-800/50'
+                      }`}
+                    >
+                      <input 
+                        ref={converterFileInputRef}
+                        type="file" 
+                        accept=".html,.htm,.txt" 
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) handleConverterFile(e.target.files[0]);
+                        }}
+                        className="hidden" 
+                      />
+                      {converterHtmlFile ? (
+                        <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
+                          <Icons.Check size={16} />
+                          <span className="truncate max-w-[240px] font-mono">{converterHtmlFile.name}</span>
+                        </div>
+                      ) : (
+                        <>
+                          <Icons.Code size={22} className="text-violet-400" />
+                          <div className="text-xs font-bold text-white">
+                            Click or drag & drop HTML file to convert
+                          </div>
+                          <div className="text-[10px] text-gray-400">
+                            Supports .html, .htm files
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Window Configuration Settings */}
+                    <div className="space-y-2.5 bg-gray-900/80 p-3.5 rounded-2xl border border-gray-800">
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                          Application Title
+                        </label>
+                        <input 
+                          type="text" 
+                          value={converterTitle}
+                          onChange={(e) => setConverterTitle(e.target.value)}
+                          placeholder="e.g. My Standalone Game"
+                          className="w-full bg-gray-950 text-white rounded-xl px-3 py-1.5 text-xs font-semibold border border-gray-700 hover:border-gray-500 focus:border-violet-500 focus:outline-none transition-colors"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                            Width (px)
+                          </label>
+                          <input 
+                            type="number" 
+                            value={converterWidth}
+                            onChange={(e) => setConverterWidth(parseInt(e.target.value) || 1280)}
+                            className="w-full bg-gray-950 text-white rounded-xl px-3 py-1.5 text-xs font-mono border border-gray-700 hover:border-gray-500 focus:border-violet-500 focus:outline-none transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                            Height (px)
+                          </label>
+                          <input 
+                            type="number" 
+                            value={converterHeight}
+                            onChange={(e) => setConverterHeight(parseInt(e.target.value) || 720)}
+                            className="w-full bg-gray-950 text-white rounded-xl px-3 py-1.5 text-xs font-mono border border-gray-700 hover:border-gray-500 focus:border-violet-500 focus:outline-none transition-colors"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 text-xs">
+                        <label className="flex items-center gap-2 text-gray-300 cursor-pointer">
+                          <input 
+                            type="checkbox"
+                            checked={converterFullscreen}
+                            onChange={(e) => setConverterFullscreen(e.target.checked)}
+                            className="rounded border-gray-700 text-violet-600 focus:ring-violet-500"
+                          />
+                          <span>Launch in Fullscreen</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-gray-300 cursor-pointer">
+                          <input 
+                            type="checkbox"
+                            checked={converterResizable}
+                            onChange={(e) => setConverterResizable(e.target.checked)}
+                            className="rounded border-gray-700 text-violet-600 focus:ring-violet-500"
+                          />
+                          <span>Resizable Window</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Convert Button */}
+                    <div className="pt-2 mt-auto">
+                      <button
+                        onClick={handleConvertHtmlToExe}
+                        disabled={isConverting || !converterHtmlContent}
+                        className={`w-full py-3.5 px-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all ${
+                          converterHtmlContent && !isConverting
+                            ? 'bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-[0_0_25px_rgba(139,92,246,0.4)] hover:scale-[1.01] active:scale-[0.99]'
+                            : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+                        }`}
+                      >
+                        {isConverting ? (
+                          <>
+                            <Icons.RotateCw size={18} className="animate-spin text-violet-300" />
+                            <span>Converting to Windows .exe ({conversionProgress}%)...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Icons.Sparkles size={18} />
+                            <span>Convert & Download Windows .exe</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* STANDARD FORMATS LIST */
+              <>
+                {/* Project Name & Resolution Summary */}
+                <div className="mb-5 space-y-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
+                      File Name
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="text" 
+                        value={projectName}
+                        onChange={(e) => setProjectName(e.target.value)}
+                        placeholder="My Animation"
+                        className="flex-1 bg-gray-900 text-white rounded-xl px-3.5 py-2.5 text-sm font-semibold border border-gray-700 hover:border-gray-500 focus:border-[#FF3B30] focus:outline-none transition-colors shadow-inner"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Transparent Background Toggle */}
+                  <div className="p-3.5 rounded-2xl bg-gray-900/80 border border-gray-800">
+                    <label className="flex items-center gap-3 cursor-pointer group select-none">
+                      <div className={`relative w-11 h-6 rounded-full transition-colors ${transparent ? 'bg-[#FF3B30]' : 'bg-gray-700'}`}>
+                        <div className={`absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform ${transparent ? 'translate-x-5' : ''}`} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-xs font-bold text-white group-hover:text-gray-200 transition-colors">
+                          {t('export.transparent', 'Transparent Background (Alpha Channel)')}
+                        </div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">
+                          Omit solid background for WebM video, animated GIF, and PNG sequences
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        className="hidden"
+                        checked={transparent}
+                        onChange={(e) => setTransparent(e.target.checked)}
+                      />
+                    </label>
+                  </div>
+
+                  {/* Quality Preset Radio selector */}
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-2">
+                      {t('export.quality', 'Export Quality & Bitrate')}
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {qualityOptions.map((opt) => (
+                        <button
+                          key={opt.id}
+                          onClick={() => setQuality(opt.id)}
+                          className={`p-2.5 rounded-xl border text-center transition-all ${
+                            quality === opt.id 
+                              ? 'bg-[#FF3B30]/15 border-[#FF3B30] text-white shadow-md' 
+                              : 'bg-gray-900/60 border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200'
+                          }`}
+                        >
+                          <div className="font-bold text-xs capitalize">{opt.id}</div>
+                          <div className="text-[9px] opacity-60 leading-tight mt-0.5 truncate">{opt.id === 'low' ? 'Small File' : opt.id === 'medium' ? 'Standard HD' : 'Maximum Bitrate'}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Export Format Actions List */}
+                <div className="space-y-2.5 flex-1">
+                  <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                    Choose Format to Render
+                  </label>
+
+                  {/* Adobe Animate / FNF Spritesheet Button (if available) */}
+                  {onOpenSpritesheetExport && (
+                    <button 
+                      onClick={() => {
+                        onClose();
+                        onOpenSpritesheetExport();
+                      }}
+                      className="w-full group bg-gradient-to-r from-red-950/50 via-red-900/30 to-gray-900 border border-red-500/40 hover:border-red-400 p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover:scale-[1.01] active:scale-[0.99] text-left shadow-lg"
+                    >
+                      <div className="p-2.5 rounded-xl bg-red-600/20 text-red-400 group-hover:scale-110 transition-transform">
+                        <Icons.Sparkles size={22} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white text-sm group-hover:text-red-300 transition-colors">Spritesheet + Starling XML</span>
+                          <span className="bg-red-500/20 text-red-300 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase border border-red-500/30">Adobe Animate / FNF</span>
+                        </div>
+                        <div className="text-[11px] text-gray-400 mt-0.5">Pack animated symbols into texture atlas with Sparrow / Starling XML</div>
+                      </div>
+                      <Icons.ChevronRight size={18} className="text-gray-500 group-hover:text-white transition-colors" />
+                    </button>
+                  )}
+
+                  {/* Format Cards */}
+                  <div className="space-y-2">
+                    {formats.map((format) => (
+                      <button 
+                        key={format.id}
+                        onClick={() => {
+                          if (format.id === 'exe') {
+                            setIsExeMode(true);
+                          } else {
+                            onExport(format.id, quality, transparent);
+                          }
+                        }}
+                        className="w-full group bg-gray-900/80 hover:bg-gray-800 border border-gray-800 hover:border-[#FF3B30] p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover:scale-[1.01] active:scale-[0.99] text-left shadow-sm"
+                      >
+                        <div className={`p-2.5 rounded-xl bg-black/50 group-hover:scale-110 transition-transform ${format.color}`}>
+                          <format.icon size={22} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white text-sm group-hover:text-[#FF3B30] transition-colors">{format.label}</span>
+                            {format.badge && (
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase border ${
+                                format.id === 'exe' 
+                                  ? 'bg-violet-950/70 text-violet-300 border-violet-700/60' 
+                                  : 'bg-gray-800 text-gray-300 border-gray-700'
+                              }`}>
+                                {format.badge}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-gray-400 mt-0.5 truncate">{format.desc}</div>
+                        </div>
+                        {format.id === 'exe' ? (
+                          <Icons.ChevronRight size={18} className="text-gray-500 group-hover:text-violet-400 transition-colors shrink-0" />
+                        ) : (
+                          <Icons.Download size={18} className="text-gray-500 group-hover:text-white transition-colors shrink-0" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Bottom Disclaimer and Tips */}
+                <div className="mt-5 pt-4 border-t border-gray-800/80 text-[10px] text-gray-500 space-y-1">
+                  <p>
+                    💡 <span className="font-bold text-gray-400">Pro Tip:</span> All video, GIF, and sprite exports are processed 100% locally on your browser with hardware acceleration.
+                  </p>
+                </div>
+              </>
+            )}
 
           </div>
 

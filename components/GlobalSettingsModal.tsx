@@ -632,7 +632,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
 
         {/* Footer */}
         <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#202020] shrink-0 flex items-center justify-between">
-          <span className="text-[11px] text-gray-500 font-mono">ClipAnim v1.3.3 System Preferences</span>
+          <span className="text-[11px] text-gray-500 font-mono">ClipAnim v1.3.4 System Preferences</span>
           <button 
             onClick={onClose}
             className="px-6 py-2.5 text-white font-bold text-xs rounded-xl hover:opacity-90 transition-opacity shadow-lg"

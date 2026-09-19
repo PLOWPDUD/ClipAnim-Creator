@@ -13,6 +13,7 @@ export interface GenerateHtmlGameOptions {
   backgroundImage?: string | null;
   audioTracks?: AudioTrack[];
   transparent?: boolean;
+  isStandaloneExe?: boolean;
   onProgress?: (progress: number) => void;
 }
 
@@ -63,6 +64,7 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
     backgroundImage,
     audioTracks = [],
     transparent = false,
+    isStandaloneExe = false,
     onProgress
   } = options;
 
@@ -600,7 +602,7 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       <div class="header-left">
         <div class="live-badge">
           <div class="live-dot"></div>
-          <span>LIVE HTML5 GAME</span>
+          <span>${isStandaloneExe ? 'STANDALONE GAME' : 'LIVE HTML5 GAME'}</span>
         </div>
         <span class="game-title">${escapeHtml(projectName || 'ClipAnim Game')}</span>
       </div>
@@ -668,7 +670,7 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
         </div>
         <div>
           <h1 class="start-title">${escapeHtml(projectName || 'ClipAnim Game')}</h1>
-          <p class="start-desc">Interactive HTML5 game created with ClipAnim Creator. Runs offline with full script physics, animated symbols, and audio.</p>
+          <p class="start-desc">${isStandaloneExe ? 'Native standalone desktop game created with ClipAnim Creator. Runs directly with physics, animated symbols, and audio.' : 'Interactive HTML5 game created with ClipAnim Creator. Runs offline with full script physics, animated symbols, and audio.'}</p>
         </div>
         <div class="progress-bar-container" id="loading-bar-box">
           <div class="progress-bar" id="loading-bar"></div>
@@ -687,7 +689,7 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
           <button id="btn-close-help" class="btn-icon">✕</button>
         </div>
         <p style="font-size:12px; line-height:1.6; margin-bottom:12px;">
-          This game is driven by ClipAnim's ActionScript-compatible runtime engine. All actors, symbols, and frame actions execute directly on the HTML5 canvas.
+          ${isStandaloneExe ? "This game is driven by ClipAnim's ActionScript-compatible runtime engine. All actors, symbols, and frame actions execute directly on the high-performance canvas." : "This game is driven by ClipAnim's ActionScript-compatible runtime engine. All actors, symbols, and frame actions execute directly on the HTML5 canvas."}
         </p>
         <table>
           <thead>

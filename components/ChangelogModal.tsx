@@ -12,6 +12,18 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.4',
+    date: '2026-09-19',
+    type: 'major',
+    changes: [
+      'Standalone Windows Executable (.exe) Export: Package and compile your animations, interactive games, or digital art into standalone Windows executable (.exe) applications.',
+      'Zero-Browser Isolated Desktop Window: True native desktop execution powered by WebView2 with custom window chrome, application icon, and taskbar entry — 100% free of web browser tabs, address bars, and browser branding.',
+      'HTML to EXE Converter Tool: Integrated desktop converter to turn any HTML5 game or standalone web page into an install-free Windows executable package with customizable resolution and fullscreen controls.',
+      'Multi-Resolution Icon Studio: Upload custom images or use current frame artwork to generate embedded multi-resolution Windows .ico binaries (16px, 32px, 48px, 64px, 128px, 256px).',
+      'Desktop Distribution Packages: Direct export of itch.io & Steam ready standalone distribution packages (.zip) with launcher scripts and offline runtime dependencies.'
+    ]
+  },
+  {
     version: '1.3.3',
     date: '2026-08-24',
     type: 'major',

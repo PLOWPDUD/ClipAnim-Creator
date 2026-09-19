@@ -12,7 +12,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { LayerPanel } from './components/LayerPanel';
 import { SymbolPanel } from './components/SymbolPanel';
 import { SpritesheetExportModal } from './components/SpritesheetExportModal';
-import { ExportModal, ExportFormat, ExportQuality } from './components/ExportModal';
+import { ExportModal, ExportFormat, ExportQuality, ExeExportOptions } from './components/ExportModal';
 import { HelpModal } from './components/HelpModal';
 import { TutorialModal } from './components/TutorialModal';
 import { InteractiveTour } from './components/InteractiveTour';
@@ -34,6 +34,7 @@ import { MoveToFolderModal } from './components/MoveToFolderModal';
 import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
 import { getLayerStats, renderTweenLayer, renderMotionPathStep } from './utils/motionBlurUtils';
 import { generateLiveHtmlGame } from './utils/htmlGameExporter';
+import { exportWindowsGameExe, exportDesktopGamePackageZip } from './utils/windowsExeExporter';
 import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB, updateProjectFolderInDB } from './utils/db';
 
 // @ts-ignore
@@ -162,7 +163,7 @@ export default function App() {
   }, [shortcuts]);
 
   useEffect(() => {
-    const CURRENT_VERSION = '1.3.3';
+    const CURRENT_VERSION = '1.3.4';
     const lastSeenVersion = localStorage.getItem('clipanim_last_seen_version');
     
     if (lastSeenVersion !== CURRENT_VERSION) {
@@ -1756,10 +1757,75 @@ export default function App() {
       setTool('pen');
   };
 
-  const handleExportStart = async (format: ExportFormat, quality: ExportQuality, transparent: boolean = false) => {
+  const handleExportStart = async (
+    format: ExportFormat, 
+    quality: ExportQuality, 
+    transparent: boolean = false,
+    exeOptions?: ExeExportOptions
+  ) => {
     setIsExporting(true);
     setExportProgress(0);
     isExportCancelledRef.current = false;
+
+    if (format === 'exe') {
+      try {
+        const { blob, url, filename } = await exportWindowsGameExe({
+          projectName,
+          frames,
+          layers,
+          actors,
+          projectScript,
+          fps,
+          canvasSize,
+          background,
+          backgroundImage,
+          audioTracks,
+          transparent,
+          exeOptions,
+          onProgress: (pct) => setExportProgress(pct)
+        });
+
+        setExportedFile({ url, name: filename, blob });
+        setIsExporting(false);
+        setExportProgress(100);
+      } catch (e: any) {
+        console.error("Windows EXE export failed:", e);
+        alert(t('errors.exportError', { message: e.message || 'Failed to export Windows .exe executable' }));
+        setIsExporting(false);
+        setIsExportModalOpen(false);
+      }
+      return;
+    }
+
+    if (format === 'desktop-package') {
+      try {
+        const { blob, url, filename } = await exportDesktopGamePackageZip({
+          projectName,
+          frames,
+          layers,
+          actors,
+          projectScript,
+          fps,
+          canvasSize,
+          background,
+          backgroundImage,
+          audioTracks,
+          transparent,
+          exeOptions,
+          onProgress: (pct) => setExportProgress(pct)
+        });
+
+        setExportedFile({ url, name: filename, blob });
+        setIsExporting(false);
+        setExportProgress(100);
+      } catch (e: any) {
+        console.error("Desktop package export failed:", e);
+        alert(t('errors.exportError', { message: e.message || 'Failed to export desktop game package' }));
+        setIsExporting(false);
+        setIsExportModalOpen(false);
+      }
+      return;
+    }
 
     const total = frames.length;
     const compositeFrames: string[] = [];
@@ -4926,29 +4992,6 @@ export default function App() {
         frames={frames}
         onUpdateFrameScript={handleUpdateFrameScript}
       />
-
-      <HelpModal 
-        isOpen={isHelpOpen} 
-        onClose={() => setIsHelpOpen(false)} 
-        onOpenTutorial={() => setIsTutorialOpen(true)}
-      />
-      
-      <TutorialModal 
-        isOpen={isTutorialOpen} 
-        onClose={() => setIsTutorialOpen(false)} 
-        onStartInteractiveTour={handleStartTour}
-      />
-
-      <InteractiveTour 
-        isActive={isInteractiveTourActive} 
-        initialMode={interactiveTourMode}
-        onComplete={() => setIsInteractiveTourActive(false)} 
-        onOpenLayers={() => { setIsLayerPanelOpen(true); setIsSymbolPanelOpen(false); }}
-        onOpenSymbols={() => { setIsSymbolPanelOpen(true); setIsLayerPanelOpen(false); }}
-        onOpenScripts={() => setIsScriptEditorOpen(true)}
-        onOpenTestMovie={() => setIsTestingMovie(true)}
-        onOpenExport={() => setIsExportModalOpen(true)}
-      />
       
       {isLayerPanelOpen && view === 'editor' && (
         <LayerPanel 
@@ -5000,20 +5043,6 @@ export default function App() {
           onOpenSpritesheetExport={() => setIsSpritesheetExportOpen(true)}
           onOpenAssetLibrary={() => { setIsAssetLibraryOpen(true); setIsSymbolPanelOpen(false); }}
         />
-      )}
-
-      {projectToDelete && (
-        <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-[#1e1e1e] rounded-3xl p-8 max-w-sm w-full border border-gray-700 shadow-2xl text-center">
-                <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center text-red-500 mx-auto mb-6"> <Icons.Trash2 size={32} /> </div>
-                <h2 className="text-2xl font-bold mb-2">{t('menu.deleteTitle')}</h2>
-                <p className="text-gray-400 mb-8">{t('menu.deleteDesc')}</p>
-                <div className="grid grid-cols-1 gap-3">
-                    <button onClick={confirmDeleteProject} className="w-full py-4 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 transition-colors">{t('menu.deletePermanently')}</button>
-                    <button onClick={() => setProjectToDelete(null)} className="w-full py-4 bg-gray-700 text-white font-bold rounded-2xl hover:bg-gray-600 transition-colors">{t('common.cancel')}</button>
-                </div>
-            </div>
-        </div>
       )}
 
       <FrameManagerModal 
@@ -5151,7 +5180,44 @@ export default function App() {
         </div>
       )}
 
-      {/* Unconditional Global Modals */}
+      {/* Unconditional Global Modals (Accessible in both Home Screen and Editor) */}
+      <TutorialModal 
+        isOpen={isTutorialOpen} 
+        onClose={() => setIsTutorialOpen(false)} 
+        onStartInteractiveTour={handleStartTour}
+      />
+
+      <HelpModal 
+        isOpen={isHelpOpen} 
+        onClose={() => setIsHelpOpen(false)} 
+        onOpenTutorial={() => setIsTutorialOpen(true)}
+      />
+
+      <InteractiveTour 
+        isActive={isInteractiveTourActive} 
+        initialMode={interactiveTourMode}
+        onComplete={() => setIsInteractiveTourActive(false)} 
+        onOpenLayers={() => { setIsLayerPanelOpen(true); setIsSymbolPanelOpen(false); }}
+        onOpenSymbols={() => { setIsSymbolPanelOpen(true); setIsLayerPanelOpen(false); }}
+        onOpenScripts={() => setIsScriptEditorOpen(true)}
+        onOpenTestMovie={() => setIsTestingMovie(true)}
+        onOpenExport={() => setIsExportModalOpen(true)}
+      />
+
+      {projectToDelete && (
+        <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-[#1e1e1e] rounded-3xl p-8 max-w-sm w-full border border-gray-700 shadow-2xl text-center">
+                <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center text-red-500 mx-auto mb-6"> <Icons.Trash2 size={32} /> </div>
+                <h2 className="text-2xl font-bold mb-2">{t('menu.deleteTitle')}</h2>
+                <p className="text-gray-400 mb-8">{t('menu.deleteDesc')}</p>
+                <div className="grid grid-cols-1 gap-3">
+                    <button onClick={confirmDeleteProject} className="w-full py-4 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 transition-colors">{t('menu.deletePermanently')}</button>
+                    <button onClick={() => setProjectToDelete(null)} className="w-full py-4 bg-gray-700 text-white font-bold rounded-2xl hover:bg-gray-600 transition-colors">{t('common.cancel')}</button>
+                </div>
+            </div>
+        </div>
+      )}
+
       <GlobalSettingsModal 
         isOpen={isGlobalSettingsOpen} 
         onClose={() => setIsGlobalSettingsOpen(false)} 

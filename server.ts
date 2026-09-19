@@ -44,7 +44,7 @@ app.get('/api/search-sounds', async (req: Request, res: Response) => {
         signal: controller.signal,
         headers: {
           'Authorization': `Token ${apiKey}`,
-          'User-Agent': 'ClipAnimCreator/1.3.3 (https://github.com/your-username/your-repo)'
+          'User-Agent': 'ClipAnimCreator/1.3.4 (https://github.com/your-username/your-repo)'
         }
       });
       
