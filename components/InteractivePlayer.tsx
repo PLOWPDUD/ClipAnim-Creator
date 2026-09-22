@@ -38,7 +38,24 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
   const [, setCurrentFrameState] = useState(0);
   const [isPlayingState, setIsPlayingState] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
-  const [showTouchControls, setShowTouchControls] = useState(false);
+  const [showTouchControls, setShowTouchControls] = useState(() => 
+    typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+  );
+  const [pressedPadKeys, setPressedPadKeys] = useState<{
+    up: boolean;
+    down: boolean;
+    left: boolean;
+    right: boolean;
+    a: boolean;
+    b: boolean;
+  }>({
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+    a: false,
+    b: false,
+  });
   const [isExportingHtml, setIsExportingHtml] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [hudStats, setHudStats] = useState({ fps: fps, score: 0, frame: '1/1' });
@@ -400,6 +417,28 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
       keysJustPressedRef.current[e.key] = true;
       keysJustPressedRef.current[e.code] = true;
 
+      // Update touchpad visual lighting (light up in red)
+      const k = e.key.toLowerCase();
+      const code = e.code;
+      if (e.key === 'ArrowUp' || code === 'ArrowUp') {
+        setPressedPadKeys(prev => prev.up ? prev : { ...prev, up: true });
+      }
+      if (e.key === 'ArrowDown' || code === 'ArrowDown') {
+        setPressedPadKeys(prev => prev.down ? prev : { ...prev, down: true });
+      }
+      if (e.key === 'ArrowLeft' || code === 'ArrowLeft') {
+        setPressedPadKeys(prev => prev.left ? prev : { ...prev, left: true });
+      }
+      if (e.key === 'ArrowRight' || code === 'ArrowRight') {
+        setPressedPadKeys(prev => prev.right ? prev : { ...prev, right: true });
+      }
+      if (k === 'a' || code === 'KeyA' || code === 'Space' || e.key === ' ') {
+        setPressedPadKeys(prev => prev.a ? prev : { ...prev, a: true });
+      }
+      if (k === 'b' || code === 'KeyB' || k === 'z' || code === 'KeyZ') {
+        setPressedPadKeys(prev => prev.b ? prev : { ...prev, b: true });
+      }
+
       // Broadcast to actors
       activeActorsRef.current.forEach(actor => {
         const ctxData = scriptContexts.current.get(actor.id);
@@ -414,6 +453,7 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
         setIsPlayingState(isPlayingRef.current);
       }
       if (e.key === 'm' || e.key === 'M') setIsMuted(prev => !prev);
+      if (e.key === 't' || e.key === 'T') setShowTouchControls(prev => !prev);
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -421,6 +461,34 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
       keysRef.current[e.code] = false;
       delete keysJustPressedRef.current[e.key];
       delete keysJustPressedRef.current[e.code];
+
+      // Turn off touchpad red lighting when key released
+      const k = e.key.toLowerCase();
+      const code = e.code;
+      if (e.key === 'ArrowUp' || code === 'ArrowUp') {
+        setPressedPadKeys(prev => !prev.up ? prev : { ...prev, up: false });
+      }
+      if (e.key === 'ArrowDown' || code === 'ArrowDown') {
+        setPressedPadKeys(prev => !prev.down ? prev : { ...prev, down: false });
+      }
+      if (e.key === 'ArrowLeft' || code === 'ArrowLeft') {
+        setPressedPadKeys(prev => !prev.left ? prev : { ...prev, left: false });
+      }
+      if (e.key === 'ArrowRight' || code === 'ArrowRight') {
+        setPressedPadKeys(prev => !prev.right ? prev : { ...prev, right: false });
+      }
+      if (k === 'a' || code === 'KeyA' || code === 'Space' || e.key === ' ') {
+        const stillDown = keysRef.current['a'] || keysRef.current['A'] || keysRef.current['KeyA'] || keysRef.current['Space'] || keysRef.current[' '];
+        if (!stillDown) {
+          setPressedPadKeys(prev => !prev.a ? prev : { ...prev, a: false });
+        }
+      }
+      if (k === 'b' || code === 'KeyB' || k === 'z' || code === 'KeyZ') {
+        const stillDown = keysRef.current['b'] || keysRef.current['B'] || keysRef.current['KeyB'] || keysRef.current['z'] || keysRef.current['Z'] || keysRef.current['KeyZ'];
+        if (!stillDown) {
+          setPressedPadKeys(prev => !prev.b ? prev : { ...prev, b: false });
+        }
+      }
 
       activeActorsRef.current.forEach(actor => {
         const ctxData = scriptContexts.current.get(actor.id);
@@ -671,6 +739,64 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
     });
   };
 
+  const handleVirtualPadDown = (pad: 'up' | 'down' | 'left' | 'right' | 'a' | 'b') => {
+    setPressedPadKeys(prev => ({ ...prev, [pad]: true }));
+    const notifyActorsDown = (kName: string, cName: string) => {
+      keysRef.current[kName] = true;
+      keysRef.current[cName] = true;
+      keysJustPressedRef.current[kName] = true;
+      keysJustPressedRef.current[cName] = true;
+      activeActorsRef.current.forEach(actor => {
+        const ctxData = scriptContexts.current.get(actor.id);
+        if (ctxData && ctxData.onKeyDown) {
+          try { ctxData.onKeyDown(kName, { key: kName, code: cName }); } catch (err) {}
+        }
+      });
+    };
+
+    if (pad === 'up') notifyActorsDown('ArrowUp', 'ArrowUp');
+    if (pad === 'down') notifyActorsDown('ArrowDown', 'ArrowDown');
+    if (pad === 'left') notifyActorsDown('ArrowLeft', 'ArrowLeft');
+    if (pad === 'right') notifyActorsDown('ArrowRight', 'ArrowRight');
+    if (pad === 'a') {
+      notifyActorsDown(' ', 'Space');
+      notifyActorsDown('a', 'KeyA');
+    }
+    if (pad === 'b') {
+      notifyActorsDown('b', 'KeyB');
+      notifyActorsDown('z', 'KeyZ');
+    }
+  };
+
+  const handleVirtualPadUp = (pad: 'up' | 'down' | 'left' | 'right' | 'a' | 'b') => {
+    setPressedPadKeys(prev => ({ ...prev, [pad]: false }));
+    const notifyActorsUp = (kName: string, cName: string) => {
+      keysRef.current[kName] = false;
+      keysRef.current[cName] = false;
+      delete keysJustPressedRef.current[kName];
+      delete keysJustPressedRef.current[cName];
+      activeActorsRef.current.forEach(actor => {
+        const ctxData = scriptContexts.current.get(actor.id);
+        if (ctxData && ctxData.onKeyUp) {
+          try { ctxData.onKeyUp(kName, { key: kName, code: cName }); } catch (err) {}
+        }
+      });
+    };
+
+    if (pad === 'up') notifyActorsUp('ArrowUp', 'ArrowUp');
+    if (pad === 'down') notifyActorsUp('ArrowDown', 'ArrowDown');
+    if (pad === 'left') notifyActorsUp('ArrowLeft', 'ArrowLeft');
+    if (pad === 'right') notifyActorsUp('ArrowRight', 'ArrowRight');
+    if (pad === 'a') {
+      notifyActorsUp(' ', 'Space');
+      notifyActorsUp('a', 'KeyA');
+    }
+    if (pad === 'b') {
+      notifyActorsUp('b', 'KeyB');
+      notifyActorsUp('z', 'KeyZ');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-200 select-none">
       {/* Top Action Bar */}
@@ -786,44 +912,90 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
       {/* Virtual On-screen Touch Controls (if enabled) */}
       {showTouchControls && (
         <div className="absolute bottom-6 left-0 right-0 flex justify-between px-8 pointer-events-none z-50">
-          <div className="grid grid-cols-3 grid-rows-3 gap-2 pointer-events-auto">
+          {/* D-Pad Buttons */}
+          <div className="grid grid-cols-3 grid-rows-3 gap-2 pointer-events-auto select-none">
             <div></div>
             <button 
-              onPointerDown={() => { keysRef.current['ArrowUp'] = true; }} 
-              onPointerUp={() => { keysRef.current['ArrowUp'] = false; }}
-              className="w-12 h-12 rounded-xl bg-white/20 active:bg-red-500 text-white font-bold backdrop-blur-md flex items-center justify-center"
+              onPointerDown={() => handleVirtualPadDown('up')} 
+              onPointerUp={() => handleVirtualPadUp('up')}
+              onPointerLeave={() => handleVirtualPadUp('up')}
+              onPointerCancel={() => handleVirtualPadUp('up')}
+              aria-label="Up Arrow"
+              className={`w-12 h-12 rounded-xl text-white font-bold backdrop-blur-md flex items-center justify-center transition-all duration-75 select-none touch-none ${
+                pressedPadKeys.up
+                  ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
+                  : 'bg-white/20 hover:bg-white/30 active:bg-red-600 border border-white/20 active:border-red-400'
+              }`}
             >▲</button>
             <div></div>
             <button 
-              onPointerDown={() => { keysRef.current['ArrowLeft'] = true; }} 
-              onPointerUp={() => { keysRef.current['ArrowLeft'] = false; }}
-              className="w-12 h-12 rounded-xl bg-white/20 active:bg-red-500 text-white font-bold backdrop-blur-md flex items-center justify-center"
+              onPointerDown={() => handleVirtualPadDown('left')} 
+              onPointerUp={() => handleVirtualPadUp('left')}
+              onPointerLeave={() => handleVirtualPadUp('left')}
+              onPointerCancel={() => handleVirtualPadUp('left')}
+              aria-label="Left Arrow"
+              className={`w-12 h-12 rounded-xl text-white font-bold backdrop-blur-md flex items-center justify-center transition-all duration-75 select-none touch-none ${
+                pressedPadKeys.left
+                  ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
+                  : 'bg-white/20 hover:bg-white/30 active:bg-red-600 border border-white/20 active:border-red-400'
+              }`}
             >◀</button>
             <div></div>
             <button 
-              onPointerDown={() => { keysRef.current['ArrowRight'] = true; }} 
-              onPointerUp={() => { keysRef.current['ArrowRight'] = false; }}
-              className="w-12 h-12 rounded-xl bg-white/20 active:bg-red-500 text-white font-bold backdrop-blur-md flex items-center justify-center"
+              onPointerDown={() => handleVirtualPadDown('right')} 
+              onPointerUp={() => handleVirtualPadUp('right')}
+              onPointerLeave={() => handleVirtualPadUp('right')}
+              onPointerCancel={() => handleVirtualPadUp('right')}
+              aria-label="Right Arrow"
+              className={`w-12 h-12 rounded-xl text-white font-bold backdrop-blur-md flex items-center justify-center transition-all duration-75 select-none touch-none ${
+                pressedPadKeys.right
+                  ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
+                  : 'bg-white/20 hover:bg-white/30 active:bg-red-600 border border-white/20 active:border-red-400'
+              }`}
             >▶</button>
             <div></div>
             <button 
-              onPointerDown={() => { keysRef.current['ArrowDown'] = true; }} 
-              onPointerUp={() => { keysRef.current['ArrowDown'] = false; }}
-              className="w-12 h-12 rounded-xl bg-white/20 active:bg-red-500 text-white font-bold backdrop-blur-md flex items-center justify-center"
+              onPointerDown={() => handleVirtualPadDown('down')} 
+              onPointerUp={() => handleVirtualPadUp('down')}
+              onPointerLeave={() => handleVirtualPadUp('down')}
+              onPointerCancel={() => handleVirtualPadUp('down')}
+              aria-label="Down Arrow"
+              className={`w-12 h-12 rounded-xl text-white font-bold backdrop-blur-md flex items-center justify-center transition-all duration-75 select-none touch-none ${
+                pressedPadKeys.down
+                  ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
+                  : 'bg-white/20 hover:bg-white/30 active:bg-red-600 border border-white/20 active:border-red-400'
+              }`}
             >▼</button>
             <div></div>
           </div>
 
-          <div className="flex items-end gap-3 pointer-events-auto">
+          {/* Action Buttons: B and A (both light up in glowing red) */}
+          <div className="flex items-end gap-3.5 pointer-events-auto select-none">
             <button 
-              onPointerDown={() => { keysRef.current['KeyZ'] = true; }} 
-              onPointerUp={() => { keysRef.current['KeyZ'] = false; }}
-              className="w-14 h-14 rounded-full bg-blue-500/40 border border-blue-400 active:bg-blue-600 text-white font-bold backdrop-blur-md flex items-center justify-center shadow-lg"
+              onPointerDown={() => handleVirtualPadDown('b')} 
+              onPointerUp={() => handleVirtualPadUp('b')}
+              onPointerLeave={() => handleVirtualPadUp('b')}
+              onPointerCancel={() => handleVirtualPadUp('b')}
+              aria-label="Button B"
+              title="Button B (B / Z key)"
+              className={`w-14 h-14 rounded-full text-white font-black backdrop-blur-md flex items-center justify-center shadow-lg transition-all duration-75 select-none touch-none ${
+                pressedPadKeys.b
+                  ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_24px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
+                  : 'bg-red-500/30 hover:bg-red-500/40 active:bg-red-600 border-2 border-red-400/60 active:border-red-400'
+              }`}
             >B</button>
             <button 
-              onPointerDown={() => { keysRef.current['Space'] = true; }} 
-              onPointerUp={() => { keysRef.current['Space'] = false; }}
-              className="w-16 h-16 rounded-full bg-red-500/50 border border-red-400 active:bg-red-600 text-white font-bold backdrop-blur-md flex items-center justify-center shadow-lg"
+              onPointerDown={() => handleVirtualPadDown('a')} 
+              onPointerUp={() => handleVirtualPadUp('a')}
+              onPointerLeave={() => handleVirtualPadUp('a')}
+              onPointerCancel={() => handleVirtualPadUp('a')}
+              aria-label="Button A"
+              title="Button A (A / Space key)"
+              className={`w-16 h-16 rounded-full text-white font-black backdrop-blur-md flex items-center justify-center shadow-lg transition-all duration-75 select-none touch-none ${
+                pressedPadKeys.a
+                  ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_26px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
+                  : 'bg-red-500/40 hover:bg-red-500/50 active:bg-red-600 border-2 border-red-400/70 active:border-red-400'
+              }`}
             >A</button>
           </div>
         </div>
@@ -831,7 +1003,7 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
 
       {/* Footer shortcut hints */}
       <div className="absolute bottom-2 text-center text-[11px] text-gray-500 pointer-events-none">
-        Controls: [R] Restart • [P] Pause • [M] Mute Audio • Click / Arrow keys / Spacebar for game input
+        Controls: [R] Restart • [P] Pause • [M] Mute Audio • [T] Touchpad • Arrow keys / A & B for game input
       </div>
     </div>
   );

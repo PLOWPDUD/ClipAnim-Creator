@@ -16,6 +16,10 @@ const CHANGELOG: ChangelogEntry[] = [
     date: '2026-09-19',
     type: 'major',
     changes: [
+      'Standalone Android Application Package (.apk) Export: Compile and export interactive games, animations, or digital art directly to standalone Android APK packages (.apk) ready to sideload and install on any phone, tablet, or smart TV.',
+      'Complete Android Studio & Gradle Project (.zip) Export: Export ready-to-build Android Studio projects with Kotlin/WebView source code, Gradle build system, and multi-density mipmap icons for Google Play Store (AAB) release.',
+      'HTML to Android APK Converter: Turn any custom HTML5 game, animation, or web page into a native Android APK package directly in your browser without requiring Android SDK installed.',
+      'Multi-Density Android Icon Studio: Generate mdpi, hdpi, xhdpi, xxhdpi, and xxxhdpi app launcher icons from custom uploaded artwork or current frame canvas drawings.',
       'Standalone Windows Executable (.exe) Export: Package and compile your animations, interactive games, or digital art into standalone Windows executable (.exe) applications.',
       'Zero-Browser Isolated Desktop Window: True native desktop execution powered by WebView2 with custom window chrome, application icon, and taskbar entry — 100% free of web browser tabs, address bars, and browser branding.',
       'HTML to EXE Converter Tool: Integrated desktop converter to turn any HTML5 game or standalone web page into an install-free Windows executable package with customizable resolution and fullscreen controls.',

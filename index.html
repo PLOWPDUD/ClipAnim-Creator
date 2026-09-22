@@ -9,10 +9,38 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <title>ClipAnim Creator</title>
+    <meta name="description" content="A robust 2D animation and digital art studio featuring multi-layer frame-by-frame animation, interactive tutorials, onion skinning, audio studio, tweening, standalone Windows EXE export, Android APK export, and MP4/GIF export." />
+    <meta property="og:title" content="ClipAnim Creator" />
+    <meta property="og:description" content="A robust 2D animation and digital art studio featuring multi-layer frame-by-frame animation, interactive tutorials, onion skinning, audio studio, tweening, standalone Windows EXE export, Android APK export, and MP4/GIF export." />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23FF3B30'/%3E%3Cpath d='M35 30 L75 50 L35 70 Z' fill='white'/%3E%3C/svg%3E" />
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="margin:0;background-color:#0c0d10;">
+    <div id="root">
+      <div style="position:fixed;inset:0;background:#0c0d10;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:white;z-index:9999;user-select:none;">
+        <div style="width:84px;height:84px;border-radius:24px;background:linear-gradient(135deg,#FF3B30,#ff5e54,#f97316);padding:2px;box-shadow:0 12px 40px rgba(255,59,48,0.45);display:flex;align-items:center;justify-content:center;margin-bottom:20px;">
+          <div style="width:100%;height:100%;border-radius:22px;background:rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;">
+            <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="20" height="20" x="2" y="2" rx="4"></rect>
+              <path d="m4 4 16 16"></path>
+              <path d="m4 12 8-8"></path>
+              <path d="m12 20 8-8"></path>
+            </svg>
+          </div>
+        </div>
+        <h1 style="font-size:26px;font-weight:900;letter-spacing:-0.5px;margin:0 0 6px 0;text-align:center;">ClipAnim <span style="color:#ff5e54;">Creator</span></h1>
+        <p style="font-size:13px;color:#9ca3af;margin:0 0 28px 0;font-weight:500;text-align:center;">2D Animation &amp; Interactive Studio</p>
+        <div style="width:260px;height:8px;background:rgba(255,255,255,0.1);border-radius:999px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);position:relative;">
+          <div style="height:100%;width:40%;border-radius:999px;background:linear-gradient(90deg,#FF3B30,#f97316);box-shadow:0 0 14px rgba(255,59,48,0.85);animation:clipanimPreload 1.4s infinite ease-in-out;"></div>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:#6b7280;font-family:monospace;">Loading Studio...</div>
+        <style>
+          @keyframes clipanimPreload {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(350%); }
+          }
+        </style>
+      </div>
+    </div>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

@@ -494,10 +494,14 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       justify-content: center;
       touch-action: none;
       user-select: none;
+      transition: all 0.08s ease;
     }
-    .dpad-btn:active {
-      background: var(--accent);
-      border-color: var(--accent);
+    .dpad-btn:active, .dpad-btn.pressed {
+      background: #FF3B30 !important;
+      border-color: #ff7b72 !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 20px rgba(255, 59, 48, 0.9) !important;
+      transform: scale(0.94);
     }
     .action-buttons {
       display: flex;
@@ -505,25 +509,36 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       gap: 14px;
     }
     .action-btn {
-      width: 60px;
-      height: 60px;
       border-radius: 50%;
-      background: rgba(255, 59, 48, 0.3);
+      background: rgba(255, 59, 48, 0.28);
       border: 2px solid rgba(255, 59, 48, 0.6);
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
       color: white;
-      font-size: 16px;
       font-weight: 800;
       display: flex;
       align-items: center;
       justify-content: center;
       touch-action: none;
       user-select: none;
+      transition: all 0.08s ease;
     }
-    .action-btn:active {
-      background: var(--accent);
-      box-shadow: 0 0 16px var(--accent-glow);
+    .action-btn.btn-b {
+      width: 58px;
+      height: 58px;
+      font-size: 16px;
+    }
+    .action-btn.btn-a {
+      width: 66px;
+      height: 66px;
+      font-size: 18px;
+    }
+    .action-btn:active, .action-btn.pressed {
+      background: #FF3B30 !important;
+      border-color: #ff7b72 !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 24px rgba(255, 59, 48, 0.95) !important;
+      transform: scale(0.94);
     }
 
     /* HUD Stats & Notifications */
@@ -647,18 +662,18 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
     <div id="touch-controls">
       <div class="dpad">
         <div></div>
-        <button class="dpad-btn" data-key="ArrowUp">▲</button>
+        <button class="dpad-btn" data-key="ArrowUp" id="dpad-up" aria-label="Up Arrow">▲</button>
         <div></div>
-        <button class="dpad-btn" data-key="ArrowLeft">◀</button>
+        <button class="dpad-btn" data-key="ArrowLeft" id="dpad-left" aria-label="Left Arrow">◀</button>
         <div></div>
-        <button class="dpad-btn" data-key="ArrowRight">▶</button>
+        <button class="dpad-btn" data-key="ArrowRight" id="dpad-right" aria-label="Right Arrow">▶</button>
         <div></div>
-        <button class="dpad-btn" data-key="ArrowDown">▼</button>
+        <button class="dpad-btn" data-key="ArrowDown" id="dpad-down" aria-label="Down Arrow">▼</button>
         <div></div>
       </div>
       <div class="action-buttons">
-        <button class="action-btn" data-key="KeyZ">B</button>
-        <button class="action-btn" data-key="Space">A</button>
+        <button class="action-btn btn-b" data-key="KeyZ" id="dpad-b" aria-label="Button B" title="Button B (B / Z key)">B</button>
+        <button class="action-btn btn-a" data-key="Space" id="dpad-a" aria-label="Button A" title="Button A (A / Space key)">A</button>
       </div>
     </div>
 
@@ -1359,6 +1374,27 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       keys[key] = true;
       keys[code] = true;
 
+      // Light up virtual touch buttons in red when keys are pressed
+      const lowerKey = key.toLowerCase();
+      if (key === 'ArrowUp' || code === 'ArrowUp') {
+        document.getElementById('dpad-up')?.classList.add('pressed');
+      }
+      if (key === 'ArrowDown' || code === 'ArrowDown') {
+        document.getElementById('dpad-down')?.classList.add('pressed');
+      }
+      if (key === 'ArrowLeft' || code === 'ArrowLeft') {
+        document.getElementById('dpad-left')?.classList.add('pressed');
+      }
+      if (key === 'ArrowRight' || code === 'ArrowRight') {
+        document.getElementById('dpad-right')?.classList.add('pressed');
+      }
+      if (lowerKey === 'a' || code === 'KeyA' || code === 'Space' || key === ' ') {
+        document.getElementById('dpad-a')?.classList.add('pressed');
+      }
+      if (lowerKey === 'b' || code === 'KeyB' || lowerKey === 'z' || code === 'KeyZ') {
+        document.getElementById('dpad-b')?.classList.add('pressed');
+      }
+
       // Broadcast to actors
       activeActors.forEach(actor => {
         const ctxData = actorContexts.get(actor.id);
@@ -1383,6 +1419,29 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       delete keysJustPressed[key];
       delete keysJustPressed[code];
 
+      // Turn off red lighting when keys are released
+      const lowerKey = key.toLowerCase();
+      if (key === 'ArrowUp' || code === 'ArrowUp') {
+        document.getElementById('dpad-up')?.classList.remove('pressed');
+      }
+      if (key === 'ArrowDown' || code === 'ArrowDown') {
+        document.getElementById('dpad-down')?.classList.remove('pressed');
+      }
+      if (key === 'ArrowLeft' || code === 'ArrowLeft') {
+        document.getElementById('dpad-left')?.classList.remove('pressed');
+      }
+      if (key === 'ArrowRight' || code === 'ArrowRight') {
+        document.getElementById('dpad-right')?.classList.remove('pressed');
+      }
+      if (lowerKey === 'a' || code === 'KeyA' || code === 'Space' || key === ' ') {
+        const stillA = keys['a'] || keys['A'] || keys['KeyA'] || keys['Space'] || keys[' '];
+        if (!stillA) document.getElementById('dpad-a')?.classList.remove('pressed');
+      }
+      if (lowerKey === 'b' || code === 'KeyB' || lowerKey === 'z' || code === 'KeyZ') {
+        const stillB = keys['b'] || keys['B'] || keys['KeyB'] || keys['z'] || keys['Z'] || keys['KeyZ'];
+        if (!stillB) document.getElementById('dpad-b')?.classList.remove('pressed');
+      }
+
       activeActors.forEach(actor => {
         const ctxData = actorContexts.get(actor.id);
         if (ctxData && ctxData.onKeyUp) {
@@ -1396,16 +1455,53 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       const targetKey = btn.getAttribute('data-key');
       const startTouch = (e) => {
         e.preventDefault();
+        btn.classList.add('pressed');
         keys[targetKey] = true;
         keysJustPressed[targetKey] = true;
+        if (targetKey === 'Space') {
+          keys['a'] = true;
+          keys['A'] = true;
+          keys['KeyA'] = true;
+          keysJustPressed['a'] = true;
+        } else if (targetKey === 'KeyZ') {
+          keys['b'] = true;
+          keys['B'] = true;
+          keys['KeyB'] = true;
+          keys['z'] = true;
+          keysJustPressed['b'] = true;
+        }
+        activeActors.forEach(actor => {
+          const ctxData = actorContexts.get(actor.id);
+          if (ctxData && ctxData.onKeyDown) {
+            try { ctxData.onKeyDown(targetKey, { key: targetKey, code: targetKey }); } catch(err){}
+          }
+        });
       };
       const endTouch = (e) => {
         e.preventDefault();
+        btn.classList.remove('pressed');
         keys[targetKey] = false;
+        if (targetKey === 'Space') {
+          keys['a'] = false;
+          keys['A'] = false;
+          keys['KeyA'] = false;
+        } else if (targetKey === 'KeyZ') {
+          keys['b'] = false;
+          keys['B'] = false;
+          keys['KeyB'] = false;
+          keys['z'] = false;
+        }
+        activeActors.forEach(actor => {
+          const ctxData = actorContexts.get(actor.id);
+          if (ctxData && ctxData.onKeyUp) {
+            try { ctxData.onKeyUp(targetKey, { key: targetKey, code: targetKey }); } catch(err){}
+          }
+        });
       };
       btn.addEventListener('pointerdown', startTouch);
       btn.addEventListener('pointerup', endTouch);
       btn.addEventListener('pointercancel', endTouch);
+      btn.addEventListener('pointerleave', endTouch);
     });
 
     // 8. HEADER UI CONTROLS

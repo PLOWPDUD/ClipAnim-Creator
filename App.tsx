@@ -12,11 +12,12 @@ import { SettingsModal } from './components/SettingsModal';
 import { LayerPanel } from './components/LayerPanel';
 import { SymbolPanel } from './components/SymbolPanel';
 import { SpritesheetExportModal } from './components/SpritesheetExportModal';
-import { ExportModal, ExportFormat, ExportQuality, ExeExportOptions } from './components/ExportModal';
+import { ExportModal, ExportFormat, ExportQuality, ExeExportOptions, ApkExportOptions } from './components/ExportModal';
 import { HelpModal } from './components/HelpModal';
 import { TutorialModal } from './components/TutorialModal';
 import { InteractiveTour } from './components/InteractiveTour';
 import { BackpackModal } from './components/BackpackModal';
+import { LoadingScreen } from './components/LoadingScreen';
 import { QuickBackpackDock } from './components/QuickBackpackDock';
 import gifshot from 'gifshot';
 import { parseGIF, decompressFrames } from 'gifuct-js';
@@ -35,6 +36,7 @@ import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
 import { getLayerStats, renderTweenLayer, renderMotionPathStep } from './utils/motionBlurUtils';
 import { generateLiveHtmlGame } from './utils/htmlGameExporter';
 import { exportWindowsGameExe, exportDesktopGamePackageZip } from './utils/windowsExeExporter';
+import { exportAndroidApk, exportAndroidStudioProjectZip } from './utils/androidApkExporter';
 import { saveProjectToDB, loadProjectFromDB, getProjectList, deleteProjectFromDB, updateProjectFolderInDB } from './utils/db';
 
 // @ts-ignore
@@ -72,10 +74,14 @@ export default function App() {
   }, [i18n.language]);
 
   const [view, setView] = useState<'menu' | 'editor'>('menu');
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isAppInitialized, setIsAppInitialized] = useState(false);
+  const [isProjectLoading, setIsProjectLoading] = useState(false);
+  const [isProjectReady, setIsProjectReady] = useState(false);
+  const [loadingProjectName, setLoadingProjectName] = useState('');
   const [savedProjects, setSavedProjects] = useState<ProjectMeta[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
 
   const [deviceType, setDeviceType] = useState<'mobile' | 'pc' | null>(() => {
     const saved = localStorage.getItem('clipanim_device_type');
@@ -577,6 +583,8 @@ export default function App() {
               setSavedProjects(projectsToKeep);
           } catch (e) {
               console.error("Failed to load project list", e);
+          } finally {
+              setIsAppInitialized(true);
           }
       };
       fetchProjects();
@@ -1761,11 +1769,72 @@ export default function App() {
     format: ExportFormat, 
     quality: ExportQuality, 
     transparent: boolean = false,
-    exeOptions?: ExeExportOptions
+    exeOptions?: ExeExportOptions,
+    apkOptions?: ApkExportOptions
   ) => {
     setIsExporting(true);
     setExportProgress(0);
     isExportCancelledRef.current = false;
+
+    if (format === 'apk') {
+      try {
+        const { blob, url, filename } = await exportAndroidApk({
+          projectName,
+          frames,
+          layers,
+          actors,
+          projectScript,
+          fps,
+          canvasSize,
+          background,
+          backgroundImage,
+          audioTracks,
+          transparent,
+          apkOptions,
+          onProgress: (pct) => setExportProgress(pct)
+        });
+
+        setExportedFile({ url, name: filename, blob });
+        setIsExporting(false);
+        setExportProgress(100);
+      } catch (e: any) {
+        console.error("Android APK export failed:", e);
+        alert(t('errors.exportError', { message: e.message || 'Failed to export Android APK package' }));
+        setIsExporting(false);
+        setIsExportModalOpen(false);
+      }
+      return;
+    }
+
+    if (format === 'android-project') {
+      try {
+        const { blob, url, filename } = await exportAndroidStudioProjectZip({
+          projectName,
+          frames,
+          layers,
+          actors,
+          projectScript,
+          fps,
+          canvasSize,
+          background,
+          backgroundImage,
+          audioTracks,
+          transparent,
+          apkOptions,
+          onProgress: (pct) => setExportProgress(pct)
+        });
+
+        setExportedFile({ url, name: filename, blob });
+        setIsExporting(false);
+        setExportProgress(100);
+      } catch (e: any) {
+        console.error("Android Studio project export failed:", e);
+        alert(t('errors.exportError', { message: e.message || 'Failed to export Android Studio project ZIP' }));
+        setIsExporting(false);
+        setIsExportModalOpen(false);
+      }
+      return;
+    }
 
     if (format === 'exe') {
       try {
@@ -2563,14 +2632,19 @@ export default function App() {
       audioElementsRef.current.clear();
   };
 
-  const loadProject = async (id: string) => {
-      setIsLoading(true);
+  const loadProject = async (id: string, name?: string) => {
+      setLoadingProjectName(name || '');
+      setIsProjectLoading(true);
+      setIsProjectReady(false);
       try {
         const data = await loadProjectFromDB(id);
         if (!data) {
             alert(t('errors.projectNotFound'));
-            setIsLoading(false);
+            setIsProjectLoading(false);
             return;
+        }
+        if (!name && data.name) {
+            setLoadingProjectName(data.name);
         }
         
         clearAudio();
@@ -2609,25 +2683,27 @@ export default function App() {
         setBrushType('pen');
         setHasUnsavedChanges(false);
         setView('editor');
+        setIsProjectReady(true);
       } catch (e) {
           console.error("Failed to load", e);
           alert(t('errors.loadError'));
-      } finally {
-          setIsLoading(false);
+          setIsProjectLoading(false);
       }
   };
 
   const createNewProject = async (type: 'animation' | 'painting' | 'game' = 'animation', targetFolderId: string | null = currentFolderId) => {
-      clearAudio();
-      const pid = crypto.randomUUID();
-      setProjectId(pid);
-      
       let projName = t('menu.newProject');
       if (type === 'painting') {
         projName = t('menu.newPainting', 'New Painting');
       } else if (type === 'game') {
         projName = 'New Interactive Game';
       }
+      setLoadingProjectName(projName);
+      setIsProjectLoading(true);
+      setIsProjectReady(false);
+      clearAudio();
+      const pid = crypto.randomUUID();
+      setProjectId(pid);
       setProjectName(projName);
       setProjectType(type);
       setFolderId(targetFolderId || null);
@@ -2760,6 +2836,7 @@ export default function App() {
       setSelection(null);
       setHasUnsavedChanges(false);
       setView('editor');
+      setIsProjectReady(true);
   };
 
   const handleStartTour = (mode: 'all' | 'painting' | 'games' = 'all') => {
@@ -2849,9 +2926,10 @@ export default function App() {
             await saveProjectToDB(projectData);
             const updatedList = await getProjectList();
             setSavedProjects(updatedList);
-            loadProject(newId);
+            loadProject(newId, data.name);
         } catch (err) {
             alert(t('errors.parseError'));
+            setIsProjectLoading(false);
         }
     };
     reader.readAsText(file);
@@ -4285,7 +4363,7 @@ export default function App() {
                   return (
                     <div
                       key={project.id}
-                      onClick={() => loadProject(project.id)}
+                      onClick={() => loadProject(project.id, project.name)}
                       className={`relative group aspect-[4/3] bg-[#1e1e1e] rounded-2xl overflow-hidden cursor-pointer border border-gray-800 hover:border-gray-600 transition-all shadow-lg hover:shadow-2xl ${ringClass}`}
                     >
                       {/* Thumbnail Preview */}
@@ -4384,12 +4462,6 @@ export default function App() {
               </div>
             </div>
           </div>
-
-          {isLoading && (
-            <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center backdrop-blur-sm">
-              <Icons.Loader2 className="w-12 h-12 text-[var(--accent-color)] animate-spin" />
-            </div>
-          )}
 
           {/* Folder Modal for Create/Edit */}
           <FolderModal
@@ -5234,6 +5306,27 @@ export default function App() {
         workspaceMode={workspaceMode}
         setWorkspaceMode={setWorkspaceMode}
       />
+
+      {isInitialLoading && (
+        <LoadingScreen
+          mode="startup"
+          isReady={isAppInitialized}
+          onFinished={() => setIsInitialLoading(false)}
+          minDurationMs={500}
+        />
+      )}
+
+      {isProjectLoading && !isInitialLoading && (
+        <LoadingScreen
+          mode="project"
+          projectName={loadingProjectName}
+          isReady={isProjectReady}
+          onFinished={() => {
+            setIsProjectLoading(false);
+          }}
+          minDurationMs={350}
+        />
+      )}
     </div>
   );
 }

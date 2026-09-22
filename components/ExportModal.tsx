@@ -4,8 +4,10 @@ import { Icons } from '../Icons';
 import { Frame, Layer, LayerFolder, BackgroundSettings } from '../types';
 import { compositeLayers } from '../utils/drawingUtils';
 import { processIconToResolutions, buildIcoFileBinary, generateDefaultGameIconCanvas, convertCustomHtmlToExe } from '../utils/windowsExeExporter';
+import { generateDefaultAndroidIconCanvas, convertCustomHtmlToApk, generateResizedIconPngBytes, ApkExportOptions } from '../utils/androidApkExporter';
+import JSZip from 'jszip';
 
-export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'png' | 'avi' | 'project-zip' | 'html' | 'exe' | 'desktop-package';
+export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png-seq' | 'png' | 'avi' | 'project-zip' | 'html' | 'exe' | 'desktop-package' | 'apk' | 'android-project';
 export type ExportQuality = 'low' | 'medium' | 'high';
 
 export interface ExeExportOptions {
@@ -15,10 +17,18 @@ export interface ExeExportOptions {
   gameTitle?: string;
 }
 
+export type { ApkExportOptions };
+
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (format: ExportFormat, quality: ExportQuality, transparent: boolean, exeOptions?: ExeExportOptions) => void;
+  onExport: (
+    format: ExportFormat, 
+    quality: ExportQuality, 
+    transparent: boolean, 
+    exeOptions?: ExeExportOptions, 
+    apkOptions?: ApkExportOptions
+  ) => void;
   onCancel: () => void;
   isExporting: boolean;
   progress: number;
@@ -86,6 +96,39 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [isDraggingIcon, setIsDraggingIcon] = useState(false);
   const iconInputRef = useRef<HTMLInputElement>(null);
 
+  // Android APK Export & Mobile Studio States
+  const [isApkMode, setIsApkMode] = useState(false);
+  const [apkSubTab, setApkSubTab] = useState<'project' | 'converter'>('project');
+  const [apkPackageName, setApkPackageName] = useState<string>(() => {
+    const clean = projectName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'game';
+    return `com.clipanim.${clean}`;
+  });
+  const [apkAppName, setApkAppName] = useState<string>(projectName || 'My Interactive Game');
+  const [apkOrientation, setApkOrientation] = useState<'landscape' | 'portrait' | 'sensorLandscape' | 'sensor' | 'unspecified'>('landscape');
+  const [apkFullscreen, setApkFullscreen] = useState<boolean>(true);
+  const [apkKeepScreenOn, setApkKeepScreenOn] = useState<boolean>(true);
+  const [apkVersionName, setApkVersionName] = useState<string>('1.0.0');
+  const [apkVersionCode, setApkVersionCode] = useState<number>(1);
+  const [apkCustomIconDataUrl, setApkCustomIconDataUrl] = useState<string | null>(null);
+  const [apkCustomIconBlob, setApkCustomIconBlob] = useState<Blob | null>(null);
+  const [apkCustomIconFileName, setApkCustomIconFileName] = useState<string | null>(null);
+  const [apkDefaultIconUrl, setApkDefaultIconUrl] = useState<string>('');
+  const [isGeneratingApkIcons, setIsGeneratingApkIcons] = useState<boolean>(false);
+  const [isDraggingApkIcon, setIsDraggingApkIcon] = useState<boolean>(false);
+  const apkIconInputRef = useRef<HTMLInputElement>(null);
+
+  // HTML to APK Converter States
+  const [apkConverterHtmlFile, setApkConverterHtmlFile] = useState<File | null>(null);
+  const [apkConverterHtmlContent, setApkConverterHtmlContent] = useState<string>('');
+  const [apkConverterTitle, setApkConverterTitle] = useState<string>('MyMobileGame');
+  const [apkConverterPackage, setApkConverterPackage] = useState<string>('com.indie.mymobilegame');
+  const [apkConverterOrientation, setApkConverterOrientation] = useState<'landscape' | 'portrait' | 'sensor'>('landscape');
+  const [apkConverterFullscreen, setApkConverterFullscreen] = useState<boolean>(true);
+  const [isApkConverting, setIsApkConverting] = useState<boolean>(false);
+  const [apkConversionProgress, setApkConversionProgress] = useState<number>(0);
+  const [isDraggingApkConverterFile, setIsDraggingApkConverterFile] = useState<boolean>(false);
+  const apkConverterFileInputRef = useRef<HTMLInputElement>(null);
+
   // HTML to EXE Converter States
   const [converterHtmlFile, setConverterHtmlFile] = useState<File | null>(null);
   const [converterHtmlContent, setConverterHtmlContent] = useState<string>('');
@@ -106,7 +149,22 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     } catch (e) {
       console.warn('Could not generate default icon preview:', e);
     }
+
+    try {
+      const apkCvs = generateDefaultAndroidIconCanvas(256);
+      setApkDefaultIconUrl(apkCvs.toDataURL('image/png'));
+    } catch (e) {
+      console.warn('Could not generate default android icon preview:', e);
+    }
   }, []);
+
+  useEffect(() => {
+    if (projectName) {
+      setApkAppName(projectName);
+      const clean = projectName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'game';
+      setApkPackageName(`com.clipanim.${clean}`);
+    }
+  }, [projectName]);
 
   const scrubberRef = useRef<HTMLDivElement>(null);
   const isDraggingScrubberRef = useRef(false);
@@ -409,6 +467,108 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
+  const handleApkIconFile = (file: File) => {
+    if (!file) return;
+    setApkCustomIconBlob(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setApkCustomIconDataUrl(reader.result as string);
+      setApkCustomIconFileName(file.name);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUseFrame1AsApkIcon = () => {
+    if (previewFrames && previewFrames.length > 0) {
+      setApkCustomIconDataUrl(previewFrames[0]);
+      setApkCustomIconFileName('Frame1_Artwork.png');
+    }
+  };
+
+  const handleDownloadApkIconPack = async () => {
+    setIsGeneratingApkIcons(true);
+    try {
+      const zip = new JSZip();
+      const densities = [
+        { folder: 'mipmap-mdpi', size: 48 },
+        { folder: 'mipmap-hdpi', size: 72 },
+        { folder: 'mipmap-xhdpi', size: 96 },
+        { folder: 'mipmap-xxhdpi', size: 144 },
+        { folder: 'mipmap-xxxhdpi', size: 192 },
+      ];
+
+      for (const d of densities) {
+        const pngBytes = await generateResizedIconPngBytes(apkCustomIconDataUrl, d.size);
+        zip.file(`res/${d.folder}/ic_launcher.png`, pngBytes);
+        zip.file(`res/${d.folder}/ic_launcher_round.png`, pngBytes);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cleanName = projectName.replace(/[^a-zA-Z0-9_\-]/g, '_').trim() || 'Game';
+      a.download = `${cleanName}_Android_Icons.zip`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (err) {
+      console.error('Failed to generate Android icon pack:', err);
+      alert('Failed to generate Android icon pack.');
+    } finally {
+      setIsGeneratingApkIcons(false);
+    }
+  };
+
+  const handleApkConverterFile = (file: File) => {
+    if (!file) return;
+    setApkConverterHtmlFile(file);
+    const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_\-]/g, '_');
+    if (baseName) {
+      setApkConverterTitle(baseName);
+      const cleanPkg = baseName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'game';
+      setApkConverterPackage(`com.indie.${cleanPkg}`);
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setApkConverterHtmlContent(reader.result as string);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleConvertHtmlToApk = async () => {
+    if (!apkConverterHtmlContent.trim()) {
+      alert('Please upload or provide HTML content first.');
+      return;
+    }
+
+    setIsApkConverting(true);
+    setApkConversionProgress(10);
+    try {
+      const result = await convertCustomHtmlToApk({
+        htmlContent: apkConverterHtmlContent,
+        gameTitle: apkConverterTitle || 'MyMobileGame',
+        packageName: apkConverterPackage || 'com.indie.mymobilegame',
+        orientation: apkConverterOrientation,
+        fullscreen: apkConverterFullscreen,
+        customIconBlob: apkCustomIconBlob,
+        onProgress: (pct) => setApkConversionProgress(pct),
+      });
+
+      const a = document.createElement('a');
+      a.href = result.url;
+      a.download = result.filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(result.url), 10000);
+    } catch (err) {
+      console.error('APK conversion failed:', err);
+      alert('Failed to convert HTML to Android APK.');
+    } finally {
+      setIsApkConverting(false);
+      setApkConversionProgress(0);
+    }
+  };
+
   const handleDownloadStandaloneIco = async () => {
     setIsGeneratingIco(true);
     try {
@@ -437,6 +597,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     { id: 'gif', label: t('export.gif', 'Animated GIF'), icon: Icons.Image, color: 'text-amber-400', desc: t('export.gifDesc', 'Looping animated GIF perfect for Discord, Reddit, and stickers'), badge: 'Looping' },
     { id: 'png-seq', label: t('export.pngSeq', 'PNG Sequence (.zip)'), icon: Icons.FileArchive, color: 'text-rose-400', desc: t('export.pngSeqDesc', 'Lossless transparent frame images zipped for Premiere, After Effects, Blender'), badge: 'Pro Zip' },
     { id: 'png', label: t('export.png', 'PNG Image'), icon: Icons.Image, color: 'text-purple-400', desc: t('export.pngDesc', 'Export full-resolution crisp static PNG artwork'), badge: 'Single Frame' },
+    { id: 'apk', label: t('export.apk', 'Android Mobile App (.apk)'), icon: Icons.Smartphone, color: 'text-emerald-400', desc: t('export.apkDesc', 'Direct installable Android APK with custom launcher icon, touch controls, and full-screen immersive mode'), badge: 'Android APK' },
     { id: 'exe', label: t('export.exe', 'Windows Standalone Game (.exe)'), icon: Icons.Monitor, color: 'text-violet-400', desc: t('export.exeDesc', 'Native Windows binary executable (.exe) with custom icon for direct desktop launching'), badge: 'Desktop EXE' },
     { id: 'html', label: t('export.html', 'Playable HTML5 Game (.html)'), icon: Icons.Gamepad2, color: 'text-cyan-400', desc: t('export.htmlDesc', 'Self-contained offline playable interactive game file for itch.io or web sharing'), badge: 'Interactive' },
     { id: 'project-zip', label: t('export.projectZip', 'Project Backup (.zip)'), icon: Icons.FileArchive, color: 'text-purple-400', desc: t('export.projectZipDesc', 'Complete editable project archive with all frames, layers, audio, and settings'), badge: 'Full Source' },
@@ -494,22 +655,51 @@ export const ExportModal: React.FC<ExportModalProps> = ({
              <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-2xl ${
                exportedFile.name.endsWith('.exe') 
                  ? 'bg-violet-500/20 border border-violet-500/50 shadow-[0_0_40px_rgba(139,92,246,0.35)]' 
+                 : exportedFile.name.endsWith('.apk')
+                 ? 'bg-emerald-500/20 border border-emerald-500/50 shadow-[0_0_40px_rgba(16,185,129,0.35)]'
                  : 'bg-emerald-500/20 border border-emerald-500/40 shadow-[0_0_40px_rgba(16,185,129,0.3)]'
              }`}>
                  {exportedFile.name.endsWith('.exe') ? (
                    <Icons.Monitor className="text-violet-400" size={48} />
+                 ) : exportedFile.name.endsWith('.apk') ? (
+                   <Icons.Smartphone className="text-emerald-400" size={48} />
                  ) : (
                    <Icons.Check className="text-emerald-400" size={48} />
                  )}
              </div>
              <h2 className="text-3xl font-bold text-white mb-2">
-               {exportedFile.name.endsWith('.exe') ? 'Windows .exe Binary Generated!' : t('export.success', 'Export Complete!')}
-             </h2>
-             <p className="text-gray-400 text-sm mb-8 max-w-md">
                {exportedFile.name.endsWith('.exe') 
-                 ? 'Your native Windows game executable (.exe) has been built with your custom embedded icon. Double-click to launch and play on Windows!' 
+                 ? 'Windows .exe Binary Generated!' 
+                 : exportedFile.name.endsWith('.apk')
+                 ? 'Android Package (.apk) Generated!'
+                 : exportedFile.name.includes('AndroidStudio')
+                 ? 'Android Studio Project Generated!'
+                 : t('export.success', 'Export Complete!')}
+             </h2>
+             <p className="text-gray-400 text-sm mb-4 max-w-md">
+               {exportedFile.name.endsWith('.exe')
+                 ? 'Your native Windows game executable (.exe) has been built with your custom embedded icon. Double-click to launch and play on Windows!'
+                 : exportedFile.name.endsWith('.apk')
+                 ? 'Your ready-to-install Android APK has been built with your custom launcher icon, orientation lock, and hardware acceleration.'
+                 : exportedFile.name.includes('AndroidStudio')
+                 ? 'Complete Android Studio project with Gradle 8, Kotlin, and WebView runtime is ready for building release AAB packages for the Google Play Store.'
                  : t('export.successDesc', 'Your file has been rendered and is ready to download or share.')}
              </p>
+
+             {exportedFile.name.endsWith('.apk') && (
+               <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-2xl p-3.5 max-w-md text-left mb-6 text-xs text-gray-300 space-y-1.5 shadow-inner">
+                 <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                   <Icons.Info size={15} />
+                   <span>How to Install on Android Device</span>
+                 </div>
+                 <ol className="list-decimal list-inside space-y-1 text-gray-300 text-[11px] leading-relaxed">
+                   <li>Download the <span className="font-mono text-emerald-300">.apk</span> onto your Android phone or tablet.</li>
+                   <li>Open the file from notifications or <span className="font-semibold text-white">Files / Downloads</span>.</li>
+                   <li>If prompted <span className="italic text-amber-300">"Install unknown apps"</span>, tap <span className="font-semibold text-white">Settings</span> and toggle <span className="font-semibold text-emerald-300">"Allow from this source"</span>.</li>
+                   <li>Tap <span className="font-semibold text-emerald-400">Install</span> and your custom icon will appear right on your home screen!</li>
+                 </ol>
+               </div>
+             )}
              
              <div className="flex flex-wrap gap-4 justify-center">
                  {!exportedFile.name.endsWith('.exe') && (
@@ -526,11 +716,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                      className={`px-8 py-4 rounded-2xl font-bold transition-all flex items-center gap-2.5 shadow-lg hover:scale-105 active:scale-95 text-white ${
                        exportedFile.name.endsWith('.exe')
                          ? 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-[0_0_30px_rgba(139,92,246,0.5)]'
+                         : exportedFile.name.endsWith('.apk')
+                         ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-[0_0_30px_rgba(16,185,129,0.5)]'
                          : 'bg-gray-800 hover:bg-gray-700 border border-gray-700'
                      }`}
                  >
                      <Icons.Download size={20} />
-                     <span>{exportedFile.name.endsWith('.exe') ? 'Download Windows .exe' : t('common.download', 'Download File')}</span>
+                     <span>
+                       {exportedFile.name.endsWith('.exe') 
+                         ? 'Download Windows .exe' 
+                         : exportedFile.name.endsWith('.apk')
+                         ? 'Download Android .apk'
+                         : t('common.download', 'Download File')}
+                     </span>
                  </button>
              </div>
              
@@ -878,7 +1076,517 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {/* RIGHT PANEL: EXPORT FORMATS & SETTINGS */}
           <div className={`${isTheaterMode ? 'hidden' : 'w-full lg:w-[42%]'} p-6 sm:p-7 flex flex-col bg-[#1a1a1a] overflow-y-auto no-scrollbar`}>
             
-            {isExeMode ? (
+            {isApkMode ? (
+              /* ANDROID MOBILE & APK CONFIGURATION STUDIO */
+              <div className="space-y-4 flex flex-col h-full animate-in fade-in duration-200">
+                {/* Header with Back button & Sub-tabs */}
+                <div className="flex items-center justify-between pb-3 border-b border-gray-800 flex-wrap gap-2">
+                  <button
+                    onClick={() => setIsApkMode(false)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-300 hover:text-white hover:bg-gray-800 border border-gray-800 transition-colors"
+                  >
+                    <Icons.ChevronLeft size={16} />
+                    <span>Back to Formats</span>
+                  </button>
+
+                  {/* Mode Sub-Tabs */}
+                  <div className="flex items-center bg-gray-900 p-1 rounded-xl border border-gray-800 text-xs font-semibold">
+                    <button
+                      onClick={() => setApkSubTab('project')}
+                      className={`px-3 py-1 rounded-lg transition-all ${
+                        apkSubTab === 'project'
+                          ? 'bg-emerald-600 text-white shadow'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Project to .APK
+                    </button>
+                    <button
+                      onClick={() => setApkSubTab('converter')}
+                      className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                        apkSubTab === 'converter'
+                          ? 'bg-emerald-600 text-white shadow'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      <Icons.Sparkles size={12} />
+                      <span>HTML to APK Converter</span>
+                    </button>
+                  </div>
+                </div>
+
+                {apkSubTab === 'project' ? (
+                  <>
+                    {/* Title and Explanation */}
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-base font-bold text-white flex items-center gap-2">
+                          <Icons.Smartphone className="text-emerald-400" size={20} />
+                          Android Mobile App (.apk)
+                        </h3>
+                        <span className="text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Icons.Check size={11} />
+                          Universal: Phone, Tablet & TV
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Direct installable APK compatible with all Android versions (5.0+ to Android 15/16), phones, 7" & 10" tablets, and foldables.
+                      </p>
+                    </div>
+
+                    {/* Compatibility Features Badges */}
+                    <div className="grid grid-cols-3 gap-1.5 py-1 text-[10px]">
+                      <div className="flex items-center gap-1.5 bg-gray-900/90 border border-gray-800 px-2 py-1 rounded-lg text-gray-300">
+                        <Icons.Check className="text-emerald-400 shrink-0" size={12} />
+                        <span className="truncate">All Tablets & Phones</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-gray-900/90 border border-gray-800 px-2 py-1 rounded-lg text-gray-300">
+                        <Icons.Check className="text-emerald-400 shrink-0" size={12} />
+                        <span className="truncate">Android 5.0 to 15+</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-gray-900/90 border border-gray-800 px-2 py-1 rounded-lg text-gray-300">
+                        <Icons.Check className="text-emerald-400 shrink-0" size={12} />
+                        <span className="truncate">Hardware Accelerated</span>
+                      </div>
+                    </div>
+
+                    {/* ICON UPLOAD & REALISTIC ANDROID SMARTPHONE SIMULATOR */}
+                    <div className="p-4 rounded-2xl bg-gray-900/90 border border-gray-800 space-y-3.5 shadow-inner">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <Icons.Sparkles size={13} className="text-emerald-400" />
+                          Android Launcher Icon (Adaptive Squircle)
+                        </label>
+                        <span className="text-[10px] text-gray-400 font-mono">
+                          {apkCustomIconDataUrl ? 'Custom Icon Active' : 'Default Android Icon'}
+                        </span>
+                      </div>
+
+                      {/* Phone Simulator Display */}
+                      <div className="relative rounded-2xl p-4 bg-gradient-to-b from-gray-950 via-slate-900 to-gray-950 border border-gray-800 shadow-xl overflow-hidden flex flex-col items-center justify-center min-h-[140px]">
+                        {/* Android Status Bar Mockup */}
+                        <div className="w-full flex items-center justify-between text-[10px] text-gray-400 font-mono px-2 pb-3 opacity-70">
+                          <span>12:00</span>
+                          <div className="w-2.5 h-2.5 rounded-full bg-black border border-gray-700 shadow-inner" />
+                          <div className="flex items-center gap-1.5">
+                            <span>5G</span>
+                            <span className="text-emerald-400">100%</span>
+                          </div>
+                        </div>
+
+                        {/* Interactive App Launcher Icon */}
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="relative group/icon cursor-pointer" onClick={() => apkIconInputRef.current?.click()}>
+                            <div className="w-16 h-16 rounded-[22%] bg-gradient-to-tr from-gray-800 to-gray-700 p-1 shadow-2xl ring-2 ring-emerald-500/40 group-hover/icon:ring-emerald-400 transition-all transform group-hover/icon:scale-105 flex items-center justify-center overflow-hidden">
+                              <img 
+                                src={apkCustomIconDataUrl || apkDefaultIconUrl} 
+                                alt="Android Launcher Icon" 
+                                className="w-full h-full object-cover rounded-[18%]"
+                              />
+                            </div>
+                            <div className="absolute inset-0 rounded-[22%] bg-black/40 opacity-0 group-hover/icon:opacity-100 flex items-center justify-center transition-opacity text-[10px] text-white font-bold">
+                              Change
+                            </div>
+                          </div>
+                          <span className="text-xs font-semibold text-white truncate max-w-[150px] text-center">
+                            {apkAppName || projectName || 'My Game'}
+                          </span>
+                        </div>
+
+                        {/* Density badges */}
+                        <div className="w-full flex items-center justify-center gap-1.5 pt-3 text-[9px] text-gray-500 font-mono">
+                          <span className="bg-gray-800/80 px-1.5 py-0.5 rounded border border-gray-700/60">xxxhdpi (192px)</span>
+                          <span className="bg-gray-800/80 px-1.5 py-0.5 rounded border border-gray-700/60">xxhdpi</span>
+                          <span className="bg-gray-800/80 px-1.5 py-0.5 rounded border border-gray-700/60">xhdpi</span>
+                          <span className="bg-gray-800/80 px-1.5 py-0.5 rounded border border-gray-700/60">hdpi</span>
+                        </div>
+                      </div>
+
+                      {/* Icon Upload Zone & Controls */}
+                      <div 
+                        onDragOver={(e) => { e.preventDefault(); setIsDraggingApkIcon(true); }}
+                        onDragLeave={() => setIsDraggingApkIcon(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setIsDraggingApkIcon(false);
+                          if (e.dataTransfer.files?.[0]) {
+                            handleApkIconFile(e.dataTransfer.files[0]);
+                          }
+                        }}
+                        onClick={() => apkIconInputRef.current?.click()}
+                        className={`border-2 border-dashed rounded-xl p-3 text-center cursor-pointer transition-all flex items-center justify-center gap-2.5 ${
+                          isDraggingApkIcon 
+                            ? 'border-emerald-400 bg-emerald-950/30' 
+                            : 'border-gray-700 hover:border-emerald-500/70 hover:bg-gray-800/50'
+                        }`}
+                      >
+                        <input 
+                          ref={apkIconInputRef}
+                          type="file" 
+                          accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon" 
+                          onChange={(e) => {
+                            if (e.target.files?.[0]) handleApkIconFile(e.target.files[0]);
+                          }}
+                          className="hidden" 
+                        />
+                        <Icons.Upload size={16} className="text-emerald-400 shrink-0" />
+                        <div className="text-left text-xs">
+                          <div className="font-semibold text-gray-200">
+                            {apkCustomIconFileName ? `Selected: ${apkCustomIconFileName}` : 'Upload Custom Icon (PNG, JPG, WebP)'}
+                          </div>
+                          <div className="text-[10px] text-gray-400">
+                            Auto-scaled to all Android mipmap densities (192, 144, 96, 72, 48px)
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quick Icon Helpers */}
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <button
+                          onClick={handleUseFrame1AsApkIcon}
+                          className="flex-1 py-1.5 px-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                        >
+                          <Icons.Image size={13} className="text-emerald-400" />
+                          <span>Use Frame 1 Drawing</span>
+                        </button>
+
+                        {apkCustomIconDataUrl && (
+                          <button
+                            onClick={() => {
+                              setApkCustomIconDataUrl(null);
+                              setApkCustomIconBlob(null);
+                              setApkCustomIconFileName(null);
+                            }}
+                            className="py-1.5 px-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-rose-400 hover:text-rose-300 text-[11px] font-semibold flex items-center justify-center gap-1 transition-colors"
+                          >
+                            <Icons.Trash2 size={13} />
+                            <span>Reset</span>
+                          </button>
+                        )}
+
+                        <button
+                          onClick={handleDownloadApkIconPack}
+                          disabled={isGeneratingApkIcons}
+                          className="py-1.5 px-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-emerald-300 hover:text-white text-[11px] font-semibold flex items-center justify-center gap-1 transition-colors"
+                          title="Download all Android icon resolutions in a ZIP"
+                        >
+                          {isGeneratingApkIcons ? (
+                            <Icons.RotateCw size={13} className="animate-spin text-emerald-400" />
+                          ) : (
+                            <Icons.FileArchive size={13} />
+                          )}
+                          <span>Get Icons (.zip)</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Android App Package Configuration */}
+                    <div className="space-y-3 bg-gray-900/80 p-3.5 rounded-2xl border border-gray-800">
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                            App Name
+                          </label>
+                          <input 
+                            type="text" 
+                            value={apkAppName}
+                            onChange={(e) => setApkAppName(e.target.value)}
+                            placeholder="Game Name"
+                            className="w-full bg-gray-950 text-white rounded-xl px-3 py-1.5 text-xs font-semibold border border-gray-700 hover:border-gray-500 focus:border-emerald-500 focus:outline-none transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                            Package ID (Java / Kotlin)
+                          </label>
+                          <input 
+                            type="text" 
+                            value={apkPackageName}
+                            onChange={(e) => setApkPackageName(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, ''))}
+                            placeholder="com.indie.game"
+                            className="w-full bg-gray-950 text-white rounded-xl px-3 py-1.5 text-xs font-mono border border-gray-700 hover:border-gray-500 focus:border-emerald-500 focus:outline-none transition-colors"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Version Name & Code Row */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                            Version Name
+                          </label>
+                          <input 
+                            type="text" 
+                            value={apkVersionName}
+                            onChange={(e) => setApkVersionName(e.target.value)}
+                            placeholder="1.0.0"
+                            className="w-full bg-gray-950 text-white rounded-xl px-3 py-1.5 text-xs font-mono border border-gray-700 hover:border-gray-500 focus:border-emerald-500 focus:outline-none transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                            Version Code
+                          </label>
+                          <input 
+                            type="number" 
+                            min="1"
+                            value={apkVersionCode}
+                            onChange={(e) => setApkVersionCode(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-full bg-gray-950 text-white rounded-xl px-3 py-1.5 text-xs font-mono border border-gray-700 hover:border-gray-500 focus:border-emerald-500 focus:outline-none transition-colors"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Screen Orientation Selector */}
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
+                          Screen Orientation Lock
+                        </label>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button
+                            onClick={() => setApkOrientation('landscape')}
+                            className={`py-1.5 px-2 rounded-xl text-xs font-semibold border transition-all ${
+                              apkOrientation === 'landscape' || apkOrientation === 'sensorLandscape'
+                                ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300'
+                                : 'bg-gray-950 border-gray-800 text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            Landscape (Game)
+                          </button>
+                          <button
+                            onClick={() => setApkOrientation('portrait')}
+                            className={`py-1.5 px-2 rounded-xl text-xs font-semibold border transition-all ${
+                              apkOrientation === 'portrait'
+                                ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300'
+                                : 'bg-gray-950 border-gray-800 text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            Portrait (Vertical)
+                          </button>
+                          <button
+                            onClick={() => setApkOrientation('sensor')}
+                            className={`py-1.5 px-2 rounded-xl text-xs font-semibold border transition-all ${
+                              apkOrientation === 'sensor' || apkOrientation === 'unspecified'
+                                ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300'
+                                : 'bg-gray-950 border-gray-800 text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            Auto-Rotate
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Immersive & WakeLock Toggles */}
+                      <div className="flex items-center justify-between pt-1 text-xs">
+                        <label className="flex items-center gap-2 text-gray-300 cursor-pointer">
+                          <input 
+                            type="checkbox"
+                            checked={apkFullscreen}
+                            onChange={(e) => setApkFullscreen(e.target.checked)}
+                            className="rounded border-gray-700 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>Immersive Fullscreen</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-gray-300 cursor-pointer">
+                          <input 
+                            type="checkbox"
+                            checked={apkKeepScreenOn}
+                            onChange={(e) => setApkKeepScreenOn(e.target.checked)}
+                            className="rounded border-gray-700 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>Keep Screen Awake</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="pt-2 mt-auto space-y-2">
+                      <button
+                        onClick={() => onExport('apk', quality, transparent, undefined, {
+                          customIconDataUrl: apkCustomIconDataUrl,
+                          customIconBlob: apkCustomIconBlob,
+                          packageName: apkPackageName,
+                          appName: apkAppName,
+                          versionName: apkVersionName,
+                          versionCode: apkVersionCode,
+                          orientation: apkOrientation,
+                          fullscreen: apkFullscreen,
+                          keepScreenOn: apkKeepScreenOn,
+                        })}
+                        className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm flex items-center justify-center gap-2.5 shadow-[0_0_25px_rgba(16,185,129,0.4)] transition-all hover:scale-[1.01] active:scale-[0.99]"
+                      >
+                        <Icons.Download size={18} />
+                        <span>Compile & Export Android .apk</span>
+                      </button>
+
+                      <button
+                        onClick={() => onExport('android-project', quality, transparent, undefined, {
+                          customIconDataUrl: apkCustomIconDataUrl,
+                          customIconBlob: apkCustomIconBlob,
+                          packageName: apkPackageName,
+                          appName: apkAppName,
+                          versionName: apkVersionName,
+                          versionCode: apkVersionCode,
+                          orientation: apkOrientation,
+                          fullscreen: apkFullscreen,
+                          keepScreenOn: apkKeepScreenOn,
+                        })}
+                        className="w-full py-2.5 px-3.5 rounded-xl bg-gray-900 hover:bg-gray-800 border border-emerald-500/40 hover:border-emerald-400 text-emerald-200 text-xs font-semibold flex items-center justify-between transition-all"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Icons.Package size={15} className="text-emerald-400" />
+                          <span>Complete Android Studio Project (.zip)</span>
+                        </div>
+                        <span className="text-[10px] text-gray-400 bg-gray-800 px-2 py-0.5 rounded border border-gray-700">Google Play / AAB</span>
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* HTML TO APK CONVERTER INTERACTIVE TOOL */
+                  <div className="space-y-3.5 flex flex-col h-full animate-in fade-in duration-200">
+                    <div>
+                      <h3 className="text-base font-bold text-white flex items-center gap-2">
+                        <Icons.Sparkles className="text-emerald-400" size={20} />
+                        HTML to Android APK Converter
+                      </h3>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Convert any HTML5 game, animation, or web application into an installable Android APK (.apk).
+                      </p>
+                    </div>
+
+                    {/* Drag & Drop HTML file */}
+                    <div 
+                      onDragOver={(e) => { e.preventDefault(); setIsDraggingApkConverterFile(true); }}
+                      onDragLeave={() => setIsDraggingApkConverterFile(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingApkConverterFile(false);
+                        if (e.dataTransfer.files?.[0]) {
+                          handleApkConverterFile(e.dataTransfer.files[0]);
+                        }
+                      }}
+                      onClick={() => apkConverterFileInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1.5 ${
+                        isDraggingApkConverterFile
+                          ? 'border-emerald-400 bg-emerald-950/30'
+                          : apkConverterHtmlFile
+                          ? 'border-emerald-500/60 bg-emerald-950/20'
+                          : 'border-gray-700 hover:border-emerald-500/70 hover:bg-gray-800/50'
+                      }`}
+                    >
+                      <input 
+                        ref={apkConverterFileInputRef}
+                        type="file" 
+                        accept=".html,.htm,.txt" 
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) handleApkConverterFile(e.target.files[0]);
+                        }}
+                        className="hidden" 
+                      />
+                      {apkConverterHtmlFile ? (
+                        <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
+                          <Icons.Check size={16} />
+                          <span className="truncate max-w-[240px] font-mono">{apkConverterHtmlFile.name}</span>
+                        </div>
+                      ) : (
+                        <>
+                          <Icons.Code size={22} className="text-emerald-400" />
+                          <div className="text-xs font-bold text-white">
+                            Click or drag & drop HTML file to convert
+                          </div>
+                          <div className="text-[10px] text-gray-400">
+                            Supports .html, .htm files
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Android Settings for Converter */}
+                    <div className="space-y-2.5 bg-gray-900/80 p-3.5 rounded-2xl border border-gray-800">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                            App Title
+                          </label>
+                          <input 
+                            type="text" 
+                            value={apkConverterTitle}
+                            onChange={(e) => setApkConverterTitle(e.target.value)}
+                            placeholder="My Converted Game"
+                            className="w-full bg-gray-950 text-white rounded-xl px-3 py-1.5 text-xs font-semibold border border-gray-700 hover:border-gray-500 focus:border-emerald-500 focus:outline-none transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                            Package ID
+                          </label>
+                          <input 
+                            type="text" 
+                            value={apkConverterPackage}
+                            onChange={(e) => setApkConverterPackage(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, ''))}
+                            placeholder="com.indie.game"
+                            className="w-full bg-gray-950 text-white rounded-xl px-3 py-1.5 text-xs font-mono border border-gray-700 hover:border-gray-500 focus:border-emerald-500 focus:outline-none transition-colors"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                            Orientation
+                          </label>
+                          <select
+                            value={apkConverterOrientation}
+                            onChange={(e) => setApkConverterOrientation(e.target.value as any)}
+                            className="w-full bg-gray-950 text-white rounded-xl px-3 py-1.5 text-xs border border-gray-700 hover:border-gray-500 focus:border-emerald-500 focus:outline-none transition-colors"
+                          >
+                            <option value="landscape">Landscape (Games)</option>
+                            <option value="portrait">Portrait (Vertical)</option>
+                            <option value="sensor">Auto-Rotate</option>
+                          </select>
+                        </div>
+                        <div className="flex items-end pb-1">
+                          <label className="flex items-center gap-2 text-gray-300 text-xs cursor-pointer">
+                            <input 
+                              type="checkbox"
+                              checked={apkConverterFullscreen}
+                              onChange={(e) => setApkConverterFullscreen(e.target.checked)}
+                              className="rounded border-gray-700 text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span>Fullscreen Mode</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Convert Button */}
+                    <div className="pt-2 mt-auto">
+                      <button
+                        onClick={handleConvertHtmlToApk}
+                        disabled={isApkConverting || !apkConverterHtmlContent}
+                        className={`w-full py-3.5 px-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all ${
+                          apkConverterHtmlContent && !isApkConverting
+                            ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-[0_0_25px_rgba(16,185,129,0.4)] hover:scale-[1.01] active:scale-[0.99]'
+                            : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+                        }`}
+                      >
+                        {isApkConverting ? (
+                          <>
+                            <Icons.RotateCw size={18} className="animate-spin text-emerald-300" />
+                            <span>Converting to Android .apk ({apkConversionProgress}%)...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Icons.Sparkles size={18} />
+                            <span>Convert & Download Android .apk</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : isExeMode ? (
               /* WINDOWS STANDALONE EXE CONFIGURATION STUDIO */
               <div className="space-y-4 flex flex-col h-full animate-in fade-in duration-200">
                 {/* Header with Back button & Sub-tabs */}
@@ -1383,8 +2091,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       <button 
                         key={format.id}
                         onClick={() => {
-                          if (format.id === 'exe') {
+                          if (format.id === 'apk') {
+                            setIsApkMode(true);
+                            setIsExeMode(false);
+                          } else if (format.id === 'exe') {
                             setIsExeMode(true);
+                            setIsApkMode(false);
                           } else {
                             onExport(format.id, quality, transparent);
                           }
@@ -1399,7 +2111,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                             <span className="font-bold text-white text-sm group-hover:text-[#FF3B30] transition-colors">{format.label}</span>
                             {format.badge && (
                               <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase border ${
-                                format.id === 'exe' 
+                                format.id === 'apk'
+                                  ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700/60'
+                                  : format.id === 'exe' 
                                   ? 'bg-violet-950/70 text-violet-300 border-violet-700/60' 
                                   : 'bg-gray-800 text-gray-300 border-gray-700'
                               }`}>
@@ -1409,8 +2123,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                           </div>
                           <div className="text-[11px] text-gray-400 mt-0.5 truncate">{format.desc}</div>
                         </div>
-                        {format.id === 'exe' ? (
-                          <Icons.ChevronRight size={18} className="text-gray-500 group-hover:text-violet-400 transition-colors shrink-0" />
+                        {format.id === 'exe' || format.id === 'apk' ? (
+                          <Icons.ChevronRight size={18} className={`text-gray-500 transition-colors shrink-0 ${format.id === 'apk' ? 'group-hover:text-emerald-400' : 'group-hover:text-violet-400'}`} />
                         ) : (
                           <Icons.Download size={18} className="text-gray-500 group-hover:text-white transition-colors shrink-0" />
                         )}
