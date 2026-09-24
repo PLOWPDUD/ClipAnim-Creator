@@ -1,5 +1,6 @@
-import { Frame, Layer, Actor, BackgroundSettings, AudioTrack } from '../types';
+import { Frame, Layer, Actor, BackgroundSettings, AudioTrack, TouchButtonConfig } from '../types';
 import { compositeLayers } from './drawingUtils';
+import { preprocessActionScript } from './actionScriptSnippets';
 
 export interface GenerateHtmlGameOptions {
   projectName: string;
@@ -14,6 +15,7 @@ export interface GenerateHtmlGameOptions {
   audioTracks?: AudioTrack[];
   transparent?: boolean;
   isStandaloneExe?: boolean;
+  touchButtons?: TouchButtonConfig[];
   onProgress?: (progress: number) => void;
 }
 
@@ -92,7 +94,7 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
     compositedFrames.push({
       id: frame.id,
       dataUrl: frameDataUrl,
-      script: frame.script || '',
+      script: preprocessActionScript(frame.script || ''),
       durationMultiplier: frame.durationMultiplier || 1
     });
 
@@ -145,7 +147,7 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       scaleX: actor.scaleX ?? 1,
       scaleY: actor.scaleY ?? 1,
       opacity: actor.opacity ?? 1,
-      scripts: actor.scripts || '',
+      scripts: preprocessActionScript(actor.scripts || ''),
       targetFrame: actor.targetFrame,
       isAnimated: !!actor.isAnimated,
       symbolFrames: processedSymbolFrames,
@@ -180,15 +182,34 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
   }
 
   // 4. Build the standalone HTML document content
+  const effectiveTouchButtons = (options.touchButtons && options.touchButtons.length > 0)
+    ? options.touchButtons
+    : [
+        { id: 'btn-b', label: 'B', key: 'z', code: 'KeyZ', color: 'red' as const, size: 'md' as const, position: 'right' as const },
+        { id: 'btn-a', label: 'A', key: ' ', code: 'Space', color: 'red' as const, size: 'lg' as const, position: 'right' as const },
+      ];
+
+  const actionButtonsHtml = effectiveTouchButtons.map(btn => {
+    const col = btn.color || 'blue';
+    const sz = btn.size || 'md';
+    const keyVal = btn.key === ' ' ? 'Space' : btn.key;
+    const codeVal = btn.code || (btn.key === ' ' ? 'Space' : (btn.key.length === 1 ? `Key${btn.key.toUpperCase()}` : btn.key));
+    return `<button class="action-btn btn-${col} btn-${sz}" data-key="${escapeHtml(keyVal)}" data-code="${escapeHtml(codeVal)}" id="${escapeHtml(btn.id)}" aria-label="Button ${escapeHtml(btn.label)}" title="Button ${escapeHtml(btn.label)} (${escapeHtml(keyVal)})">
+      <span style="display:block; font-weight:900;">${escapeHtml(btn.label)}</span>
+      <span style="font-size:9px; opacity:0.7; font-family:monospace; line-height:1;">${btn.key === ' ' ? '␣' : escapeHtml(btn.key.toUpperCase())}</span>
+    </button>`;
+  }).join('\n        ');
+
   const gameDataJson = JSON.stringify({
     title: projectName || 'ClipAnim Game',
     fps: fps > 0 ? fps : 12,
     canvasSize,
     background,
-    projectScript: projectScript || '',
+    projectScript: preprocessActionScript(projectScript || ''),
     frames: compositedFrames,
     actors: processedActors,
-    audioTracks: processedAudioTracks
+    audioTracks: processedAudioTracks,
+    touchButtons: effectiveTouchButtons
   });
 
   const htmlSource = `<!DOCTYPE html>
@@ -523,15 +544,77 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       user-select: none;
       transition: all 0.08s ease;
     }
-    .action-btn.btn-b {
-      width: 58px;
-      height: 58px;
-      font-size: 16px;
+    .action-btn.btn-sm {
+      min-width: 46px;
+      height: 46px;
+      font-size: 13px;
+      padding: 0 10px;
     }
-    .action-btn.btn-a {
-      width: 66px;
-      height: 66px;
-      font-size: 18px;
+    .action-btn.btn-md, .action-btn.btn-b {
+      min-width: 58px;
+      height: 58px;
+      font-size: 15px;
+      padding: 0 12px;
+    }
+    .action-btn.btn-lg, .action-btn.btn-a {
+      min-width: 68px;
+      height: 68px;
+      font-size: 17px;
+      padding: 0 14px;
+    }
+    .action-btn.btn-blue {
+      background: rgba(59, 130, 246, 0.28);
+      border-color: rgba(59, 130, 246, 0.6);
+    }
+    .action-btn.btn-blue:active, .action-btn.btn-blue.pressed {
+      background: #2563eb !important;
+      border-color: #60a5fa !important;
+      box-shadow: 0 0 24px rgba(59, 130, 246, 0.95) !important;
+    }
+    .action-btn.btn-green {
+      background: rgba(16, 185, 129, 0.28);
+      border-color: rgba(16, 185, 129, 0.6);
+    }
+    .action-btn.btn-green:active, .action-btn.btn-green.pressed {
+      background: #059669 !important;
+      border-color: #34d399 !important;
+      box-shadow: 0 0 24px rgba(16, 185, 129, 0.95) !important;
+    }
+    .action-btn.btn-amber {
+      background: rgba(245, 158, 11, 0.28);
+      border-color: rgba(245, 158, 11, 0.6);
+    }
+    .action-btn.btn-amber:active, .action-btn.btn-amber.pressed {
+      background: #d97706 !important;
+      border-color: #fbbf24 !important;
+      box-shadow: 0 0 24px rgba(245, 158, 11, 0.95) !important;
+    }
+    .action-btn.btn-purple {
+      background: rgba(168, 85, 247, 0.28);
+      border-color: rgba(168, 85, 247, 0.6);
+    }
+    .action-btn.btn-purple:active, .action-btn.btn-purple.pressed {
+      background: #9333ea !important;
+      border-color: #c084fc !important;
+      box-shadow: 0 0 24px rgba(168, 85, 247, 0.95) !important;
+    }
+    .action-btn.btn-cyan {
+      background: rgba(6, 182, 212, 0.28);
+      border-color: rgba(6, 182, 212, 0.6);
+    }
+    .action-btn.btn-cyan:active, .action-btn.btn-cyan.pressed {
+      background: #0891b2 !important;
+      border-color: #22d3ee !important;
+      box-shadow: 0 0 24px rgba(6, 182, 212, 0.95) !important;
+    }
+    .action-btn.btn-gray {
+      background: rgba(156, 163, 175, 0.28);
+      border-color: rgba(156, 163, 175, 0.6);
+    }
+    .action-btn.btn-gray:active, .action-btn.btn-gray.pressed {
+      background: #4b5563 !important;
+      border-color: #9ca3af !important;
+      box-shadow: 0 0 20px rgba(156, 163, 175, 0.95) !important;
     }
     .action-btn:active, .action-btn.pressed {
       background: #FF3B30 !important;
@@ -672,8 +755,7 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
         <div></div>
       </div>
       <div class="action-buttons">
-        <button class="action-btn btn-b" data-key="KeyZ" id="dpad-b" aria-label="Button B" title="Button B (B / Z key)">B</button>
-        <button class="action-btn btn-a" data-key="Space" id="dpad-a" aria-label="Button A" title="Button A (A / Space key)">A</button>
+        ${actionButtonsHtml}
       </div>
     </div>
 
@@ -910,17 +992,42 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
     }
 
     // 4. ACTION SCRIPT & TIMELINE API
+    function resolveFrameIndex(target, secondArg) {
+      var val = secondArg !== undefined ? secondArg : target;
+      if (typeof val === 'number') {
+        return Math.max(0, Math.min(GAME_DATA.frames.length - 1, val <= 0 ? 0 : Math.round(val) - 1));
+      }
+      if (typeof val === 'string') {
+        var trimmed = val.trim();
+        var parsed = parseInt(trimmed, 10);
+        if (!isNaN(parsed) && String(parsed) === trimmed) {
+          return Math.max(0, Math.min(GAME_DATA.frames.length - 1, parsed <= 0 ? 0 : parsed - 1));
+        }
+        var byLabel = GAME_DATA.frames.findIndex(function(f, idx) {
+          return (f.label && f.label.toLowerCase() === trimmed.toLowerCase()) ||
+                 (f.name && f.name.toLowerCase() === trimmed.toLowerCase()) ||
+                 (('frame ' + (idx + 1)).toLowerCase() === trimmed.toLowerCase()) ||
+                 (('frame' + (idx + 1)).toLowerCase() === trimmed.toLowerCase());
+        });
+        if (byLabel !== -1) return byLabel;
+        if (!isNaN(parsed)) {
+          return Math.max(0, Math.min(GAME_DATA.frames.length - 1, parsed <= 0 ? 0 : parsed - 1));
+        }
+      }
+      return currentFrameIndex;
+    }
+
     const timelineApi = {
-      gotoAndStop: function(frameNum) {
-        const targetIdx = frameNum <= 0 ? 0 : frameNum - 1;
-        currentFrameIndex = Math.max(0, Math.min(GAME_DATA.frames.length - 1, targetIdx));
+      gotoAndStop: function(frameOrScene, maybeFrame) {
+        currentFrameIndex = resolveFrameIndex(frameOrScene, maybeFrame);
         isPlaying = false;
+        lastExecutedFrameIndex = -1;
         triggerFrameScript(currentFrameIndex);
       },
-      gotoAndPlay: function(frameNum) {
-        const targetIdx = frameNum <= 0 ? 0 : frameNum - 1;
-        currentFrameIndex = Math.max(0, Math.min(GAME_DATA.frames.length - 1, targetIdx));
+      gotoAndPlay: function(frameOrScene, maybeFrame) {
+        currentFrameIndex = resolveFrameIndex(frameOrScene, maybeFrame);
         isPlaying = true;
+        lastExecutedFrameIndex = -1;
         triggerFrameScript(currentFrameIndex);
       },
       play: function() {
@@ -930,11 +1037,13 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
         isPlaying = false;
       },
       nextFrame: function() {
-        currentFrameIndex = (currentFrameIndex + 1) % GAME_DATA.frames.length;
+        currentFrameIndex = Math.min(GAME_DATA.frames.length - 1, currentFrameIndex + 1);
+        lastExecutedFrameIndex = -1;
         triggerFrameScript(currentFrameIndex);
       },
       prevFrame: function() {
-        currentFrameIndex = (currentFrameIndex - 1 + GAME_DATA.frames.length) % GAME_DATA.frames.length;
+        currentFrameIndex = Math.max(0, currentFrameIndex - 1);
+        lastExecutedFrameIndex = -1;
         triggerFrameScript(currentFrameIndex);
       },
       get currentFrame() {
@@ -1038,12 +1147,12 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       if (!code || typeof code !== 'string') return;
       try {
         const environment = {
-          _global_gotoAndStop: timelineApi.gotoAndStop,
-          _global_gotoAndPlay: timelineApi.gotoAndPlay,
-          _global_play: timelineApi.play,
-          _global_stop: timelineApi.stop,
-          _global_nextFrame: timelineApi.nextFrame,
-          _global_prevFrame: timelineApi.prevFrame,
+          gotoAndStop: timelineApi.gotoAndStop,
+          gotoAndPlay: timelineApi.gotoAndPlay,
+          play: timelineApi.play,
+          stop: timelineApi.stop,
+          nextFrame: timelineApi.nextFrame,
+          prevFrame: timelineApi.prevFrame,
           getCurrentFrame: timelineApi.getCurrentFrame,
           get currentFrame() { return currentFrameIndex + 1; },
           get totalFrames() { return GAME_DATA.frames.length; },
@@ -1054,15 +1163,11 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
         const keysList = Object.keys(environment);
         const valuesList = Object.values(environment);
         const fn = new Function(...keysList, 
-          \`const gotoAndStop = _global_gotoAndStop;
-           const gotoAndPlay = _global_gotoAndPlay;
-           const play = _global_play;
-           const stop = _global_stop;
-           const nextFrame = _global_nextFrame;
-           const prevFrame = _global_prevFrame;
-           \${code}\`
+          \`with(this) {
+            \${code}
+          }\`
         );
-        fn.apply(contextObj, valuesList);
+        fn.apply(contextObj || {}, valuesList);
       } catch (err) {
         console.error("ActionScript Execution Error:", err);
       }
@@ -1083,6 +1188,7 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       actorContexts.clear();
       
       activeActors.forEach(actor => {
+        const hasMultiSymbolFrames = actor.symbolFrames && actor.symbolFrames.length > 1;
         const context = {
           name: actor.name,
           x: actor.x,
@@ -1098,6 +1204,8 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
           height: actor.height,
           onUpdate: null,
           onClick: null,
+          onPress: null,
+          onRelease: null,
           onPointerDown: null,
           onPointerUp: null,
           onKeyDown: null,
@@ -1106,16 +1214,54 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
           _symbolIsPlaying: true,
           _symbolAccumulator: 0,
           ...timelineApi,
-          play: function() { this._symbolIsPlaying = true; },
-          stop: function() { this._symbolIsPlaying = false; },
-          gotoAndStop: function(frame) {
+          play: function() {
+            if (hasMultiSymbolFrames) {
+              this._symbolIsPlaying = true;
+            } else {
+              timelineApi.play();
+            }
+          },
+          stop: function() {
+            if (hasMultiSymbolFrames) {
+              this._symbolIsPlaying = false;
+            } else {
+              timelineApi.stop();
+            }
+          },
+          gotoAndStop: function(frameOrScene, maybeFrame) {
+            if (hasMultiSymbolFrames) {
+              const symTarget = typeof maybeFrame === 'number' ? maybeFrame : (typeof frameOrScene === 'number' ? frameOrScene : 1);
+              this._symbolIsPlaying = false;
+              this._symbolFrameIndex = Math.max(0, Math.min((actor.symbolFrames?.length || 1) - 1, symTarget - 1));
+            } else {
+              timelineApi.gotoAndStop(frameOrScene, maybeFrame);
+            }
+          },
+          gotoAndPlay: function(frameOrScene, maybeFrame) {
+            if (hasMultiSymbolFrames) {
+              const symTarget = typeof maybeFrame === 'number' ? maybeFrame : (typeof frameOrScene === 'number' ? frameOrScene : 1);
+              this._symbolIsPlaying = true;
+              this._symbolFrameIndex = Math.max(0, Math.min((actor.symbolFrames?.length || 1) - 1, symTarget - 1));
+            } else {
+              timelineApi.gotoAndPlay(frameOrScene, maybeFrame);
+            }
+          },
+          gotoAndStopSymbol: function(frame) {
             this._symbolIsPlaying = false;
             this._symbolFrameIndex = Math.max(0, Math.min((actor.symbolFrames?.length || 1) - 1, frame - 1));
           },
-          gotoAndPlay: function(frame) {
+          gotoAndPlaySymbol: function(frame) {
             this._symbolIsPlaying = true;
             this._symbolFrameIndex = Math.max(0, Math.min((actor.symbolFrames?.length || 1) - 1, frame - 1));
           },
+          gotoAndStopTimeline: timelineApi.gotoAndStop,
+          gotoAndPlayTimeline: timelineApi.gotoAndPlay,
+          _root: rootProxy,
+          exportRoot: rootProxy,
+          stage: rootProxy,
+          _parent: rootProxy,
+          parent: rootProxy,
+          timeline: rootProxy,
           get currentFrame() { return currentFrameIndex + 1; },
           get symbolFrame() { return this._symbolFrameIndex + 1; },
           get totalFrames() { return actor.symbolFrames?.length || 1; },
@@ -1127,9 +1273,28 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
           },
           hitTestPoint: function(px, py) {
             if (!this.visible) return false;
-            const w = this.width * Math.abs(this.scaleX);
-            const h = this.height * Math.abs(this.scaleY);
-            return px >= this.x && px <= this.x + w && py >= this.y && py <= this.y + h;
+            const w = (this.width || actor.width || 64);
+            const h = (this.height || actor.height || 64);
+            const sx = Math.abs(this.scaleX ?? actor.scaleX ?? 1) || 1;
+            const sy = Math.abs(this.scaleY ?? actor.scaleY ?? 1) || 1;
+            const cx = this.x + w / 2;
+            const cy = this.y + h / 2;
+
+            let rx = px - cx;
+            let ry = py - cy;
+            const rot = this.rotation || actor.rotation || 0;
+            if (rot !== 0) {
+              const rad = -(rot * Math.PI) / 180;
+              const cos = Math.cos(rad);
+              const sin = Math.sin(rad);
+              const nx = rx * cos - ry * sin;
+              const ny = rx * sin + ry * cos;
+              rx = nx;
+              ry = ny;
+            }
+            const halfW = (w * sx) / 2;
+            const halfH = (h * sy) / 2;
+            return Math.abs(rx) <= halfW && Math.abs(ry) <= halfH;
           },
           distanceTo: function(other) {
             if (!other) return Infinity;
@@ -1335,12 +1500,31 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       mouseY = (e.clientY - rect.top) * scaleY;
     }
 
-    canvas.addEventListener('pointermove', handlePointer);
+    canvas.addEventListener('pointermove', (e) => {
+      handlePointer(e);
+      let hovering = false;
+      for (let i = activeActors.length - 1; i >= 0; i--) {
+        const actor = activeActors[i];
+        if (actor.targetFrame !== undefined && actor.targetFrame !== currentFrameIndex) continue;
+        const ctxData = actorContexts.get(actor.id);
+        if (!ctxData || !ctxData.visible) continue;
+        if ((ctxData.onClick || ctxData.onPress || ctxData.onRelease || ctxData.onPointerDown) && ctxData.hitTestPoint(mouseX, mouseY)) {
+          hovering = true;
+          break;
+        }
+      }
+      canvas.style.cursor = hovering ? 'pointer' : 'default';
+    });
+
+    let pressedActorId = null;
+
     canvas.addEventListener('pointerdown', (e) => {
       handlePointer(e);
       isMouseDown = true;
+      pressedActorId = null;
 
       // Hit test clicked actors (top to bottom)
+      let actorHit = false;
       for (let i = activeActors.length - 1; i >= 0; i--) {
         const actor = activeActors[i];
         if (actor.targetFrame !== undefined && actor.targetFrame !== currentFrameIndex) continue;
@@ -1348,21 +1532,94 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
         if (!ctxData || !ctxData.visible) continue;
 
         if (ctxData.hitTestPoint(mouseX, mouseY)) {
-          if (ctxData.onPointerDown) ctxData.onPointerDown(e);
+          pressedActorId = actor.id;
+          actorHit = true;
+          if (ctxData.onPointerDown) {
+            try { ctxData.onPointerDown(e); } catch(err){}
+          }
+          if (ctxData.onPress) {
+            try { ctxData.onPress(e); } catch(err){}
+          }
           if (ctxData.onClick) {
             try { ctxData.onClick(e); } catch(err){}
           }
+          if (ctxData.onRelease) {
+            try { ctxData.onRelease(e); } catch(err){}
+          }
+          if (typeof ctxData.emit === 'function') {
+            ctxData.emit('click', e);
+            ctxData.emit('press', e);
+            ctxData.emit('release', e);
+            ctxData.emit('mousedown', e);
+            ctxData.emit('pointerdown', e);
+          }
           break; // top-most consumed
+        }
+      }
+
+      if (!actorHit && symbolScope._root) {
+        const r = symbolScope._root;
+        if (r.onPointerDown) { try { r.onPointerDown(e); } catch(e){} }
+        if (r.onMouseDown) { try { r.onMouseDown(e); } catch(e){} }
+        if (r.onPress) { try { r.onPress(e); } catch(e){} }
+        if (r.onClick) { try { r.onClick(e); } catch(e){} }
+        if (typeof r.emit === 'function') {
+          r.emit('pointerdown', e);
+          r.emit('mousedown', e);
+          r.emit('press', e);
+          r.emit('click', e);
         }
       }
     });
 
     window.addEventListener('pointerup', (e) => {
       isMouseDown = false;
+      const pid = pressedActorId;
+      pressedActorId = null;
+      let actorHitUp = false;
+
       activeActors.forEach(actor => {
+        if (actor.targetFrame !== undefined && actor.targetFrame !== currentFrameIndex) return;
         const ctxData = actorContexts.get(actor.id);
-        if (ctxData && ctxData.onPointerUp) ctxData.onPointerUp(e);
+        if (ctxData) {
+          const isOver = ctxData.hitTestPoint(mouseX, mouseY);
+          if (isOver) actorHitUp = true;
+
+          if (ctxData.onPointerUp) {
+            try { ctxData.onPointerUp(e); } catch(err){}
+          }
+          if (typeof ctxData.emit === 'function') {
+            ctxData.emit('mouseup', e);
+            ctxData.emit('pointerup', e);
+          }
+          if (pid === actor.id && isOver) {
+            if (ctxData.onRelease) {
+              try { ctxData.onRelease(e); } catch(err){}
+            }
+            if (ctxData.onClick) {
+              try { ctxData.onClick(e); } catch(err){}
+            }
+            if (typeof ctxData.emit === 'function') {
+              ctxData.emit('release', e);
+              ctxData.emit('click', e);
+            }
+          }
+        }
       });
+
+      if (!actorHitUp && symbolScope._root) {
+        const r = symbolScope._root;
+        if (r.onPointerUp) { try { r.onPointerUp(e); } catch(e){} }
+        if (r.onMouseUp) { try { r.onMouseUp(e); } catch(e){} }
+        if (r.onRelease) { try { r.onRelease(e); } catch(e){} }
+        if (r.onClick) { try { r.onClick(e); } catch(e){} }
+        if (typeof r.emit === 'function') {
+          r.emit('pointerup', e);
+          r.emit('mouseup', e);
+          r.emit('release', e);
+          r.emit('click', e);
+        }
+      }
     });
 
     // Keyboard Handlers
@@ -1374,7 +1631,7 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       keys[key] = true;
       keys[code] = true;
 
-      // Light up virtual touch buttons in red when keys are pressed
+      // Light up virtual touch buttons when keys are pressed
       const lowerKey = key.toLowerCase();
       if (key === 'ArrowUp' || code === 'ArrowUp') {
         document.getElementById('dpad-up')?.classList.add('pressed');
@@ -1388,12 +1645,19 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       if (key === 'ArrowRight' || code === 'ArrowRight') {
         document.getElementById('dpad-right')?.classList.add('pressed');
       }
-      if (lowerKey === 'a' || code === 'KeyA' || code === 'Space' || key === ' ') {
-        document.getElementById('dpad-a')?.classList.add('pressed');
-      }
-      if (lowerKey === 'b' || code === 'KeyB' || lowerKey === 'z' || code === 'KeyZ') {
-        document.getElementById('dpad-b')?.classList.add('pressed');
-      }
+      document.querySelectorAll('.action-btn').forEach(btn => {
+        const dk = btn.getAttribute('data-key') || '';
+        const dc = btn.getAttribute('data-code') || '';
+        const norm = (dk.toLowerCase() === 'space' || dk === ' ') ? ' ' : dk;
+        if (
+          key === norm || 
+          code === dc || 
+          lowerKey === norm.toLowerCase() || 
+          (norm === ' ' && (key === ' ' || code === 'Space'))
+        ) {
+          btn.classList.add('pressed');
+        }
+      });
 
       // Broadcast to actors
       activeActors.forEach(actor => {
@@ -1419,7 +1683,7 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       delete keysJustPressed[key];
       delete keysJustPressed[code];
 
-      // Turn off red lighting when keys are released
+      // Turn off lighting when keys are released
       const lowerKey = key.toLowerCase();
       if (key === 'ArrowUp' || code === 'ArrowUp') {
         document.getElementById('dpad-up')?.classList.remove('pressed');
@@ -1433,14 +1697,19 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       if (key === 'ArrowRight' || code === 'ArrowRight') {
         document.getElementById('dpad-right')?.classList.remove('pressed');
       }
-      if (lowerKey === 'a' || code === 'KeyA' || code === 'Space' || key === ' ') {
-        const stillA = keys['a'] || keys['A'] || keys['KeyA'] || keys['Space'] || keys[' '];
-        if (!stillA) document.getElementById('dpad-a')?.classList.remove('pressed');
-      }
-      if (lowerKey === 'b' || code === 'KeyB' || lowerKey === 'z' || code === 'KeyZ') {
-        const stillB = keys['b'] || keys['B'] || keys['KeyB'] || keys['z'] || keys['Z'] || keys['KeyZ'];
-        if (!stillB) document.getElementById('dpad-b')?.classList.remove('pressed');
-      }
+      document.querySelectorAll('.action-btn').forEach(btn => {
+        const dk = btn.getAttribute('data-key') || '';
+        const dc = btn.getAttribute('data-code') || '';
+        const norm = (dk.toLowerCase() === 'space' || dk === ' ') ? ' ' : dk;
+        if (
+          key === norm || 
+          code === dc || 
+          lowerKey === norm.toLowerCase() || 
+          (norm === ' ' && (key === ' ' || code === 'Space'))
+        ) {
+          btn.classList.remove('pressed');
+        }
+      });
 
       activeActors.forEach(actor => {
         const ctxData = actorContexts.get(actor.id);
@@ -1450,51 +1719,72 @@ export async function generateLiveHtmlGame(options: GenerateHtmlGameOptions): Pr
       });
     });
 
-    // Touch D-Pad mapping
+    // Touch D-Pad and Action Buttons mapping
     document.querySelectorAll('.dpad-btn, .action-btn').forEach(btn => {
       const targetKey = btn.getAttribute('data-key');
+      const targetCode = btn.getAttribute('data-code') || targetKey;
+      if (!targetKey) return;
       const startTouch = (e) => {
         e.preventDefault();
         btn.classList.add('pressed');
+        const norm = (targetKey.toLowerCase() === 'space' || targetKey === ' ') ? ' ' : targetKey;
+        keys[norm] = true;
         keys[targetKey] = true;
-        keysJustPressed[targetKey] = true;
-        if (targetKey === 'Space') {
+        keys[targetCode] = true;
+        keys[norm.toLowerCase()] = true;
+        keys[norm.toUpperCase()] = true;
+        if (norm === ' ') {
+          keys['Space'] = true;
+          keys['space'] = true;
           keys['a'] = true;
-          keys['A'] = true;
           keys['KeyA'] = true;
-          keysJustPressed['a'] = true;
-        } else if (targetKey === 'KeyZ') {
-          keys['b'] = true;
-          keys['B'] = true;
-          keys['KeyB'] = true;
-          keys['z'] = true;
-          keysJustPressed['b'] = true;
         }
+        if (norm.toLowerCase() === 'z' || norm.toLowerCase() === 'b') {
+          keys['b'] = true;
+          keys['z'] = true;
+          keys['KeyB'] = true;
+          keys['KeyZ'] = true;
+        }
+        keysJustPressed[norm] = true;
+        keysJustPressed[targetKey] = true;
+        keysJustPressed[targetCode] = true;
+
         activeActors.forEach(actor => {
           const ctxData = actorContexts.get(actor.id);
           if (ctxData && ctxData.onKeyDown) {
-            try { ctxData.onKeyDown(targetKey, { key: targetKey, code: targetKey }); } catch(err){}
+            try { ctxData.onKeyDown(norm, { key: norm, code: targetCode }); } catch(err){}
           }
         });
       };
       const endTouch = (e) => {
         e.preventDefault();
         btn.classList.remove('pressed');
+        const norm = (targetKey.toLowerCase() === 'space' || targetKey === ' ') ? ' ' : targetKey;
+        keys[norm] = false;
         keys[targetKey] = false;
-        if (targetKey === 'Space') {
+        keys[targetCode] = false;
+        keys[norm.toLowerCase()] = false;
+        keys[norm.toUpperCase()] = false;
+        if (norm === ' ') {
+          keys['Space'] = false;
+          keys['space'] = false;
           keys['a'] = false;
-          keys['A'] = false;
           keys['KeyA'] = false;
-        } else if (targetKey === 'KeyZ') {
-          keys['b'] = false;
-          keys['B'] = false;
-          keys['KeyB'] = false;
-          keys['z'] = false;
         }
+        if (norm.toLowerCase() === 'z' || norm.toLowerCase() === 'b') {
+          keys['b'] = false;
+          keys['z'] = false;
+          keys['KeyB'] = false;
+          keys['KeyZ'] = false;
+        }
+        delete keysJustPressed[norm];
+        delete keysJustPressed[targetKey];
+        delete keysJustPressed[targetCode];
+
         activeActors.forEach(actor => {
           const ctxData = actorContexts.get(actor.id);
           if (ctxData && ctxData.onKeyUp) {
-            try { ctxData.onKeyUp(targetKey, { key: targetKey, code: targetKey }); } catch(err){}
+            try { ctxData.onKeyUp(norm, { key: norm, code: targetCode }); } catch(err){}
           }
         });
       };

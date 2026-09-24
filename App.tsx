@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Frame, ToolType, Layer, LayerFolder, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point, Actor, TweenType, TweenOptions, WorkspaceMode } from './types';
+import { Frame, ToolType, Layer, LayerFolder, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point, Actor, TweenType, TweenOptions, WorkspaceMode, TouchButtonConfig, DEFAULT_TOUCH_BUTTONS } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { AdobeAnimateWorkspace } from './components/animate/AdobeAnimateWorkspace';
 import { Timeline } from './components/Timeline';
@@ -235,6 +235,7 @@ export default function App() {
   const [frames, setFrames] = useState<Frame[]>([]);
   const [actors, setActors] = useState<Actor[]>([]);
   const [projectScript, setProjectScript] = useState<string>('');
+  const [touchButtons, setTouchButtons] = useState<TouchButtonConfig[]>(() => DEFAULT_TOUCH_BUTTONS);
   const [history, setHistory] = useState<Frame[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
@@ -1440,6 +1441,7 @@ export default function App() {
           activeLayerId,
           actors,
           projectScript,
+          touchButtons,
           history,
           historyIndex,
           currentFrameIndex,
@@ -1519,6 +1521,7 @@ export default function App() {
       setActiveLayerId(mainProjectBackup.activeLayerId);
       setActors(updatedActors);
       setProjectScript(mainProjectBackup.projectScript);
+      if (mainProjectBackup.touchButtons) setTouchButtons(mainProjectBackup.touchButtons);
       setHistory(mainProjectBackup.history);
       setHistoryIndex(mainProjectBackup.historyIndex);
       setCurrentFrameIndex(mainProjectBackup.currentFrameIndex);
@@ -2564,7 +2567,8 @@ export default function App() {
           motionPaths: [],
           onionSkinSettings,
           actors,
-          projectScript
+          projectScript,
+          touchButtons
       };
       try {
         await saveProjectToDB(projectData);
@@ -2675,6 +2679,11 @@ export default function App() {
         
         setActors(loadedActors);
         setProjectScript(data.projectScript || '');
+        if (data.touchButtons && Array.isArray(data.touchButtons) && data.touchButtons.length > 0) {
+          setTouchButtons(data.touchButtons);
+        } else {
+          setTouchButtons(DEFAULT_TOUCH_BUTTONS);
+        }
         setCurrentFrameIndex(0);
         setHistory([data.frames]);
         setHistoryIndex(0);
@@ -5043,6 +5052,8 @@ export default function App() {
           layers={layers}
           actors={actors}
           projectScript={projectScript}
+          touchButtons={touchButtons}
+          onUpdateTouchButtons={setTouchButtons}
           fps={fps}
           canvasWidth={canvasSize.width}
           canvasHeight={canvasSize.height}
@@ -5063,6 +5074,8 @@ export default function App() {
         onUpdateProjectScript={handleUpdateProjectScript}
         frames={frames}
         onUpdateFrameScript={handleUpdateFrameScript}
+        touchButtons={touchButtons}
+        onUpdateTouchButtons={setTouchButtons}
       />
       
       {isLayerPanelOpen && view === 'editor' && (

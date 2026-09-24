@@ -233,6 +233,23 @@ export interface ProjectMeta {
     frameCount?: number;
 }
 
+export type TouchButtonColor = 'red' | 'blue' | 'green' | 'amber' | 'purple' | 'cyan' | 'gray';
+
+export interface TouchButtonConfig {
+  id: string;
+  label: string;          // Button text displayed on screen, e.g. "SPACE", "E", "DASH", "JUMP"
+  key: string;            // The key character/name sent on press, e.g. " ", "e", "Shift", "Enter", "w"
+  code?: string;          // Keyboard event code, e.g. "Space", "KeyE"
+  color?: TouchButtonColor;
+  size?: 'sm' | 'md' | 'lg';
+  position?: 'right' | 'left' | 'center';
+}
+
+export const DEFAULT_TOUCH_BUTTONS: TouchButtonConfig[] = [
+  { id: 'btn-b', label: 'B', key: 'b', code: 'KeyB', color: 'red', size: 'md', position: 'right' },
+  { id: 'btn-a', label: 'A', key: ' ', code: 'Space', color: 'red', size: 'lg', position: 'right' },
+];
+
 export interface ProjectData {
     id: string;
     name: string;
@@ -252,4 +269,5 @@ export interface ProjectData {
     onionSkinSettings?: OnionSkinSettings;
     actors?: Actor[]; // New: interactive symbols
     projectScript?: string; // New: global project script
+    touchButtons?: TouchButtonConfig[]; // Customizable virtual touchpad buttons
 }

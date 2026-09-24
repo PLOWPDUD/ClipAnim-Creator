@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Frame, Layer, Actor, BackgroundSettings, AudioTrack } from '../types';
+import { Frame, Layer, Actor, BackgroundSettings, AudioTrack, TouchButtonConfig, TouchButtonColor, DEFAULT_TOUCH_BUTTONS } from '../types';
 import { Icons } from '../Icons';
 import { generateLiveHtmlGame } from '../utils/htmlGameExporter';
+import { preprocessActionScript, createFlashCompatibilityEnvironment, attachFlashActorProperties } from '../utils/actionScriptSnippets';
 
 interface InteractivePlayerProps {
   frames: Frame[];
@@ -17,6 +18,8 @@ interface InteractivePlayerProps {
   projectName?: string;
   onClose: () => void;
   onExportHtml?: () => void;
+  touchButtons?: TouchButtonConfig[];
+  onUpdateTouchButtons?: (buttons: TouchButtonConfig[]) => void;
 }
 
 export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
@@ -31,11 +34,13 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
   backgroundImage,
   audioTracks = [],
   projectName = 'ClipAnim Game',
-  onClose
+  onClose,
+  touchButtons,
+  onUpdateTouchButtons
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [, setCurrentFrameState] = useState(0);
+  const [currentFrameState, setCurrentFrameState] = useState(0);
   const [isPlayingState, setIsPlayingState] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [showTouchControls, setShowTouchControls] = useState(() => 
@@ -56,6 +61,46 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
     a: false,
     b: false,
   });
+
+  // Dynamic Touchpad Buttons State
+  const [playerTouchButtons, setPlayerTouchButtons] = useState<TouchButtonConfig[]>(
+    () => (touchButtons && touchButtons.length > 0 ? touchButtons : DEFAULT_TOUCH_BUTTONS)
+  );
+  const playerTouchButtonsRef = useRef<TouchButtonConfig[]>(playerTouchButtons);
+  playerTouchButtonsRef.current = playerTouchButtons;
+
+  useEffect(() => {
+    if (touchButtons && touchButtons.length > 0) {
+      setPlayerTouchButtons(touchButtons);
+    }
+  }, [touchButtons]);
+
+  const [pressedCustomBtnIds, setPressedCustomBtnIds] = useState<Record<string, boolean>>({});
+  const [isQuickAddButtonOpen, setIsQuickAddButtonOpen] = useState(false);
+  const [quickLabel, setQuickLabel] = useState('E');
+  const [quickKey, setQuickKey] = useState('e');
+  const [quickColor, setQuickColor] = useState<TouchButtonColor>('blue');
+  const [quickSize, setQuickSize] = useState<'sm' | 'md' | 'lg'>('md');
+  const [isQuickDetecting, setIsQuickDetecting] = useState(false);
+
+  useEffect(() => {
+    if (!isQuickDetecting) return;
+    const handleDetect = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const detectedKey = e.key === ' ' ? ' ' : e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      setQuickKey(detectedKey);
+      if (!quickLabel || quickLabel === 'E') {
+        setQuickLabel(detectedKey === ' ' ? 'SPACE' : detectedKey.toUpperCase().slice(0, 6));
+      }
+      setIsQuickDetecting(false);
+    };
+    window.addEventListener('keydown', handleDetect, { capture: true, once: true });
+    return () => {
+      window.removeEventListener('keydown', handleDetect, { capture: true });
+    };
+  }, [isQuickDetecting, quickLabel]);
+
   const [isExportingHtml, setIsExportingHtml] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [hudStats, setHudStats] = useState({ fps: fps, score: 0, frame: '1/1' });
@@ -85,8 +130,11 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
 
   const scriptContexts = useRef<Map<string, any>>(new Map());
   const symbolScopeRef = useRef<Record<string, any>>({});
+  const flashEnvRef = useRef<any>(null);
   const triggerFrameScriptRef = useRef<(index: number) => void>(() => {});
   const lastExecutedFrameIndex = useRef<number>(-1);
+  const dragStateRef = useRef<{ actor: any; lockCenter: boolean; offsetX: number; offsetY: number } | null>(null);
+  const pressedActorIdRef = useRef<string | null>(null);
 
   // Export HTML Handler
   const handleExportHtml = async () => {
@@ -105,6 +153,7 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
         background,
         backgroundImage,
         audioTracks,
+        touchButtons: playerTouchButtonsRef.current,
         onProgress: (pct) => setExportProgress(pct)
       });
 
@@ -125,6 +174,39 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
     }
   };
 
+  const addTouchButtonDynamic = useCallback((config: any) => {
+    if (!config) return null;
+    const rawKey = typeof config === 'string' ? config : (config.key || 'e');
+    const normKey = rawKey.toLowerCase() === 'space' ? ' ' : rawKey;
+    const label = (typeof config === 'string' ? config.toUpperCase() : (config.label || (normKey === ' ' ? 'SPACE' : normKey.toUpperCase()))).slice(0, 10);
+    const code = config.code || (normKey.length === 1 ? `Key${normKey.toUpperCase()}` : (normKey === ' ' ? 'Space' : normKey));
+    const newBtn: TouchButtonConfig = {
+      id: 'btn-' + Math.random().toString(36).slice(2, 9),
+      label,
+      key: normKey,
+      code,
+      color: config.color || 'blue',
+      size: config.size || 'md',
+      position: config.position || 'right'
+    };
+    setPlayerTouchButtons(prev => {
+      const next = [...prev.filter(b => b.label.toLowerCase() !== newBtn.label.toLowerCase()), newBtn];
+      if (onUpdateTouchButtons) onUpdateTouchButtons(next);
+      return next;
+    });
+    return newBtn;
+  }, [onUpdateTouchButtons]);
+
+  const removeTouchButtonDynamic = useCallback((keyOrLabel: string) => {
+    if (!keyOrLabel) return;
+    const search = keyOrLabel.toLowerCase();
+    setPlayerTouchButtons(prev => {
+      const next = prev.filter(b => b.key.toLowerCase() !== search && b.label.toLowerCase() !== search && b.id !== keyOrLabel);
+      if (onUpdateTouchButtons) onUpdateTouchButtons(next);
+      return next;
+    });
+  }, [onUpdateTouchButtons]);
+
   const restartGame = useCallback(() => {
     currentFrameRef.current = 0;
     setCurrentFrameState(0);
@@ -140,24 +222,55 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
   }, [actors]);
 
   const initActorContexts = useCallback(() => {
+    const resolveFrameIndex = (target: any, secondArg?: any): number => {
+      let val = secondArg !== undefined ? secondArg : target;
+      if (typeof val === 'number') {
+        return Math.max(0, Math.min(frames.length - 1, val <= 0 ? 0 : Math.round(val) - 1));
+      }
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        const parsed = parseInt(trimmed, 10);
+        if (!isNaN(parsed) && String(parsed) === trimmed) {
+          return Math.max(0, Math.min(frames.length - 1, parsed <= 0 ? 0 : parsed - 1));
+        }
+        const byLabel = frames.findIndex((f, idx) => 
+          (f.label && f.label.toLowerCase() === trimmed.toLowerCase()) ||
+          ((f as any).name && (f as any).name.toLowerCase() === trimmed.toLowerCase()) ||
+          (`frame ${idx + 1}`.toLowerCase() === trimmed.toLowerCase()) ||
+          (`frame${idx + 1}`.toLowerCase() === trimmed.toLowerCase())
+        );
+        if (byLabel !== -1) return byLabel;
+        if (!isNaN(parsed)) {
+          return Math.max(0, Math.min(frames.length - 1, parsed <= 0 ? 0 : parsed - 1));
+        }
+      }
+      return currentFrameRef.current;
+    };
+
     const api = {
-      gotoAndStop: (frameNum: number) => {
-        const targetIdx = frameNum <= 0 ? 0 : frameNum - 1;
-        const frameIndex = Math.max(0, Math.min(frames.length - 1, targetIdx));
+      gotoAndStop: (frameOrScene: any, maybeFrame?: any) => {
+        const frameIndex = resolveFrameIndex(frameOrScene, maybeFrame);
         currentFrameRef.current = frameIndex;
         setCurrentFrameState(frameIndex);
+        setHudStats(s => ({ ...s, frame: `${frameIndex + 1}/${frames.length}` }));
         isPlayingRef.current = false;
         setIsPlayingState(false);
-        triggerFrameScriptRef.current(frameIndex);
+        lastExecutedFrameIndex.current = -1;
+        if (triggerFrameScriptRef.current) {
+          triggerFrameScriptRef.current(frameIndex);
+        }
       },
-      gotoAndPlay: (frameNum: number) => {
-        const targetIdx = frameNum <= 0 ? 0 : frameNum - 1;
-        const frameIndex = Math.max(0, Math.min(frames.length - 1, targetIdx));
+      gotoAndPlay: (frameOrScene: any, maybeFrame?: any) => {
+        const frameIndex = resolveFrameIndex(frameOrScene, maybeFrame);
         currentFrameRef.current = frameIndex;
         setCurrentFrameState(frameIndex);
+        setHudStats(s => ({ ...s, frame: `${frameIndex + 1}/${frames.length}` }));
         isPlayingRef.current = true;
         setIsPlayingState(true);
-        triggerFrameScriptRef.current(frameIndex);
+        lastExecutedFrameIndex.current = -1;
+        if (triggerFrameScriptRef.current) {
+          triggerFrameScriptRef.current(frameIndex);
+        }
       },
       play: () => {
         isPlayingRef.current = true;
@@ -168,16 +281,28 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
         setIsPlayingState(false);
       },
       nextFrame: () => {
-        const next = (currentFrameRef.current + 1) % frames.length;
+        const next = Math.min(frames.length - 1, currentFrameRef.current + 1);
         currentFrameRef.current = next;
         setCurrentFrameState(next);
-        triggerFrameScriptRef.current(next);
+        setHudStats(s => ({ ...s, frame: `${next + 1}/${frames.length}` }));
+        isPlayingRef.current = false;
+        setIsPlayingState(false);
+        lastExecutedFrameIndex.current = -1;
+        if (triggerFrameScriptRef.current) {
+          triggerFrameScriptRef.current(next);
+        }
       },
       prevFrame: () => {
-        const prev = (currentFrameRef.current - 1 + frames.length) % frames.length;
+        const prev = Math.max(0, currentFrameRef.current - 1);
         currentFrameRef.current = prev;
         setCurrentFrameState(prev);
-        triggerFrameScriptRef.current(prev);
+        setHudStats(s => ({ ...s, frame: `${prev + 1}/${frames.length}` }));
+        isPlayingRef.current = false;
+        setIsPlayingState(false);
+        lastExecutedFrameIndex.current = -1;
+        if (triggerFrameScriptRef.current) {
+          triggerFrameScriptRef.current(prev);
+        }
       },
       get currentFrame() {
         return currentFrameRef.current + 1;
@@ -194,8 +319,33 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
     };
 
     const gameUtils = {
-      isKeyDown: (k: string) => !!keysRef.current[k] || !!keysRef.current[k.toLowerCase()] || !!keysRef.current[k.toUpperCase()],
-      isKeyPressed: (k: string) => !!keysJustPressedRef.current[k] || !!keysJustPressedRef.current[k.toLowerCase()],
+      isKeyDown: (k: string) => {
+        if (!k) return false;
+        const norm = k === ' ' || k.toLowerCase() === 'space' ? ' ' : k;
+        return (
+          !!keysRef.current[norm] ||
+          !!keysRef.current[k] ||
+          !!keysRef.current[k.toLowerCase()] ||
+          !!keysRef.current[k.toUpperCase()] ||
+          (norm === ' ' ? (!!keysRef.current['Space'] || !!keysRef.current['space']) : false) ||
+          (k.length === 1 ? !!keysRef.current[`Key${k.toUpperCase()}`] : false)
+        );
+      },
+      isKeyPressed: (k: string) => {
+        if (!k) return false;
+        const norm = k === ' ' || k.toLowerCase() === 'space' ? ' ' : k;
+        return (
+          !!keysJustPressedRef.current[norm] ||
+          !!keysJustPressedRef.current[k] ||
+          !!keysJustPressedRef.current[k.toLowerCase()] ||
+          !!keysJustPressedRef.current[k.toUpperCase()] ||
+          (norm === ' ' ? (!!keysJustPressedRef.current['Space'] || !!keysJustPressedRef.current['space']) : false) ||
+          (k.length === 1 ? !!keysJustPressedRef.current[`Key${k.toUpperCase()}`] : false)
+        );
+      },
+      addTouchButton: (config: any) => addTouchButtonDynamic(config),
+      removeTouchButton: (keyOrLabel: string) => removeTouchButtonDynamic(keyOrLabel),
+      getTouchButtons: () => playerTouchButtonsRef.current,
       get mouseX() { return mousePosRef.current.x; },
       get mouseY() { return mousePosRef.current.y; },
       get isMouseDown() { return isMouseDownRef.current; },
@@ -263,15 +413,24 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
       getActors: () => Object.values(symbolScopeRef.current)
     };
 
+    const flashEnv = createFlashCompatibilityEnvironment({
+      api,
+      gameUtils,
+      symbolScope: symbolScopeRef.current,
+      frames,
+      currentFrameRef,
+      keysRef,
+      mousePosRef
+    });
+    flashEnvRef.current = flashEnv;
+
     const runScript = (code: string, contextObj: any = {}) => {
       try {
+        const transformedCode = preprocessActionScript(code);
         const environment = {
-          _global_gotoAndStop: api.gotoAndStop,
-          _global_gotoAndPlay: api.gotoAndPlay,
-          _global_play: api.play,
-          _global_stop: api.stop,
-          _global_nextFrame: api.nextFrame,
-          _global_prevFrame: api.prevFrame,
+          ...flashEnv,
+          ...gameUtils,
+          ...symbolScopeRef.current,
           getCurrentFrame: api.getCurrentFrame,
           get currentFrame() {
             return currentFrameRef.current + 1;
@@ -280,21 +439,23 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
             return frames.length;
           },
           keys: keysRef.current,
-          ...gameUtils,
-          ...symbolScopeRef.current,
         };
         const keys = Object.keys(environment);
         const values = Object.values(environment);
-        const fn = new Function(...keys, 
-            `const gotoAndStop = _global_gotoAndStop;
-             const gotoAndPlay = _global_gotoAndPlay;
-             const play = _global_play;
-             const stop = _global_stop;
-             const nextFrame = _global_nextFrame;
-             const prevFrame = _global_prevFrame;
-             ${code}`
+        const fn = new Function(
+          ...keys,
+          `with(this) {\n${transformedCode}\n}
+if (typeof onClick === 'function' && !this.onClick) this.onClick = onClick;
+if (typeof onRelease === 'function' && !this.onRelease) this.onRelease = onRelease;
+if (typeof onPress === 'function' && !this.onPress) this.onPress = onPress;
+if (typeof onPointerDown === 'function' && !this.onPointerDown) this.onPointerDown = onPointerDown;
+if (typeof onPointerUp === 'function' && !this.onPointerUp) this.onPointerUp = onPointerUp;
+if (typeof onEnterFrame === 'function' && !this.onEnterFrame) this.onEnterFrame = onEnterFrame;
+if (typeof onUpdate === 'function' && !this.onUpdate) this.onUpdate = onUpdate;
+if (typeof onLoad === 'function' && !this.onLoad) this.onLoad = onLoad;
+`
         );
-        fn.apply(contextObj, values);
+        fn.apply(contextObj || {}, values);
       } catch (e) {
         console.error("ActionScript Execution Error:", e);
       }
@@ -302,6 +463,7 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
 
     // Setup actor contexts
     activeActorsRef.current.forEach(actor => {
+      const hasMultiSymbolFrames = actor.symbolFrames && actor.symbolFrames.length > 1;
       const context = {
         name: actor.name,
         x: actor.x,
@@ -316,7 +478,11 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
         width: actor.width,
         height: actor.height,
         onUpdate: null as Function | null,
+        onEnterFrame: null as Function | null,
+        onLoad: null as Function | null,
         onClick: null as Function | null,
+        onPress: null as Function | null,
+        onRelease: null as Function | null,
         onPointerDown: null as Function | null,
         onPointerUp: null as Function | null,
         onKeyDown: null as Function | null,
@@ -325,16 +491,55 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
         _symbolIsPlaying: true,
         _symbolAccumulator: 0,
         ...api,
-        play: function() { this._symbolIsPlaying = true; },
-        stop: function() { this._symbolIsPlaying = false; },
-        gotoAndStop: function(frame: number) {
-            this._symbolIsPlaying = false;
-            this._symbolFrameIndex = Math.max(0, Math.min((actor.symbolFrames?.length || 1) - 1, frame - 1));
-        },
-        gotoAndPlay: function(frame: number) {
+        play: function() {
+          if (hasMultiSymbolFrames) {
             this._symbolIsPlaying = true;
-            this._symbolFrameIndex = Math.max(0, Math.min((actor.symbolFrames?.length || 1) - 1, frame - 1));
+          } else {
+            api.play();
+          }
         },
+        stop: function() {
+          if (hasMultiSymbolFrames) {
+            this._symbolIsPlaying = false;
+          } else {
+            api.stop();
+          }
+        },
+        gotoAndStop: function(frameOrScene: any, maybeFrame?: any) {
+          if (hasMultiSymbolFrames) {
+            const symTarget = typeof maybeFrame === 'number' ? maybeFrame : (typeof frameOrScene === 'number' ? frameOrScene : 1);
+            this._symbolIsPlaying = false;
+            this._symbolFrameIndex = Math.max(0, Math.min((actor.symbolFrames?.length || 1) - 1, symTarget - 1));
+          } else {
+            api.gotoAndStop(frameOrScene, maybeFrame);
+          }
+        },
+        gotoAndPlay: function(frameOrScene: any, maybeFrame?: any) {
+          if (hasMultiSymbolFrames) {
+            const symTarget = typeof maybeFrame === 'number' ? maybeFrame : (typeof frameOrScene === 'number' ? frameOrScene : 1);
+            this._symbolIsPlaying = true;
+            this._symbolFrameIndex = Math.max(0, Math.min((actor.symbolFrames?.length || 1) - 1, symTarget - 1));
+          } else {
+            api.gotoAndPlay(frameOrScene, maybeFrame);
+          }
+        },
+        gotoAndStopSymbol: function(frame: number) {
+          this._symbolIsPlaying = false;
+          this._symbolFrameIndex = Math.max(0, Math.min((actor.symbolFrames?.length || 1) - 1, frame - 1));
+        },
+        gotoAndPlaySymbol: function(frame: number) {
+          this._symbolIsPlaying = true;
+          this._symbolFrameIndex = Math.max(0, Math.min((actor.symbolFrames?.length || 1) - 1, frame - 1));
+        },
+        gotoAndStopTimeline: api.gotoAndStop,
+        gotoAndPlayTimeline: api.gotoAndPlay,
+        _root: flashEnv._root,
+        exportRoot: flashEnv.exportRoot,
+        root: flashEnv.root,
+        stage: flashEnv.stage,
+        _parent: flashEnv._parent,
+        parent: flashEnv.parent,
+        timeline: flashEnv.timeline,
         get currentFrame(): number {
           return currentFrameRef.current + 1;
         },
@@ -344,7 +549,10 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
         get totalFrames(): number {
           return actor.symbolFrames?.length || 1;
         },
-        hitTest: function(other: any) {
+        hitTest: function(other: any, arg2?: any) {
+          if (typeof other === 'number' && typeof arg2 === 'number') {
+            return this.hitTestPoint(other, arg2);
+          }
           if (!other || other.visible === false || !this.visible) return false;
           const b1 = { x: this.x, y: this.y, w: this.width * Math.abs(this.scaleX), h: this.height * Math.abs(this.scaleY) };
           const b2 = { x: other.x, y: other.y, w: other.width * Math.abs(other.scaleX || 1), h: other.height * Math.abs(other.scaleY || 1) };
@@ -352,9 +560,28 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
         },
         hitTestPoint: function(px: number, py: number) {
           if (!this.visible) return false;
-          const w = this.width * Math.abs(this.scaleX);
-          const h = this.height * Math.abs(this.scaleY);
-          return px >= this.x && px <= this.x + w && py >= this.y && py <= this.y + h;
+          const w = (this.width || actor.width || 64);
+          const h = (this.height || actor.height || 64);
+          const sx = Math.abs(this.scaleX ?? actor.scaleX ?? 1) || 1;
+          const sy = Math.abs(this.scaleY ?? actor.scaleY ?? 1) || 1;
+          const cx = this.x + w / 2;
+          const cy = this.y + h / 2;
+          
+          let rx = px - cx;
+          let ry = py - cy;
+          const rot = this.rotation || actor.rotation || 0;
+          if (rot !== 0) {
+            const rad = -(rot * Math.PI) / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            const nx = rx * cos - ry * sin;
+            const ny = rx * sin + ry * cos;
+            rx = nx;
+            ry = ny;
+          }
+          const halfW = (w * sx) / 2;
+          const halfH = (h * sy) / 2;
+          return Math.abs(rx) <= halfW && Math.abs(ry) <= halfH;
         },
         distanceTo: function(other: any) {
           if (!other) return Infinity;
@@ -374,6 +601,8 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
         }
       };
 
+      attachFlashActorProperties(context, actor, mousePosRef, dragStateRef);
+
       scriptContexts.current.set(actor.id, context);
       symbolScopeRef.current[actor.name] = context;
     });
@@ -383,12 +612,19 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
       const context = scriptContexts.current.get(actor.id);
       if (actor.scripts && context) {
         runScript(actor.scripts, context);
+        if (typeof context.onLoad === 'function') {
+          try {
+            context.onLoad.call(context);
+          } catch (e) {
+            console.error("onLoad error:", e);
+          }
+        }
       }
     });
 
     // Run global script
     if (projectScript) {
-      runScript(projectScript);
+      runScript(projectScript, flashEnv._root);
     }
 
     const triggerFrameScript = (frameIndex: number) => {
@@ -396,7 +632,7 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
       lastExecutedFrameIndex.current = frameIndex;
       const frame = frames[frameIndex];
       if (frame && frame.script) {
-        runScript(frame.script);
+        runScript(frame.script, flashEnv._root);
       }
     };
 
@@ -438,6 +674,19 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
       if (k === 'b' || code === 'KeyB' || k === 'z' || code === 'KeyZ') {
         setPressedPadKeys(prev => prev.b ? prev : { ...prev, b: true });
       }
+
+      // Update custom touch buttons visual glow
+      playerTouchButtonsRef.current.forEach(btn => {
+        const norm = btn.key.toLowerCase() === 'space' ? ' ' : btn.key;
+        if (
+          e.key === norm ||
+          e.key.toLowerCase() === norm.toLowerCase() ||
+          e.code === btn.code ||
+          (norm === ' ' && (e.key === ' ' || e.code === 'Space'))
+        ) {
+          setPressedCustomBtnIds(prev => ({ ...prev, [btn.id]: true }));
+        }
+      });
 
       // Broadcast to actors
       activeActorsRef.current.forEach(actor => {
@@ -489,6 +738,19 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
           setPressedPadKeys(prev => !prev.b ? prev : { ...prev, b: false });
         }
       }
+
+      // Turn off custom touch buttons visual glow
+      playerTouchButtonsRef.current.forEach(btn => {
+        const norm = btn.key.toLowerCase() === 'space' ? ' ' : btn.key;
+        if (
+          e.key === norm ||
+          e.key.toLowerCase() === norm.toLowerCase() ||
+          e.code === btn.code ||
+          (norm === ' ' && (e.key === ' ' || e.code === 'Space'))
+        ) {
+          setPressedCustomBtnIds(prev => ({ ...prev, [btn.id]: false }));
+        }
+      });
 
       activeActorsRef.current.forEach(actor => {
         const ctxData = scriptContexts.current.get(actor.id);
@@ -545,15 +807,41 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
 
       // Draw current frame (composite)
       const frameData = frames[currentFrameRef.current];
-      if (frameData && frameData.thumbnailUrl) {
-        let img = frameImageCache.current.get(frameData.id);
-        if (!img) {
-          img = new Image();
-          img.src = frameData.thumbnailUrl;
-          frameImageCache.current.set(frameData.id, img);
+      if (frameData) {
+        let drawn = false;
+        if (frameData.thumbnailUrl) {
+          let img = frameImageCache.current.get(frameData.id);
+          if (!img) {
+            img = new Image();
+            img.src = frameData.thumbnailUrl;
+            frameImageCache.current.set(frameData.id, img);
+          }
+          if (img.complete && img.naturalWidth > 0) {
+            ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+            drawn = true;
+          }
         }
-        if (img.complete && img.naturalWidth > 0) {
-          ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+        // Fallback to layers if thumbnail is not ready or missing
+        if (!drawn && frameData.layers) {
+          layers.forEach(layer => {
+            if (layer.isVisible === false) return;
+            const layerData = frameData.layers[layer.id];
+            if (layerData) {
+              const layerKey = `${frameData.id}_${layer.id}`;
+              let lImg = frameImageCache.current.get(layerKey);
+              if (!lImg) {
+                lImg = new Image();
+                lImg.src = layerData;
+                frameImageCache.current.set(layerKey, lImg);
+              }
+              if (lImg.complete && lImg.naturalWidth > 0) {
+                ctx.save();
+                ctx.globalAlpha = layer.opacity ?? 1;
+                ctx.drawImage(lImg, 0, 0, canvasWidth, canvasHeight);
+                ctx.restore();
+              }
+            }
+          });
         }
       }
 
@@ -564,13 +852,24 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
         const ctxData = scriptContexts.current.get(actor.id);
         if (!ctxData || !ctxData.visible) return;
 
-        // Run update script
+        // Run update script (ClipAnim onUpdate, Flash 8 onEnterFrame, Animate tick event)
         if (ctxData.onUpdate) {
           try {
             ctxData.onUpdate(dt / 1000);
           } catch (e) {
             console.error("onUpdate error:", e);
           }
+        }
+        if (ctxData.onEnterFrame) {
+          try {
+            ctxData.onEnterFrame(dt / 1000);
+          } catch (e) {
+            console.error("onEnterFrame error:", e);
+          }
+        }
+        if (typeof ctxData.emit === 'function') {
+          ctxData.emit('tick', dt / 1000);
+          ctxData.emit('enterframe', dt / 1000);
         }
 
         if (ctxData.vx) ctxData.x += ctxData.vx;
@@ -703,19 +1002,58 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
 
     for (let i = activeActorsRef.current.length - 1; i >= 0; i--) {
       const actor = activeActorsRef.current[i];
+      // Filter out actors that only belong to other timeline frames
+      if (actor.targetFrame !== undefined && actor.targetFrame !== currentFrameRef.current) continue;
+
       const ctxData = scriptContexts.current.get(actor.id);
-      if (!ctxData || !ctxData.visible) continue;
+      if (!ctxData || ctxData.visible === false) continue;
 
       if (ctxData.hitTestPoint(clickX, clickY)) {
-        if (ctxData.onPointerDown) ctxData.onPointerDown(e);
-        if (ctxData.onClick) {
-          try {
-            ctxData.onClick(e);
-          } catch (err) {
-            console.error("onClick error:", err);
-          }
+        pressedActorIdRef.current = actor.id;
+
+        if (typeof ctxData.onPointerDown === 'function') {
+          try { ctxData.onPointerDown(e); } catch (err) { console.error("onPointerDown error:", err); }
+        }
+        if (typeof ctxData.onPress === 'function') {
+          try { ctxData.onPress(e); } catch (err) { console.error("onPress error:", err); }
+        }
+        if (typeof ctxData.onClick === 'function') {
+          try { ctxData.onClick(e); } catch (err) { console.error("onClick error:", err); }
+        }
+        if (typeof ctxData.onRelease === 'function') {
+          try { ctxData.onRelease(e); } catch (err) { console.error("onRelease error:", err); }
+        }
+        if (typeof ctxData.emit === 'function') {
+          ctxData.emit('click', e);
+          ctxData.emit('press', e);
+          ctxData.emit('release', e);
+          ctxData.emit('mousedown', e);
+          ctxData.emit('pointerdown', e);
         }
         return;
+      }
+    }
+
+    // Stage / Root click fallback
+    const root = flashEnvRef.current?._root;
+    if (root) {
+      if (typeof root.onPointerDown === 'function') {
+        try { root.onPointerDown(e); } catch (err) { console.error("root onPointerDown error:", err); }
+      }
+      if (typeof root.onMouseDown === 'function') {
+        try { root.onMouseDown(e); } catch (err) { console.error("root onMouseDown error:", err); }
+      }
+      if (typeof root.onPress === 'function') {
+        try { root.onPress(e); } catch (err) { console.error("root onPress error:", err); }
+      }
+      if (typeof root.onClick === 'function') {
+        try { root.onClick(e); } catch (err) { console.error("root onClick error:", err); }
+      }
+      if (typeof root.emit === 'function') {
+        root.emit('pointerdown', e);
+        root.emit('mousedown', e);
+        root.emit('press', e);
+        root.emit('click', e);
       }
     }
   };
@@ -725,18 +1063,120 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
     if (!rect) return;
     const scaleX = canvasWidth / rect.width;
     const scaleY = canvasHeight / rect.height;
-    mousePosRef.current = {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY
-    };
+    const curX = (e.clientX - rect.left) * scaleX;
+    const curY = (e.clientY - rect.top) * scaleY;
+    mousePosRef.current = { x: curX, y: curY };
+
+    // Update dragged actor position (Flash 8 startDrag)
+    if (dragStateRef.current && dragStateRef.current.actor) {
+      if (dragStateRef.current.lockCenter) {
+        dragStateRef.current.actor.x = curX - (dragStateRef.current.actor.width || 0) / 2;
+        dragStateRef.current.actor.y = curY - (dragStateRef.current.actor.height || 0) / 2;
+      } else {
+        dragStateRef.current.actor.x = curX - dragStateRef.current.offsetX;
+        dragStateRef.current.actor.y = curY - dragStateRef.current.offsetY;
+      }
+    }
+
+    // Dynamic pointer cursor when hovering over clickable actors (like Adobe Flash / Animate)
+    let isHoveringClickable = false;
+    for (let i = activeActorsRef.current.length - 1; i >= 0; i--) {
+      const actor = activeActorsRef.current[i];
+      if (actor.targetFrame !== undefined && actor.targetFrame !== currentFrameRef.current) continue;
+      const ctxData = scriptContexts.current.get(actor.id);
+      if (!ctxData || ctxData.visible === false) continue;
+      const hasClickHandler = typeof ctxData.onClick === 'function' ||
+                              typeof ctxData.onPress === 'function' ||
+                              typeof ctxData.onRelease === 'function' ||
+                              typeof ctxData.onPointerDown === 'function' ||
+                              (ctxData._eventListeners && (ctxData._eventListeners.get('click')?.length || ctxData._eventListeners.get('press')?.length));
+      if (hasClickHandler && ctxData.hitTestPoint(curX, curY)) {
+        isHoveringClickable = true;
+        break;
+      }
+    }
+    if (canvasRef.current) {
+      canvasRef.current.style.cursor = isHoveringClickable ? 'pointer' : 'default';
+    }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
     isMouseDownRef.current = false;
+    if (dragStateRef.current) {
+      dragStateRef.current = null;
+    }
+
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const upX = rect ? (e.clientX - rect.left) * (canvasWidth / rect.width) : mousePosRef.current.x;
+    const upY = rect ? (e.clientY - rect.top) * (canvasHeight / rect.height) : mousePosRef.current.y;
+    const pressedId = pressedActorIdRef.current;
+    pressedActorIdRef.current = null;
+
+    let actorHitOnUp = false;
     activeActorsRef.current.forEach(actor => {
+      if (actor.targetFrame !== undefined && actor.targetFrame !== currentFrameRef.current) return;
       const ctxData = scriptContexts.current.get(actor.id);
-      if (ctxData && ctxData.onPointerUp) ctxData.onPointerUp(e);
+      if (ctxData && ctxData.visible !== false) {
+        const isOver = ctxData.hitTestPoint(upX, upY);
+        if (isOver) {
+          actorHitOnUp = true;
+        }
+
+        if (typeof ctxData.onPointerUp === 'function') {
+          try { ctxData.onPointerUp(e); } catch (err) { console.error("onPointerUp error:", err); }
+        }
+        if (typeof ctxData.emit === 'function') {
+          ctxData.emit('mouseup', e);
+          ctxData.emit('pointerup', e);
+        }
+
+        // Standard Flash on (release) occurs when pointer was pressed on actor and released on actor
+        if (pressedId === actor.id && isOver) {
+          if (typeof ctxData.onRelease === 'function') {
+            try { ctxData.onRelease(e); } catch (err) { console.error("onRelease error:", err); }
+          }
+          if (typeof ctxData.onClick === 'function') {
+            try { ctxData.onClick(e); } catch (err) { console.error("onClick error:", err); }
+          }
+          if (typeof ctxData.emit === 'function') {
+            ctxData.emit('release', e);
+            ctxData.emit('click', e);
+          }
+        }
+
+        // Release outside handler
+        if (pressedId === actor.id && !isOver && typeof ctxData.onReleaseOutside === 'function') {
+          try { ctxData.onReleaseOutside(e); } catch (err) { console.error("onReleaseOutside error:", err); }
+        }
+      }
     });
+
+    // Stage / Root pointer up fallback
+    const root = flashEnvRef.current?._root;
+    if (root) {
+      if (typeof root.onPointerUp === 'function') {
+        try { root.onPointerUp(e); } catch (err) { console.error("root onPointerUp error:", err); }
+      }
+      if (typeof root.onMouseUp === 'function') {
+        try { root.onMouseUp(e); } catch (err) { console.error("root onMouseUp error:", err); }
+      }
+      if (!actorHitOnUp) {
+        if (typeof root.onRelease === 'function') {
+          try { root.onRelease(e); } catch (err) { console.error("root onRelease error:", err); }
+        }
+        if (typeof root.onClick === 'function') {
+          try { root.onClick(e); } catch (err) { console.error("root onClick error:", err); }
+        }
+        if (typeof root.emit === 'function') {
+          root.emit('release', e);
+          root.emit('click', e);
+        }
+      }
+      if (typeof root.emit === 'function') {
+        root.emit('pointerup', e);
+        root.emit('mouseup', e);
+      }
+    }
   };
 
   const handleVirtualPadDown = (pad: 'up' | 'down' | 'left' | 'right' | 'a' | 'b') => {
@@ -797,6 +1237,62 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
     }
   };
 
+  const handleCustomButtonDown = (btn: TouchButtonConfig) => {
+    setPressedCustomBtnIds(prev => ({ ...prev, [btn.id]: true }));
+    const k = btn.key === ' ' || btn.key.toLowerCase() === 'space' ? ' ' : btn.key;
+    const code = btn.code || (k.length === 1 ? `Key${k.toUpperCase()}` : (k === ' ' ? 'Space' : k));
+
+    keysRef.current[k] = true;
+    keysRef.current[code] = true;
+    keysRef.current[k.toLowerCase()] = true;
+    keysRef.current[k.toUpperCase()] = true;
+    if (k === ' ') {
+      keysRef.current['Space'] = true;
+      keysRef.current['space'] = true;
+    }
+    keysJustPressedRef.current[k] = true;
+    keysJustPressedRef.current[code] = true;
+
+    activeActorsRef.current.forEach(actor => {
+      const ctxData = scriptContexts.current.get(actor.id);
+      if (ctxData && ctxData.onKeyDown) {
+        try { ctxData.onKeyDown(k, { key: k, code }); } catch (err) {}
+      }
+    });
+
+    if (flashEnvRef.current?._root?.onKeyDown) {
+      try { flashEnvRef.current._root.onKeyDown(k, { key: k, code }); } catch (err) {}
+    }
+  };
+
+  const handleCustomButtonUp = (btn: TouchButtonConfig) => {
+    setPressedCustomBtnIds(prev => ({ ...prev, [btn.id]: false }));
+    const k = btn.key === ' ' || btn.key.toLowerCase() === 'space' ? ' ' : btn.key;
+    const code = btn.code || (k.length === 1 ? `Key${k.toUpperCase()}` : (k === ' ' ? 'Space' : k));
+
+    keysRef.current[k] = false;
+    keysRef.current[code] = false;
+    keysRef.current[k.toLowerCase()] = false;
+    keysRef.current[k.toUpperCase()] = false;
+    if (k === ' ') {
+      keysRef.current['Space'] = false;
+      keysRef.current['space'] = false;
+    }
+    delete keysJustPressedRef.current[k];
+    delete keysJustPressedRef.current[code];
+
+    activeActorsRef.current.forEach(actor => {
+      const ctxData = scriptContexts.current.get(actor.id);
+      if (ctxData && ctxData.onKeyUp) {
+        try { ctxData.onKeyUp(k, { key: k, code }); } catch (err) {}
+      }
+    });
+
+    if (flashEnvRef.current?._root?.onKeyUp) {
+      try { flashEnvRef.current._root.onKeyUp(k, { key: k, code }); } catch (err) {}
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-200 select-none">
       {/* Top Action Bar */}
@@ -814,6 +1310,39 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
           >
             📊 Stats
           </button>
+
+          {/* Quick Frame Step Indicator */}
+          <div className="bg-black/60 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 text-white flex items-center gap-1 shadow-lg">
+            <button
+              onClick={() => {
+                const prev = Math.max(0, currentFrameRef.current - 1);
+                currentFrameRef.current = prev;
+                setCurrentFrameState(prev);
+                setHudStats(s => ({ ...s, frame: `${prev + 1}/${frames.length}` }));
+                if (triggerFrameScriptRef.current) triggerFrameScriptRef.current(prev);
+              }}
+              className="w-6 h-6 rounded-full hover:bg-white/20 flex items-center justify-center text-[10px] text-gray-300 hover:text-white transition-colors"
+              title="Previous Frame"
+            >
+              ◀
+            </button>
+            <span className="text-xs font-mono font-bold px-2 py-0.5 bg-white/10 rounded text-amber-300">
+              Frame {currentFrameState + 1}/{frames.length}
+            </span>
+            <button
+              onClick={() => {
+                const next = Math.min(frames.length - 1, currentFrameRef.current + 1);
+                currentFrameRef.current = next;
+                setCurrentFrameState(next);
+                setHudStats(s => ({ ...s, frame: `${next + 1}/${frames.length}` }));
+                if (triggerFrameScriptRef.current) triggerFrameScriptRef.current(next);
+              }}
+              className="w-6 h-6 rounded-full hover:bg-white/20 flex items-center justify-center text-[10px] text-gray-300 hover:text-white transition-colors"
+              title="Next Frame"
+            >
+              ▶
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -867,9 +1396,20 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
           <button
             onClick={() => setShowTouchControls(!showTouchControls)}
             className={`p-2.5 rounded-full transition-colors backdrop-blur-md ${showTouchControls ? 'bg-blue-500/30 text-blue-300 border border-blue-500/40' : 'bg-white/10 hover:bg-white/20 text-white'}`}
-            title="Toggle Touch D-Pad"
+            title="Toggle Touch D-Pad (T)"
           >
             <Icons.Gamepad size={18} />
+          </button>
+
+          <button
+            onClick={() => {
+              setIsQuickAddButtonOpen(prev => !prev);
+              setShowTouchControls(true);
+            }}
+            className={`p-2.5 rounded-full transition-colors backdrop-blur-md ${isQuickAddButtonOpen ? 'bg-rose-500/30 text-rose-300 border border-rose-500/40' : 'bg-white/10 hover:bg-white/20 text-white'}`}
+            title="Configure / Add Touchpad Buttons"
+          >
+            <Icons.Sliders size={18} />
           </button>
 
           <button 
@@ -881,6 +1421,190 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Quick Add / Manage Touchpad Buttons Overlay Modal */}
+      {isQuickAddButtonOpen && (
+        <div className="absolute top-16 right-4 z-50 w-96 max-w-[92vw] bg-[#161616]/95 backdrop-blur-xl border border-gray-700/90 rounded-2xl p-4 shadow-2xl animate-in slide-in-from-top-3 flex flex-col gap-3 text-xs">
+          <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+            <div className="flex items-center gap-2">
+              <span className="p-1 bg-rose-500/20 text-rose-400 rounded-lg">
+                <Icons.Gamepad2 size={16} />
+              </span>
+              <span className="font-bold text-white text-sm">Touchpad Controls</span>
+            </div>
+            <button
+              onClick={() => setIsQuickAddButtonOpen(false)}
+              className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800"
+            >
+              <Icons.X size={15} />
+            </button>
+          </div>
+
+          {/* Quick Presets */}
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 block mb-1">
+              Quick Presets (or type custom key below):
+            </label>
+            <div className="flex flex-wrap gap-1">
+              {[
+                { label: 'SPACE', key: ' ' },
+                { label: 'E', key: 'e' },
+                { label: 'SHIFT', key: 'Shift' },
+                { label: 'ENTER', key: 'Enter' },
+                { label: 'W', key: 'w' },
+                { label: 'A', key: 'a' },
+                { label: 'S', key: 's' },
+                { label: 'D', key: 'd' },
+                { label: 'Q', key: 'q' },
+                { label: 'F', key: 'f' },
+              ].map(p => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => {
+                    setQuickKey(p.key);
+                    setQuickLabel(p.label);
+                  }}
+                  className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-all ${
+                    quickKey === p.key ? 'bg-rose-600 text-white ring-1 ring-rose-400' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Custom Input Fields */}
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <div>
+              <label className="text-[10px] text-gray-400 block mb-0.5 font-bold">Button Label:</label>
+              <input
+                type="text"
+                value={quickLabel}
+                maxLength={8}
+                onChange={e => setQuickLabel(e.target.value)}
+                placeholder="e.g. SPACE, E"
+                className="w-full bg-black/60 border border-gray-700 rounded-lg px-2.5 py-1 text-white font-mono text-xs uppercase outline-none focus:border-rose-500"
+              />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-0.5">
+                <label className="text-[10px] text-gray-400 font-bold">Target Key:</label>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickDetecting(true)}
+                  className={`text-[9px] px-1.5 py-0.5 rounded font-bold transition-all ${
+                    isQuickDetecting 
+                      ? 'bg-rose-500 text-white animate-pulse' 
+                      : 'bg-gray-800 hover:bg-gray-700 text-gray-300'
+                  }`}
+                  title="Click and press any key to auto-detect"
+                >
+                  {isQuickDetecting ? 'Press Key...' : 'Detect'}
+                </button>
+              </div>
+              <input
+                type="text"
+                value={quickKey === ' ' ? 'Space' : quickKey}
+                onChange={e => {
+                  const v = e.target.value;
+                  setQuickKey(v.toLowerCase() === 'space' ? ' ' : v);
+                }}
+                placeholder="e.g. e, space"
+                className="w-full bg-black/60 border border-gray-700 rounded-lg px-2.5 py-1 text-rose-300 font-mono text-xs font-bold outline-none focus:border-rose-500"
+              />
+            </div>
+          </div>
+
+          {/* Color & Size & Add Row */}
+          <div className="flex items-center justify-between pt-1 text-[11px] gap-2 flex-wrap">
+            <div className="flex items-center gap-1">
+              <span className="text-gray-400 font-bold mr-1">Color:</span>
+              {(['red', 'blue', 'green', 'amber', 'purple', 'cyan'] as TouchButtonColor[]).map(c => {
+                const bg = 
+                  c === 'red' ? 'bg-red-500' :
+                  c === 'green' ? 'bg-emerald-500' :
+                  c === 'amber' ? 'bg-amber-500' :
+                  c === 'purple' ? 'bg-purple-500' :
+                  c === 'cyan' ? 'bg-cyan-500' : 'bg-blue-500';
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setQuickColor(c)}
+                    className={`w-5 h-5 rounded-full ${bg} transition-all ${quickColor === c ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'}`}
+                  />
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-1">
+              <span className="text-gray-400 font-bold mr-1">Size:</span>
+              {(['sm', 'md', 'lg'] as const).map(sz => (
+                <button
+                  key={sz}
+                  type="button"
+                  onClick={() => setQuickSize(sz)}
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase transition-all ${
+                    quickSize === sz
+                      ? 'bg-rose-600 text-white shadow'
+                      : 'bg-gray-800 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {sz}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const raw = quickKey.trim() || 'e';
+                const norm = raw.toLowerCase() === 'space' ? ' ' : raw;
+                const label = (quickLabel.trim() || (norm === ' ' ? 'SPACE' : norm.toUpperCase())).slice(0, 10);
+                addTouchButtonDynamic({
+                  label,
+                  key: norm,
+                  color: quickColor,
+                  size: quickSize,
+                  position: 'right'
+                });
+              }}
+              className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold shadow transition-all flex items-center gap-1 active:scale-95"
+            >
+              <Icons.Plus size={13} />
+              <span>Add</span>
+            </button>
+          </div>
+
+          {/* List of active buttons */}
+          <div className="border-t border-gray-800/80 pt-2 max-h-36 overflow-y-auto space-y-1.5 custom-scrollbar">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+              Active Buttons ({playerTouchButtons.length}):
+            </span>
+            {playerTouchButtons.map(btn => (
+              <div key={btn.id} className="flex items-center justify-between bg-black/40 px-2.5 py-1 rounded-lg border border-gray-800">
+                <div className="flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-gray-700 text-white text-[10px] font-bold flex items-center justify-center">
+                    {btn.label.slice(0, 2)}
+                  </span>
+                  <span className="font-bold text-white text-xs">{btn.label}</span>
+                  <span className="text-rose-300 font-mono text-[10px]">({btn.key === ' ' ? 'Space' : btn.key})</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeTouchButtonDynamic(btn.id)}
+                  className="text-gray-500 hover:text-red-400 p-0.5"
+                  title="Remove button"
+                >
+                  <Icons.Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stats overlay */}
       {showStats && (
@@ -911,92 +1635,151 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
 
       {/* Virtual On-screen Touch Controls (if enabled) */}
       {showTouchControls && (
-        <div className="absolute bottom-6 left-0 right-0 flex justify-between px-8 pointer-events-none z-50">
-          {/* D-Pad Buttons */}
-          <div className="grid grid-cols-3 grid-rows-3 gap-2 pointer-events-auto select-none">
-            <div></div>
-            <button 
-              onPointerDown={() => handleVirtualPadDown('up')} 
-              onPointerUp={() => handleVirtualPadUp('up')}
-              onPointerLeave={() => handleVirtualPadUp('up')}
-              onPointerCancel={() => handleVirtualPadUp('up')}
-              aria-label="Up Arrow"
-              className={`w-12 h-12 rounded-xl text-white font-bold backdrop-blur-md flex items-center justify-center transition-all duration-75 select-none touch-none ${
-                pressedPadKeys.up
-                  ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
-                  : 'bg-white/20 hover:bg-white/30 active:bg-red-600 border border-white/20 active:border-red-400'
-              }`}
-            >▲</button>
-            <div></div>
-            <button 
-              onPointerDown={() => handleVirtualPadDown('left')} 
-              onPointerUp={() => handleVirtualPadUp('left')}
-              onPointerLeave={() => handleVirtualPadUp('left')}
-              onPointerCancel={() => handleVirtualPadUp('left')}
-              aria-label="Left Arrow"
-              className={`w-12 h-12 rounded-xl text-white font-bold backdrop-blur-md flex items-center justify-center transition-all duration-75 select-none touch-none ${
-                pressedPadKeys.left
-                  ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
-                  : 'bg-white/20 hover:bg-white/30 active:bg-red-600 border border-white/20 active:border-red-400'
-              }`}
-            >◀</button>
-            <div></div>
-            <button 
-              onPointerDown={() => handleVirtualPadDown('right')} 
-              onPointerUp={() => handleVirtualPadUp('right')}
-              onPointerLeave={() => handleVirtualPadUp('right')}
-              onPointerCancel={() => handleVirtualPadUp('right')}
-              aria-label="Right Arrow"
-              className={`w-12 h-12 rounded-xl text-white font-bold backdrop-blur-md flex items-center justify-center transition-all duration-75 select-none touch-none ${
-                pressedPadKeys.right
-                  ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
-                  : 'bg-white/20 hover:bg-white/30 active:bg-red-600 border border-white/20 active:border-red-400'
-              }`}
-            >▶</button>
-            <div></div>
-            <button 
-              onPointerDown={() => handleVirtualPadDown('down')} 
-              onPointerUp={() => handleVirtualPadUp('down')}
-              onPointerLeave={() => handleVirtualPadUp('down')}
-              onPointerCancel={() => handleVirtualPadUp('down')}
-              aria-label="Down Arrow"
-              className={`w-12 h-12 rounded-xl text-white font-bold backdrop-blur-md flex items-center justify-center transition-all duration-75 select-none touch-none ${
-                pressedPadKeys.down
-                  ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
-                  : 'bg-white/20 hover:bg-white/30 active:bg-red-600 border border-white/20 active:border-red-400'
-              }`}
-            >▼</button>
-            <div></div>
+        <div className="absolute bottom-6 left-0 right-0 flex items-end justify-between px-6 sm:px-10 pointer-events-none z-50">
+          {/* D-Pad Buttons + Left custom buttons */}
+          <div className="flex items-end gap-3 pointer-events-auto select-none">
+            <div className="grid grid-cols-3 grid-rows-3 gap-2">
+              <div></div>
+              <button 
+                onPointerDown={() => handleVirtualPadDown('up')} 
+                onPointerUp={() => handleVirtualPadUp('up')}
+                onPointerLeave={() => handleVirtualPadUp('up')}
+                onPointerCancel={() => handleVirtualPadUp('up')}
+                aria-label="Up Arrow"
+                className={`w-12 h-12 rounded-xl text-white font-bold backdrop-blur-md flex items-center justify-center transition-all duration-75 select-none touch-none ${
+                  pressedPadKeys.up
+                    ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
+                    : 'bg-white/20 hover:bg-white/30 active:bg-red-600 border border-white/20 active:border-red-400'
+                }`}
+              >▲</button>
+              <div></div>
+              <button 
+                onPointerDown={() => handleVirtualPadDown('left')} 
+                onPointerUp={() => handleVirtualPadUp('left')}
+                onPointerLeave={() => handleVirtualPadUp('left')}
+                onPointerCancel={() => handleVirtualPadUp('left')}
+                aria-label="Left Arrow"
+                className={`w-12 h-12 rounded-xl text-white font-bold backdrop-blur-md flex items-center justify-center transition-all duration-75 select-none touch-none ${
+                  pressedPadKeys.left
+                    ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
+                    : 'bg-white/20 hover:bg-white/30 active:bg-red-600 border border-white/20 active:border-red-400'
+                }`}
+              >◀</button>
+              <div></div>
+              <button 
+                onPointerDown={() => handleVirtualPadDown('right')} 
+                onPointerUp={() => handleVirtualPadUp('right')}
+                onPointerLeave={() => handleVirtualPadUp('right')}
+                onPointerCancel={() => handleVirtualPadUp('right')}
+                aria-label="Right Arrow"
+                className={`w-12 h-12 rounded-xl text-white font-bold backdrop-blur-md flex items-center justify-center transition-all duration-75 select-none touch-none ${
+                  pressedPadKeys.right
+                    ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
+                    : 'bg-white/20 hover:bg-white/30 active:bg-red-600 border border-white/20 active:border-red-400'
+                }`}
+              >▶</button>
+              <div></div>
+              <button 
+                onPointerDown={() => handleVirtualPadDown('down')} 
+                onPointerUp={() => handleVirtualPadUp('down')}
+                onPointerLeave={() => handleVirtualPadUp('down')}
+                onPointerCancel={() => handleVirtualPadUp('down')}
+                aria-label="Down Arrow"
+                className={`w-12 h-12 rounded-xl text-white font-bold backdrop-blur-md flex items-center justify-center transition-all duration-75 select-none touch-none ${
+                  pressedPadKeys.down
+                    ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
+                    : 'bg-white/20 hover:bg-white/30 active:bg-red-600 border border-white/20 active:border-red-400'
+                }`}
+              >▼</button>
+              <div></div>
+            </div>
+
+            {/* Left custom buttons */}
+            {playerTouchButtons.filter(b => b.position === 'left').map(btn => {
+              const isPressed = !!pressedCustomBtnIds[btn.id];
+              return (
+                <button
+                  key={btn.id}
+                  onPointerDown={() => handleCustomButtonDown(btn)}
+                  onPointerUp={() => handleCustomButtonUp(btn)}
+                  onPointerLeave={() => handleCustomButtonUp(btn)}
+                  onPointerCancel={() => handleCustomButtonUp(btn)}
+                  title={`Touch Button: ${btn.label} (${btn.key === ' ' ? 'Space' : btn.key})`}
+                  className={`min-w-[48px] h-12 px-3 rounded-2xl font-black backdrop-blur-md flex items-center justify-center shadow-lg transition-all duration-75 select-none touch-none text-xs tracking-wider uppercase ${
+                    isPressed
+                      ? 'bg-blue-600 border-2 border-blue-300 text-white shadow-[0_0_24px_rgba(59,130,246,0.95)] scale-95 ring-2 ring-blue-400'
+                      : 'bg-blue-500/30 hover:bg-blue-500/40 active:bg-blue-600 border-2 border-blue-400/60 text-white'
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Action Buttons: B and A (both light up in glowing red) */}
-          <div className="flex items-end gap-3.5 pointer-events-auto select-none">
-            <button 
-              onPointerDown={() => handleVirtualPadDown('b')} 
-              onPointerUp={() => handleVirtualPadUp('b')}
-              onPointerLeave={() => handleVirtualPadUp('b')}
-              onPointerCancel={() => handleVirtualPadUp('b')}
-              aria-label="Button B"
-              title="Button B (B / Z key)"
-              className={`w-14 h-14 rounded-full text-white font-black backdrop-blur-md flex items-center justify-center shadow-lg transition-all duration-75 select-none touch-none ${
-                pressedPadKeys.b
-                  ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_24px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
-                  : 'bg-red-500/30 hover:bg-red-500/40 active:bg-red-600 border-2 border-red-400/60 active:border-red-400'
-              }`}
-            >B</button>
-            <button 
-              onPointerDown={() => handleVirtualPadDown('a')} 
-              onPointerUp={() => handleVirtualPadUp('a')}
-              onPointerLeave={() => handleVirtualPadUp('a')}
-              onPointerCancel={() => handleVirtualPadUp('a')}
-              aria-label="Button A"
-              title="Button A (A / Space key)"
-              className={`w-16 h-16 rounded-full text-white font-black backdrop-blur-md flex items-center justify-center shadow-lg transition-all duration-75 select-none touch-none ${
-                pressedPadKeys.a
-                  ? 'bg-red-600 border-2 border-red-400 text-white shadow-[0_0_26px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400/80'
-                  : 'bg-red-500/40 hover:bg-red-500/50 active:bg-red-600 border-2 border-red-400/70 active:border-red-400'
-              }`}
-            >A</button>
+          {/* Center custom buttons (e.g. Pause, Select, Menu, Space) */}
+          <div className="flex items-end gap-2.5 pointer-events-auto select-none">
+            {playerTouchButtons.filter(b => b.position === 'center').map(btn => {
+              const isPressed = !!pressedCustomBtnIds[btn.id];
+              return (
+                <button
+                  key={btn.id}
+                  onPointerDown={() => handleCustomButtonDown(btn)}
+                  onPointerUp={() => handleCustomButtonUp(btn)}
+                  onPointerLeave={() => handleCustomButtonUp(btn)}
+                  onPointerCancel={() => handleCustomButtonUp(btn)}
+                  title={`Touch Button: ${btn.label} (${btn.key === ' ' ? 'Space' : btn.key})`}
+                  className={`min-w-[56px] h-11 px-3.5 rounded-full font-black backdrop-blur-md flex items-center justify-center shadow-lg transition-all duration-75 select-none touch-none text-xs tracking-wider uppercase ${
+                    isPressed
+                      ? 'bg-amber-600 border-2 border-amber-300 text-white shadow-[0_0_24px_rgba(245,158,11,0.95)] scale-95 ring-2 ring-amber-400'
+                      : 'bg-amber-500/30 hover:bg-amber-500/40 active:bg-amber-600 border-2 border-amber-400/60 text-white'
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Right Action Buttons: Dynamic Touchpad Buttons (e.g. A, B, Space, E, etc.) */}
+          <div className="flex items-end gap-3 pointer-events-auto select-none flex-wrap justify-end max-w-[55vw]">
+            {playerTouchButtons.filter(b => !b.position || b.position === 'right').map(btn => {
+              const isPressed = !!pressedCustomBtnIds[btn.id];
+              const col = btn.color || 'red';
+              const sz = btn.size || 'md';
+
+              const sizeClass =
+                sz === 'sm' ? 'min-w-[46px] h-11 px-2.5 text-xs' :
+                sz === 'lg' ? 'min-w-[66px] h-16 px-4 text-sm' :
+                'min-w-[56px] h-14 px-3 text-xs';
+
+              const colorClass = 
+                col === 'blue' ? (isPressed ? 'bg-blue-600 border-2 border-blue-300 text-white shadow-[0_0_24px_rgba(59,130,246,0.95)] scale-95 ring-2 ring-blue-400' : 'bg-blue-500/30 hover:bg-blue-500/40 border-2 border-blue-400/60 text-white') :
+                col === 'green' ? (isPressed ? 'bg-emerald-600 border-2 border-emerald-300 text-white shadow-[0_0_24px_rgba(16,185,129,0.95)] scale-95 ring-2 ring-emerald-400' : 'bg-emerald-500/30 hover:bg-emerald-500/40 border-2 border-emerald-400/60 text-white') :
+                col === 'amber' ? (isPressed ? 'bg-amber-600 border-2 border-amber-300 text-white shadow-[0_0_24px_rgba(245,158,11,0.95)] scale-95 ring-2 ring-amber-400' : 'bg-amber-500/30 hover:bg-amber-500/40 border-2 border-amber-400/60 text-white') :
+                col === 'purple' ? (isPressed ? 'bg-purple-600 border-2 border-purple-300 text-white shadow-[0_0_24px_rgba(168,85,247,0.95)] scale-95 ring-2 ring-purple-400' : 'bg-purple-500/30 hover:bg-purple-500/40 border-2 border-purple-400/60 text-white') :
+                col === 'cyan' ? (isPressed ? 'bg-cyan-600 border-2 border-cyan-300 text-white shadow-[0_0_24px_rgba(6,182,212,0.95)] scale-95 ring-2 ring-cyan-400' : 'bg-cyan-500/30 hover:bg-cyan-500/40 border-2 border-cyan-400/60 text-white') :
+                col === 'gray' ? (isPressed ? 'bg-gray-600 border-2 border-gray-300 text-white shadow-[0_0_20px_rgba(156,163,175,0.95)] scale-95 ring-2 ring-gray-400' : 'bg-gray-600/30 hover:bg-gray-600/40 border-2 border-gray-400/60 text-white') :
+                (isPressed ? 'bg-red-600 border-2 border-red-300 text-white shadow-[0_0_24px_rgba(239,68,68,0.95)] scale-95 ring-2 ring-red-400' : 'bg-red-500/30 hover:bg-red-500/40 border-2 border-red-400/60 text-white');
+
+              return (
+                <button
+                  key={btn.id}
+                  onPointerDown={() => handleCustomButtonDown(btn)}
+                  onPointerUp={() => handleCustomButtonUp(btn)}
+                  onPointerLeave={() => handleCustomButtonUp(btn)}
+                  onPointerCancel={() => handleCustomButtonUp(btn)}
+                  aria-label={`Button ${btn.label}`}
+                  title={`Touch Button: ${btn.label} (Triggers key '${btn.key === ' ' ? 'Space' : btn.key}')`}
+                  className={`${sizeClass} ${colorClass} rounded-full font-black backdrop-blur-md flex flex-col items-center justify-center shadow-lg transition-all duration-75 select-none touch-none`}
+                >
+                  <span className="font-black leading-tight tracking-wider">{btn.label}</span>
+                  <span className="text-[9px] opacity-75 font-mono leading-none">
+                    {btn.key === ' ' ? '␣' : btn.key.toUpperCase()}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
