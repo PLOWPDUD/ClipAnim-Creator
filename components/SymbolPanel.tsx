@@ -5,10 +5,14 @@ import { PRESET_SYMBOLS } from '../utils/libraryPresets';
 
 interface SymbolPanelProps {
   actors: Actor[];
+  symbols?: SavedSymbol[];
   currentFrameIndex?: number;
   frameCount?: number;
   onAddActor: (actor: Actor) => void;
   onRemoveActor: (id: string) => void;
+  onDeleteSymbolFromLibrary?: (id: string) => void;
+  onDuplicateSymbolInLibrary?: (symbol: SavedSymbol) => void;
+  onEnterSymbolEditMode?: (id: string) => void;
   onUpdateActorTargetFrame?: (id: string, targetFrame?: number) => void;
   canvasWidth: number;
   canvasHeight: number;
@@ -22,10 +26,14 @@ type SymbolFilter = 'all' | 'animated' | 'static' | 'scripted' | 'current-frame'
 
 export const SymbolPanel: React.FC<SymbolPanelProps> = ({
   actors,
+  symbols = [],
   currentFrameIndex = 0,
   frameCount = 1,
   onAddActor,
   onRemoveActor,
+  onDeleteSymbolFromLibrary,
+  onDuplicateSymbolInLibrary,
+  onEnterSymbolEditMode,
   onUpdateActorTargetFrame,
   canvasWidth,
   canvasHeight,
@@ -94,21 +102,21 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
     setHoveredFrameIndex(0);
   };
 
-  // Save project actor to global library
-  const handleSaveToGlobalLibrary = (actor: Actor) => {
-    const isDuplicateName = globalLibrary.some(s => s.name.toLowerCase() === actor.name.toLowerCase());
-    const finalName = isDuplicateName ? `${actor.name}_Copy` : actor.name;
+  // Save project actor or symbol to global library
+  const handleSaveToGlobalLibrary = (item: Actor | SavedSymbol) => {
+    const isDuplicateName = globalLibrary.some(s => s.name.toLowerCase() === item.name.toLowerCase());
+    const finalName = isDuplicateName ? `${item.name}_Copy` : item.name;
 
     const newSymbol: SavedSymbol = {
       id: crypto.randomUUID(),
       name: finalName,
-      dataUrl: actor.dataUrl,
-      isAnimated: actor.isAnimated,
-      symbolFrames: actor.symbolFrames,
-      symbolLayers: actor.symbolLayers,
-      symbolLayerFolders: actor.symbolLayerFolders,
-      symbolFps: actor.symbolFps,
-      scripts: actor.scripts || '',
+      dataUrl: item.dataUrl,
+      isAnimated: item.isAnimated,
+      symbolFrames: item.symbolFrames,
+      symbolLayers: item.symbolLayers,
+      symbolLayerFolders: item.symbolLayerFolders,
+      symbolFps: item.symbolFps,
+      scripts: item.scripts || '',
       createdAt: Date.now()
     };
 
@@ -117,25 +125,46 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
     showToast(`Saved "${newSymbol.name}" to Global Library!`);
   };
 
-  // Duplicate an Actor in Project
-  const handleDuplicateActor = (actor: Actor) => {
+  // Duplicate an Actor or Symbol in Project Library
+  const handleDuplicateProjectSymbol = (symbol: SavedSymbol | Actor) => {
     let suffix = 1;
-    let newName = `${actor.name}_copy`;
-    while (actors.some(a => a.name === newName)) {
+    let newName = `${symbol.name}_copy`;
+    const existingNames = new Set([...(symbols || []).map(s => s.name), ...actors.map(a => a.name)]);
+    while (existingNames.has(newName)) {
       suffix++;
-      newName = `${actor.name}_copy${suffix}`;
+      newName = `${symbol.name}_copy${suffix}`;
     }
 
-    const clonedActor: Actor = {
-      ...actor,
+    const clonedSymbol: SavedSymbol = {
       id: crypto.randomUUID(),
       name: newName,
-      x: actor.x + 20,
-      y: actor.y + 20
+      dataUrl: symbol.dataUrl,
+      isAnimated: symbol.isAnimated,
+      symbolFrames: symbol.symbolFrames,
+      symbolLayers: symbol.symbolLayers,
+      symbolLayerFolders: symbol.symbolLayerFolders,
+      symbolFps: symbol.symbolFps,
+      scripts: symbol.scripts || '',
+      createdAt: Date.now()
     };
 
-    onAddActor(clonedActor);
-    showToast(`Duplicated to "${clonedActor.name}"`);
+    if (onDuplicateSymbolInLibrary) {
+      onDuplicateSymbolInLibrary(clonedSymbol);
+    } else {
+      onAddActor({
+        ...clonedSymbol,
+        symbolId: clonedSymbol.id,
+        x: ('x' in symbol ? symbol.x : 0) + 20,
+        y: ('y' in symbol ? symbol.y : 0) + 20,
+        width: 'width' in symbol ? symbol.width : 120,
+        height: 'height' in symbol ? symbol.height : 120,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        opacity: 1
+      });
+    }
+    showToast(`Duplicated "${symbol.name}" to "${newName}"`);
   };
 
   // Duplicate in Global Library
@@ -170,8 +199,11 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
     const finalWidth = 140;
     const finalHeight = 140;
 
+    const symbolId = ('symbolId' in symbol && (symbol as any).symbolId) ? (symbol as any).symbolId : symbol.id;
+
     const newActor: Actor = {
       id: crypto.randomUUID(),
+      symbolId: symbolId,
       name: finalName,
       dataUrl: symbol.dataUrl,
       isAnimated: symbol.isAnimated,
@@ -193,7 +225,7 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
 
     onAddActor(newActor);
     const frameNotice = targetFrame !== undefined ? `Frame ${targetFrame + 1}` : 'All Frames';
-    showToast(`Placed "${newActor.name}" on ${frameNotice}!`);
+    showToast(`Placed instance of "${newActor.name}" on ${frameNotice}!`);
   };
 
   // Rename a symbol in global library
@@ -272,6 +304,35 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
     showToast('Exported symbol library JSON!');
   };
 
+  // Project symbols list combining persistent project symbols and canvas actors
+  const projectSymbolsList = React.useMemo(() => {
+    const list: (SavedSymbol | Actor)[] = symbols && symbols.length > 0 ? [...symbols] : [];
+    const seenIds = new Set(list.map(s => s.id));
+    const seenNames = new Set(list.map(s => s.name.toLowerCase()));
+
+    actors.forEach(a => {
+      const symId = a.symbolId || a.id;
+      const baseName = a.name.replace(/_\d+$/, '').toLowerCase();
+      if (!seenIds.has(symId) && !seenNames.has(a.name.toLowerCase()) && !seenNames.has(baseName)) {
+        seenIds.add(symId);
+        seenNames.add(a.name.toLowerCase());
+        list.push({
+          id: symId,
+          name: a.name.replace(/_\d+$/, '') || a.name,
+          dataUrl: a.dataUrl,
+          isAnimated: a.isAnimated,
+          symbolFrames: a.symbolFrames,
+          symbolLayers: a.symbolLayers,
+          symbolLayerFolders: a.symbolLayerFolders,
+          symbolFps: a.symbolFps,
+          scripts: a.scripts || '',
+          createdAt: 0
+        });
+      }
+    });
+    return list;
+  }, [symbols, actors]);
+
   // Filtering list
   const getFilteredList = (list: any[]) => {
     return list.filter(item => {
@@ -283,12 +344,20 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
       if (activeFilter === 'animated') return !!item.isAnimated;
       if (activeFilter === 'static') return !item.isAnimated;
       if (activeFilter === 'scripted') return !!(item.scripts && item.scripts.trim().length > 0);
-      if (activeFilter === 'current-frame') return item.targetFrame === currentFrameIndex || item.targetFrame === undefined;
+      if (activeFilter === 'current-frame') {
+        const instances = actors.filter(a => 
+          a.symbolId === item.id || 
+          a.id === item.id || 
+          a.name.toLowerCase() === item.name.toLowerCase() ||
+          a.name.toLowerCase().startsWith(item.name.toLowerCase() + '_')
+        );
+        return instances.some(a => a.targetFrame === currentFrameIndex || a.targetFrame === undefined);
+      }
       return true;
     });
   };
 
-  const filteredProjectActors = getFilteredList(actors);
+  const filteredProjectSymbols = getFilteredList(projectSymbolsList);
   const filteredGlobalSymbols = getFilteredList(globalLibrary);
   const filteredPresetSymbols = getFilteredList(PRESET_SYMBOLS);
 
@@ -311,7 +380,7 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
           <div>
             <h3 className="font-bold text-xs text-white">Symbols & Actors</h3>
             <span className="text-[10px] text-gray-400">
-              {activeTab === 'project' ? `${actors.length} in project` : activeTab === 'global' ? `${globalLibrary.length} saved` : `${PRESET_SYMBOLS.length} presets`}
+              {activeTab === 'project' ? `${projectSymbolsList.length} in library` : activeTab === 'global' ? `${globalLibrary.length} saved` : `${PRESET_SYMBOLS.length} presets`}
             </span>
           </div>
         </div>
@@ -492,75 +561,85 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
         {/* TAB 1: PROJECT SYMBOLS */}
         {activeTab === 'project' && (
           <div>
-            {filteredProjectActors.length === 0 ? (
+            {filteredProjectSymbols.length === 0 ? (
               <div className="p-6 text-center border border-dashed border-white/10 rounded-2xl bg-black/20">
                 <Icons.Layers size={28} className="text-gray-600 mx-auto mb-2" />
                 <p className="text-xs font-bold text-gray-400">
-                  {searchQuery ? "No matching project symbols" : "No actors in project"}
+                  {searchQuery ? "No matching project symbols" : "Symbol library is empty"}
                 </p>
                 <p className="text-[10px] text-gray-500 mt-1 max-w-xs mx-auto">
-                  Turn any drawing layer into a symbol or instantiate from Global/Templates tabs.
+                  Select artwork and press F8 or Convert to Symbol, or instantiate from Global/Templates tabs.
                 </p>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2.5">
-                {filteredProjectActors.map(actor => {
-                  const isHovered = hoveredSymbolId === actor.id;
-                  const displayUrl = isHovered && actor.isAnimated && actor.symbolFrames && actor.symbolFrames[hoveredFrameIndex]
-                    ? Object.values(actor.symbolFrames[hoveredFrameIndex].layers)[0] || actor.dataUrl
-                    : actor.dataUrl;
+                {filteredProjectSymbols.map(symbol => {
+                  const isHovered = hoveredSymbolId === symbol.id;
+                  const displayUrl = isHovered && symbol.isAnimated && symbol.symbolFrames && symbol.symbolFrames[hoveredFrameIndex]
+                    ? Object.values(symbol.symbolFrames[hoveredFrameIndex].layers)[0] || symbol.dataUrl
+                    : symbol.dataUrl;
 
-                  const isOnCurrentFrame = actor.targetFrame === currentFrameIndex;
-                  const isAllFrames = actor.targetFrame === undefined;
+                  const instances = actors.filter(a => 
+                    a.symbolId === symbol.id || 
+                    a.id === symbol.id || 
+                    a.name.toLowerCase() === symbol.name.toLowerCase() ||
+                    a.name.toLowerCase().startsWith(symbol.name.toLowerCase() + '_')
+                  );
+                  const currentInstance = instances.find(a => a.targetFrame === currentFrameIndex || a.targetFrame === undefined);
+                  const isOnCurrentFrame = Boolean(currentInstance);
 
                   return (
                     <div
-                      key={actor.id}
-                      onMouseEnter={() => startHoverPreview(actor, actor.id)}
+                      key={symbol.id}
+                      onMouseEnter={() => startHoverPreview(symbol, symbol.id)}
                       onMouseLeave={stopHoverPreview}
                       className={`group bg-[#1e1e23] rounded-xl border p-2 flex flex-col transition-all shadow-md relative overflow-hidden ${
                         isOnCurrentFrame
                           ? 'border-blue-500/60 ring-1 ring-blue-500/30'
-                          : isAllFrames
+                          : instances.length > 0
                           ? 'border-indigo-500/40'
                           : 'border-white/10 hover:border-blue-500/40'
                       }`}
                     >
                       {/* Image Preview Box */}
                       <div className="aspect-square bg-[#27272e] rounded-lg flex items-center justify-center p-2 relative overflow-hidden bg-[radial-gradient(#3a3a44_1px,transparent_1px)] [background-size:8px_8px]">
-                        <img src={displayUrl} alt={actor.name} className="max-w-full max-h-full object-contain pointer-events-none" />
+                        <img src={displayUrl} alt={symbol.name} className="max-w-full max-h-full object-contain pointer-events-none" />
 
                         {/* Top Left Badges */}
                         <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
-                          {actor.isAnimated && (
+                          {symbol.isAnimated && (
                             <span className="text-[8px] bg-indigo-600 text-white font-bold px-1.5 py-0.2 rounded-md shadow">
-                              {actor.symbolFrames?.length || 1}F
+                              {symbol.symbolFrames?.length || 1}F
                             </span>
                           )}
-                          {actor.scripts && actor.scripts.trim().length > 0 && (
+                          {symbol.scripts && symbol.scripts.trim().length > 0 && (
                             <span className="text-[8px] bg-amber-500 text-black font-bold px-1 py-0.2 rounded shadow">
                               JS
                             </span>
                           )}
                         </div>
 
-                        {/* Top Right Frame Target Badge */}
+                        {/* Top Right Stage Presence Badge */}
                         <div className="absolute top-1.5 right-1.5 z-10">
                           <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md shadow border ${
-                            isAllFrames 
-                              ? 'bg-blue-600/90 text-white border-blue-400/50' 
-                              : isOnCurrentFrame
+                            isOnCurrentFrame
                               ? 'bg-emerald-600/90 text-white border-emerald-400/50'
-                              : 'bg-purple-900/90 text-purple-200 border-purple-500/50'
+                              : instances.length > 0
+                              ? 'bg-blue-600/90 text-white border-blue-400/50'
+                              : 'bg-zinc-800/90 text-gray-300 border-white/20'
                           }`}>
-                            {isAllFrames ? 'All Frames' : `Frame ${actor.targetFrame! + 1}`}
+                            {isOnCurrentFrame
+                              ? `▶ Frame ${(currentInstance?.targetFrame ?? currentFrameIndex) + 1}`
+                              : instances.length > 0
+                              ? `${instances.length} on Stage`
+                              : 'In Library'}
                           </span>
                         </div>
 
                         {/* Hover Overlay Action Controls */}
                         <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity gap-1.5 p-2 z-20">
                           <button
-                            onClick={() => handleInstantiateSymbol(actor, currentFrameIndex)}
+                            onClick={() => handleInstantiateSymbol(symbol, currentFrameIndex)}
                             className="w-full py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-bold shadow transition-all active:scale-95 flex items-center justify-center gap-1"
                             title={`Add instance to Frame ${currentFrameIndex + 1}`}
                           >
@@ -569,24 +648,41 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
                           </button>
 
                           <div className="flex items-center gap-1 w-full justify-center">
+                            {onEnterSymbolEditMode && (
+                              <button
+                                onClick={() => onEnterSymbolEditMode(symbol.id)}
+                                className="p-1.5 bg-white/20 hover:bg-blue-600 text-white rounded-lg transition-colors shadow"
+                                title="Edit Symbol Timeline"
+                              >
+                                <Icons.Film size={12} />
+                              </button>
+                            )}
                             <button
-                              onClick={() => handleSaveToGlobalLibrary(actor)}
+                              onClick={() => handleSaveToGlobalLibrary(symbol)}
                               className="p-1.5 bg-white/20 hover:bg-blue-600 text-white rounded-lg transition-colors shadow"
                               title="Save to Global Library"
                             >
                               <Icons.Save size={12} />
                             </button>
                             <button
-                              onClick={() => handleDuplicateActor(actor)}
+                              onClick={() => handleDuplicateProjectSymbol(symbol)}
                               className="p-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors"
-                              title="Duplicate Actor"
+                              title="Duplicate Symbol in Library"
                             >
                               <Icons.Copy size={12} />
                             </button>
                             <button
-                              onClick={() => onRemoveActor(actor.id)}
+                              onClick={() => {
+                                if (confirm(`Delete "${symbol.name}" from your project's Symbol Library? Any instances on the canvas will also be removed.`)) {
+                                  if (onDeleteSymbolFromLibrary) {
+                                    onDeleteSymbolFromLibrary(symbol.id);
+                                  } else {
+                                    onRemoveActor(symbol.id);
+                                  }
+                                }
+                              }}
                               className="p-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
-                              title="Remove Actor"
+                              title="Delete Symbol from Library"
                             >
                               <Icons.Trash2 size={12} />
                             </button>
@@ -596,21 +692,23 @@ export const SymbolPanel: React.FC<SymbolPanelProps> = ({
 
                       {/* Name & Subtitle */}
                       <div className="mt-1.5 flex items-center justify-between text-xs px-0.5">
-                        <span className="font-bold text-white truncate max-w-[85px]" title={actor.name}>{actor.name}</span>
-                        <span className="text-[9px] text-gray-400 font-mono">Symbol</span>
+                        <span className="font-bold text-white truncate max-w-[85px]" title={symbol.name}>{symbol.name}</span>
+                        <span className="text-[9px] text-gray-400 font-mono">
+                          {instances.length > 0 ? `${instances.length} on canvas` : 'In Library'}
+                        </span>
                       </div>
 
-                      {/* Target Frame Selection Selector */}
-                      {onUpdateActorTargetFrame && (
+                      {/* Target Frame Selection Selector for active instance if present */}
+                      {onUpdateActorTargetFrame && currentInstance && (
                         <div className="mt-1 flex items-center gap-1 text-[9px]">
                           <span className="text-gray-400 shrink-0">On:</span>
                           <select
-                            value={actor.targetFrame === undefined ? 'all' : actor.targetFrame}
+                            value={currentInstance.targetFrame === undefined ? 'all' : currentInstance.targetFrame}
                             onChange={(e) => {
                               const val = e.target.value === 'all' ? undefined : parseInt(e.target.value, 10);
-                              onUpdateActorTargetFrame(actor.id, val);
+                              onUpdateActorTargetFrame(currentInstance.id, val);
                               const label = val === undefined ? 'All Frames' : `Frame ${val + 1}`;
-                              showToast(`Moved "${actor.name}" to ${label}`);
+                              showToast(`Moved "${currentInstance.name}" to ${label}`);
                             }}
                             className="bg-black/60 text-white border border-white/15 rounded px-1 py-0.5 text-[9px] w-full focus:outline-none focus:border-blue-500 cursor-pointer font-bold"
                           >

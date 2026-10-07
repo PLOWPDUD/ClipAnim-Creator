@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { motion } from 'motion/react';
 import { Icons } from '../Icons';
 import { ToolType, Frame, Layer, LayerFolder, SelectionState, ShapeType, BrushType, OnionSkinSettings, BackgroundSettings, Point, SymmetryMode, Actor } from '../types';
-import { floodFill, magicWandSelect, lassoSelect } from '../utils/drawingUtils';
+import { floodFill, magicWandSelect, lassoSelect, mergeWandSelections, deselectWandGap } from '../utils/drawingUtils';
 
 export interface CanvasAreaHandle {
   resetView: () => void;
@@ -34,7 +34,7 @@ interface CanvasAreaProps {
   // Selection Props
   selection: SelectionState | null;
   onSelectionCreate: (data: SelectionState) => void;
-  onSelectionUpdate: (data: SelectionState) => void;
+  onSelectionUpdate: (data: SelectionState | null) => void;
   onSelectionCommit: (override?: SelectionState) => void;
   onSelectionDelete: () => void;
   onSelectionMakeSymbol?: (override?: SelectionState) => void;
@@ -159,6 +159,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const selectionOverlayRef = useRef<HTMLDivElement>(null);
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
   const maskImageRef = useRef<HTMLImageElement | null>(null);
+  const selectionMaskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const anchorPointRef = useRef<HTMLDivElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
   const lassoPoints = useRef<{x: number, y: number}[]>([]);
@@ -298,6 +299,12 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
               const mImg = new Image();
               mImg.onload = () => {
                   maskImageRef.current = mImg;
+                  const mCanvas = document.createElement('canvas');
+                  mCanvas.width = selection.width;
+                  mCanvas.height = selection.height;
+                  const mCtx = mCanvas.getContext('2d');
+                  mCtx?.drawImage(mImg, 0, 0, selection.width, selection.height);
+                  selectionMaskCanvasRef.current = mCanvas;
               };
               mImg.onerror = (e) => {
                   console.error("Error loading selection mask:", e);
@@ -305,9 +312,11 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
               mImg.src = selection.maskUrl;
           } else {
               maskImageRef.current = null;
+              selectionMaskCanvasRef.current = null;
           }
       } else {
           maskImageRef.current = null;
+          selectionMaskCanvasRef.current = null;
       }
   }, [selection]);
 
@@ -595,6 +604,22 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     onSelectionDelete();
   };
 
+  const handleUnselectAllGapsAction = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    if (!selection) return;
+    const ctx = activeCanvasRef.current?.getContext('2d');
+    if (ctx && selectionCanvasRef.current) {
+      ctx.drawImage(selectionCanvasRef.current, selection.x, selection.y);
+      saveCanvas();
+    }
+    selectionMaskCanvasRef.current = null;
+    maskImageRef.current = null;
+    onSelectionUpdate(null);
+  };
+
   const handleMakeSymbolSelectionAction = (e?: React.SyntheticEvent) => {
     if (e) {
       e.stopPropagation();
@@ -768,7 +793,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     if (tool === 'eyedropper' || tool === 'wand' || tool === 'fill') {
         pendingTapAction.current = { tool, x, y, mx, my };
         isDrawing.current = false;
-        drawStart.current = { x: drawX, y: drawY };
+        drawStart.current = { x, y };
         return;
     }
 
@@ -1734,13 +1759,131 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         if (action.tool === 'eyedropper') {
             pickColor(action.x, action.y);
         } else if (action.tool === 'wand') {
-            if (selection) onSelectionCommit();
             const ctx = activeCanvasRef.current?.getContext('2d');
             if (ctx) {
-                const newSelection = magicWandSelect(ctx, Math.floor(action.x), Math.floor(action.y));
-                if (newSelection) {
-                    saveCanvas();
-                    onSelectionCreate({ ...newSelection, originX: newSelection.x, originY: newSelection.y });
+                // If an actor or text is currently selected, commit it first before selecting canvas gaps
+                if (selection && (selection.actorId || selection.type === 'text')) {
+                    onSelectionCommit();
+                }
+
+                const currentSel = (selection && !selection.actorId && selection.type !== 'text') ? selection : null;
+
+                // Check if user clicked on an already-selected gap in the current wand selection
+                let didDeselect = false;
+                if (currentSel) {
+                    const clickX = Math.floor(action.x);
+                    const clickY = Math.floor(action.y);
+                    const localX = clickX - currentSel.x;
+                    const localY = clickY - currentSel.y;
+
+                    if (localX >= 0 && localX < currentSel.width && localY >= 0 && localY < currentSel.height) {
+                        const sCtx = selectionCanvasRef.current?.getContext('2d');
+                        const mCtx = selectionMaskCanvasRef.current?.getContext('2d');
+                        
+                        const checkPixel = (lx: number, ly: number) => {
+                            const sPix = sCtx?.getImageData(lx, ly, 1, 1).data;
+                            const mPix = mCtx?.getImageData(lx, ly, 1, 1).data;
+                            return (sPix && sPix[3] > 0) || (mPix && mPix[3] > 0);
+                        };
+
+                        let isSelected = checkPixel(localX, localY);
+                        let targetX = localX;
+                        let targetY = localY;
+
+                        if (!isSelected) {
+                            // Search within small 3px radius in case user clicked near an edge/boundary
+                            for (let r = 1; r <= 3 && !isSelected; r++) {
+                                for (let dy = -r; dy <= r && !isSelected; dy++) {
+                                    for (let dx = -r; dx <= r && !isSelected; dx++) {
+                                        const nx = localX + dx;
+                                        const ny = localY + dy;
+                                        if (nx >= 0 && nx < currentSel.width && ny >= 0 && ny < currentSel.height) {
+                                            if (checkPixel(nx, ny)) {
+                                                isSelected = true;
+                                                targetX = nx;
+                                                targetY = ny;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (isSelected) {
+                            didDeselect = true;
+                            // User clicked an already selected gap -> toggle/unselect it!
+                            const updatedSel = deselectWandGap(
+                                ctx,
+                                currentSel,
+                                targetX,
+                                targetY,
+                                selectionCanvasRef.current,
+                                selectionMaskCanvasRef.current
+                            );
+
+                            saveCanvas();
+                            if (!updatedSel) {
+                                // All gaps were deselected
+                                selectionMaskCanvasRef.current = null;
+                                maskImageRef.current = null;
+                                onSelectionUpdate(null);
+                            } else {
+                                selectionMaskCanvasRef.current = updatedSel.maskCanvas || null;
+                                if (selectionCanvasRef.current && updatedSel.tempCanvas) {
+                                    selectionCanvasRef.current.width = updatedSel.width;
+                                    selectionCanvasRef.current.height = updatedSel.height;
+                                    const sc = selectionCanvasRef.current.getContext('2d');
+                                    sc?.drawImage(updatedSel.tempCanvas, 0, 0);
+                                }
+                                if (updatedSel.maskUrl) {
+                                    const mImg = new Image();
+                                    mImg.onload = () => { maskImageRef.current = mImg; };
+                                    mImg.src = updatedSel.maskUrl;
+                                }
+                                onSelectionUpdate(updatedSel);
+                            }
+                        }
+                    }
+                }
+
+                if (!didDeselect) {
+                    // User clicked to select a gap (first gap or additional gap, including outside canvas)
+                    const newGapSelection = magicWandSelect(ctx, Math.floor(action.x), Math.floor(action.y), fillTolerance);
+                    if (newGapSelection) {
+                        saveCanvas();
+                        if (currentSel) {
+                            // Merge new gap into existing selection alongside previously selected gap(s)
+                            const combined = mergeWandSelections(
+                                currentSel,
+                                newGapSelection,
+                                selectionCanvasRef.current,
+                                selectionMaskCanvasRef.current,
+                                maskImageRef.current
+                            );
+                            selectionMaskCanvasRef.current = combined.maskCanvas || null;
+                            if (selectionCanvasRef.current && combined.tempCanvas) {
+                                selectionCanvasRef.current.width = combined.width;
+                                selectionCanvasRef.current.height = combined.height;
+                                const sc = selectionCanvasRef.current.getContext('2d');
+                                sc?.drawImage(combined.tempCanvas, 0, 0);
+                            }
+                            if (combined.maskUrl) {
+                                const mImg = new Image();
+                                mImg.onload = () => { maskImageRef.current = mImg; };
+                                mImg.src = combined.maskUrl;
+                            }
+                            onSelectionUpdate(combined);
+                        } else {
+                            // First gap selected!
+                            selectionMaskCanvasRef.current = newGapSelection.maskCanvas || null;
+                            if (newGapSelection.maskUrl) {
+                                const mImg = new Image();
+                                mImg.onload = () => { maskImageRef.current = mImg; };
+                                mImg.src = newGapSelection.maskUrl;
+                            }
+                            onSelectionCreate({ ...newGapSelection, originX: newGapSelection.x, originY: newGapSelection.y });
+                        }
+                    }
                 }
             }
         } else if (action.tool === 'fill') {
@@ -2112,7 +2255,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         height: selection.height,
                         transform: `rotate(${selection.rotation}deg) scale(${selection.scaleX}, ${selection.scaleY})`,
                         transformOrigin: `${selection.anchorX ?? selection.width / 2}px ${selection.anchorY ?? selection.height / 2}px`,
-                        cursor: 'move'
+                        cursor: tool === 'wand' ? 'crosshair' : 'move'
                     }}
                 >
                     <canvas 
@@ -2120,6 +2263,12 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         width={selection.width} 
                         height={selection.height} 
                         className="w-full h-full select-none pointer-events-none" 
+                    />
+                    <canvas 
+                        ref={selectionMaskCanvasRef} 
+                        width={selection.width} 
+                        height={selection.height} 
+                        className="hidden pointer-events-none" 
                     />
                     
                     {/* Interactive Selection UI */}
@@ -2135,6 +2284,15 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         onTouchEnd={(e) => { e.stopPropagation(); }}
                         className="absolute -top-14 left-1/2 -translate-x-1/2 flex items-center gap-2 pointer-events-auto z-[260] bg-[#141414]/95 backdrop-blur-md px-2.5 py-1.5 rounded-full shadow-2xl border border-white/25 select-none"
                     >
+                        {selection.selectionType === 'wand' && (
+                            <div 
+                                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-600/30 text-blue-300 text-xs font-semibold border border-blue-500/30 whitespace-nowrap shadow-inner mr-1" 
+                                title="Click more gaps to select alongside existing ones, or click an already selected gap to remove it"
+                            >
+                                <Icons.Wand2 size={13} className="text-blue-400 animate-pulse" />
+                                <span>{selection.gapCount && selection.gapCount > 1 ? `${selection.gapCount} Gaps Selected` : '1 Gap Selected'}</span>
+                            </div>
+                        )}
                         <button 
                             type="button"
                             data-interactive="true"
@@ -2179,20 +2337,37 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         >
                             <Icons.Trash2 size={14} /> <span>{t('canvas.delete')}</span>
                         </button>
+                        {selection.selectionType === 'wand' && (
+                            <button 
+                                type="button"
+                                data-interactive="true"
+                                onPointerDown={(e) => { e.stopPropagation(); }}
+                                onPointerUp={(e) => { e.stopPropagation(); }}
+                                onMouseDown={(e) => { e.stopPropagation(); }}
+                                touch-action="none"
+                                onTouchStart={(e) => { e.stopPropagation(); }}
+                                onTouchEnd={(e) => { e.stopPropagation(); }}
+                                onClick={handleUnselectAllGapsAction}
+                                className="bg-gray-700/90 hover:bg-gray-600 active:scale-95 text-gray-200 hover:text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer transition-all border border-white/20"
+                                title="Unselect all gaps (restores them to canvas)"
+                            >
+                                <Icons.X size={14} className="text-gray-300" /> <span>Unselect All</span>
+                            </button>
+                        )}
                     </div>
                     
                     {/* Bigger Corner Handles */}
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tl')} className="absolute -top-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-tl', selection.rotation, selection.scaleX, selection.scaleY) }} />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tr')} className="absolute -top-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-tr', selection.rotation, selection.scaleX, selection.scaleY) }} />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-bl')} className="absolute -bottom-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-bl', selection.rotation, selection.scaleX, selection.scaleY) }} />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-br')} className="absolute -bottom-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-br', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tl')} className="absolute -top-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40" style={{ pointerEvents: tool === 'select' ? 'auto' : 'none', display: tool === 'select' ? 'block' : 'none', cursor: getResizeCursor('resize-tl', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tr')} className="absolute -top-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40" style={{ pointerEvents: tool === 'select' ? 'auto' : 'none', display: tool === 'select' ? 'block' : 'none', cursor: getResizeCursor('resize-tr', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-bl')} className="absolute -bottom-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40" style={{ pointerEvents: tool === 'select' ? 'auto' : 'none', display: tool === 'select' ? 'block' : 'none', cursor: getResizeCursor('resize-bl', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-br')} className="absolute -bottom-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40" style={{ pointerEvents: tool === 'select' ? 'auto' : 'none', display: tool === 'select' ? 'block' : 'none', cursor: getResizeCursor('resize-br', selection.rotation, selection.scaleX, selection.scaleY) }} />
 
                     {/* Middle Edge Handles */}
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-l')} className="absolute top-1/2 -translate-y-1/2 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-l', selection.rotation, selection.scaleX, selection.scaleY) }} />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-r')} className="absolute top-1/2 -translate-y-1/2 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 pointer-events-auto" style={{ cursor: getResizeCursor('resize-r', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-l')} className="absolute top-1/2 -translate-y-1/2 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40" style={{ pointerEvents: tool === 'select' ? 'auto' : 'none', display: tool === 'select' ? 'block' : 'none', cursor: getResizeCursor('resize-l', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-r')} className="absolute top-1/2 -translate-y-1/2 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40" style={{ pointerEvents: tool === 'select' ? 'auto' : 'none', display: tool === 'select' ? 'block' : 'none', cursor: getResizeCursor('resize-r', selection.rotation, selection.scaleX, selection.scaleY) }} />
 
                     {/* Interactive Rotation Handle */}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none" style={{ transform: 'translateY(-100%)' }}>
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none" style={{ transform: 'translateY(-100%)', display: tool === 'select' ? 'flex' : 'none' }}>
                         <div className="w-0.5 h-10 bg-[#007AFF]"></div>
                         <motion.div 
                             onPointerDown={handleRotatePointerDown}
@@ -2212,8 +2387,10 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         animate={{ scale: 1, opacity: 1 }}
                         whileHover={{ scale: 1.2, boxShadow: "0 0 15px rgba(255, 59, 48, 0.4)" }}
                         whileTap={{ scale: 0.9 }}
-                        className="absolute w-6 h-6 rounded-full bg-white border-2 border-[#FF3B30] flex items-center justify-center text-[#FF3B30] shadow-xl z-50 pointer-events-auto cursor-crosshair transition-colors hover:bg-red-50"
+                        className="absolute w-6 h-6 rounded-full bg-white border-2 border-[#FF3B30] flex items-center justify-center text-[#FF3B30] shadow-xl z-50 cursor-crosshair transition-colors hover:bg-red-50"
                         style={{
+                            pointerEvents: tool === 'select' ? 'auto' : 'none',
+                            display: tool === 'select' ? 'flex' : 'none',
                             left: selection.anchorX ?? selection.width / 2,
                             top: selection.anchorY ?? selection.height / 2,
                             transform: 'translate(-50%, -50%)'

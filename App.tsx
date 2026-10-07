@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Frame, ToolType, Layer, LayerFolder, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point, Actor, TweenType, TweenOptions, WorkspaceMode, TouchButtonConfig, DEFAULT_TOUCH_BUTTONS } from './types';
+import { Frame, ToolType, Layer, LayerFolder, SelectionState, AudioTrack, ShapeType, ProjectData, ProjectMeta, ProjectFolder, BrushType, OnionSkinSettings, Shortcuts, BackpackItem, BackgroundSettings, SymmetryMode, Point, Actor, SavedSymbol, TweenType, TweenOptions, WorkspaceMode, TouchButtonConfig, DEFAULT_TOUCH_BUTTONS } from './types';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { AdobeAnimateWorkspace } from './components/animate/AdobeAnimateWorkspace';
 import { Timeline } from './components/Timeline';
@@ -181,6 +181,7 @@ export default function App() {
   const [projectId, setProjectId] = useState<string>(crypto.randomUUID());
   const [projectName, setProjectName] = useState(t('app.defaultProjectName'));
   const [projectType, setProjectType] = useState<'animation' | 'painting' | 'game'>('animation');
+  const [gameTemplate, setGameTemplate] = useState<'quiz' | 'empty'>('quiz');
   const [folderId, setFolderId] = useState<string | null>(null);
 
   // Folder system state
@@ -234,6 +235,7 @@ export default function App() {
 
   const [frames, setFrames] = useState<Frame[]>([]);
   const [actors, setActors] = useState<Actor[]>([]);
+  const [projectSymbols, setProjectSymbols] = useState<SavedSymbol[]>([]);
   const [projectScript, setProjectScript] = useState<string>('');
   const [touchButtons, setTouchButtons] = useState<TouchButtonConfig[]>(() => DEFAULT_TOUCH_BUTTONS);
   const [history, setHistory] = useState<Frame[][]>([]);
@@ -1373,9 +1375,21 @@ export default function App() {
   const handleConvertToActor = (item: BackpackItem) => {
     const img = new Image();
     img.onload = () => {
+      const symbolId = crypto.randomUUID();
+      const symbolName = item.name || `Symbol_${projectSymbols.length + 1}`;
+      const newSymbol: SavedSymbol = {
+        id: symbolId,
+        name: symbolName,
+        dataUrl: item.dataUrl,
+        scripts: '',
+        createdAt: Date.now()
+      };
+      setProjectSymbols(prev => [...prev, newSymbol]);
+
       const newActor: Actor = {
         id: crypto.randomUUID(),
-        name: item.name || `Symbol_${actors.length + 1}`,
+        symbolId: symbolId,
+        name: symbolName,
         x: canvasSize.width / 2 - img.width / 2,
         y: canvasSize.height / 2 - img.height / 2,
         width: img.width || 100,
@@ -1429,9 +1443,21 @@ export default function App() {
     setHasUnsavedChanges(true);
   };
 
-  const enterSymbolEditMode = (actorId: string) => {
-      const actor = actors.find(a => a.id === actorId);
-      if (!actor) return;
+  const enterSymbolEditMode = (id: string) => {
+      const symbol = projectSymbols.find(s => s.id === id);
+      const actor = actors.find(a => a.id === id || a.symbolId === id);
+      if (!symbol && !actor) return;
+
+      const symName = symbol?.name || actor?.name || 'Symbol';
+      const symDataUrl = symbol?.dataUrl || actor?.dataUrl || '';
+      const symFrames = symbol?.symbolFrames || actor?.symbolFrames;
+      const symLayers = symbol?.symbolLayers || actor?.symbolLayers;
+      const symLayerFolders = symbol?.symbolLayerFolders || actor?.symbolLayerFolders;
+      const symFps = symbol?.symbolFps || actor?.symbolFps;
+      const symScripts = symbol?.scripts || actor?.scripts || '';
+      const symWidth = actor?.width || 120;
+      const symHeight = actor?.height || 120;
+      const symIsAnimated = symbol?.isAnimated ?? actor?.isAnimated;
 
       // Backup main project
       setMainProjectBackup({
@@ -1440,6 +1466,7 @@ export default function App() {
           layerFolders,
           activeLayerId,
           actors,
+          projectSymbols,
           projectScript,
           touchButtons,
           history,
@@ -1454,27 +1481,27 @@ export default function App() {
       });
 
       // Load symbol data
-      setEditingSymbolId(actorId);
-      setProjectName(`Editing: ${actor.name}`);
+      setEditingSymbolId(id);
+      setProjectName(`Editing: ${symName}`);
       setProjectId(`symbol-${crypto.randomUUID()}`); // prevent overwriting main project
       
       // Crucial: Set canvas to match symbol dimensions so it draws perfectly
-      setCanvasSize({ width: actor.width, height: actor.height });
+      setCanvasSize({ width: symWidth, height: symHeight });
       setBackground({ type: 'color', color: 'transparent' });
 
       // If symbol has frames, load them, otherwise create one from dataUrl
-      if (actor.isAnimated && actor.symbolFrames && actor.symbolFrames.length > 0) {
-          setFrames(actor.symbolFrames);
-          setLayers(actor.symbolLayers || [createDefaultLayer()]);
-          setLayerFolders(actor.symbolLayerFolders || []);
-          setActiveLayerId(actor.symbolLayers ? actor.symbolLayers[0].id : '1');
-          setFps(actor.symbolFps || fps);
+      if (symIsAnimated && symFrames && symFrames.length > 0) {
+          setFrames(symFrames);
+          setLayers(symLayers || [createDefaultLayer()]);
+          setLayerFolders(symLayerFolders || []);
+          setActiveLayerId(symLayers ? symLayers[0].id : '1');
+          setFps(symFps || fps);
       } else {
           // Static or uninitialized animated symbol
           const defaultLayer = createDefaultLayer();
           const frame: Frame = {
               id: crypto.randomUUID(),
-              layers: { [defaultLayer.id]: actor.dataUrl },
+              layers: { [defaultLayer.id]: symDataUrl },
               script: ''
           };
           setFrames([frame]);
@@ -1485,7 +1512,7 @@ export default function App() {
       }
 
       setActors([]); // Symbols don't have nested actors yet
-      setProjectScript(actor.scripts);
+      setProjectScript(symScripts);
       setCurrentFrameIndex(0);
       setHistory([]);
       setHistoryIndex(-1);
@@ -1498,14 +1525,50 @@ export default function App() {
 
       const currentLayerData = frames[0]?.thumbnailUrl || frames[0]?.layers[layers[0].id] || '';
 
+      // Update in projectSymbols
+      const updatedSymbols = (mainProjectBackup.projectSymbols || []).map((s: SavedSymbol) => {
+          if (s.id === editingSymbolId) {
+              return {
+                  ...s,
+                  isAnimated: frames.length > 1,
+                  symbolFrames: frames,
+                  symbolLayers: layers,
+                  symbolLayerFolders: layerFolders,
+                  symbolFps: fps,
+                  scripts: projectScript,
+                  dataUrl: currentLayerData
+              };
+          }
+          return s;
+      });
+
+      // If it wasn't in projectSymbols yet, add it
+      if (!updatedSymbols.some((s: SavedSymbol) => s.id === editingSymbolId)) {
+          const matchingActor = mainProjectBackup.actors.find((a: Actor) => a.id === editingSymbolId || a.symbolId === editingSymbolId);
+          if (matchingActor) {
+              updatedSymbols.push({
+                  id: matchingActor.symbolId || matchingActor.id,
+                  name: matchingActor.name,
+                  dataUrl: currentLayerData,
+                  isAnimated: frames.length > 1,
+                  symbolFrames: frames,
+                  symbolLayers: layers,
+                  symbolLayerFolders: layerFolders,
+                  symbolFps: fps,
+                  scripts: projectScript,
+                  createdAt: Date.now()
+              });
+          }
+      }
+
       const updatedActors = mainProjectBackup.actors.map((a: Actor) => {
-          if (a.id === editingSymbolId) {
+          if (a.id === editingSymbolId || a.symbolId === editingSymbolId) {
               return {
                   ...a,
                   isAnimated: frames.length > 1,
                   symbolFrames: frames,
                   symbolLayers: layers,
-                  layerFolders: layerFolders,
+                  symbolLayerFolders: layerFolders,
                   symbolFps: fps,
                   scripts: projectScript,
                   dataUrl: currentLayerData
@@ -1519,6 +1582,7 @@ export default function App() {
       setLayers(mainProjectBackup.layers);
       setLayerFolders(mainProjectBackup.layerFolders || []);
       setActiveLayerId(mainProjectBackup.activeLayerId);
+      setProjectSymbols(updatedSymbols);
       setActors(updatedActors);
       setProjectScript(mainProjectBackup.projectScript);
       if (mainProjectBackup.touchButtons) setTouchButtons(mainProjectBackup.touchButtons);
@@ -1541,6 +1605,29 @@ export default function App() {
       const activeSel = overrideSelection || selection;
       if (!activeSel) return;
       if (activeSel.actorId) {
+          // If already an actor instance, ensure it exists in the library as well
+          const existingActor = actors.find(a => a.id === activeSel.actorId);
+          if (existingActor) {
+              setProjectSymbols(prev => {
+                  const symId = existingActor.symbolId || existingActor.id;
+                  const baseName = existingActor.name.replace(/_\d+$/, '');
+                  if (prev.some(s => s.id === symId || s.name.toLowerCase() === baseName.toLowerCase() || s.name.toLowerCase() === existingActor.name.toLowerCase())) {
+                      return prev;
+                  }
+                  return [...prev, {
+                      id: symId,
+                      name: baseName || existingActor.name,
+                      dataUrl: existingActor.dataUrl,
+                      scripts: existingActor.scripts || '',
+                      createdAt: Date.now(),
+                      isAnimated: existingActor.isAnimated,
+                      symbolFrames: existingActor.symbolFrames,
+                      symbolLayers: existingActor.symbolLayers,
+                      symbolLayerFolders: existingActor.symbolLayerFolders,
+                      symbolFps: existingActor.symbolFps
+                  }];
+              });
+          }
           setActors(prev => prev.map(a => 
               a.id === activeSel.actorId 
                   ? { 
@@ -1559,9 +1646,25 @@ export default function App() {
           setHasUnsavedChanges(true);
           return;
       }
+
+      const symbolId = crypto.randomUUID();
+      const symbolName = `Symbol_${projectSymbols.length + 1}`;
+      const defaultScript = `// Code runs when game starts\nthis.onUpdate = function() {\n  // Runs every frame\n};\n\nthis.onClick = function() {\n  // To control this symbol's timeline:\n  // this.play();\n  // this.gotoAndStop(2);\n\n  // To control the main game timeline:\n  // gotoAndStop(2);\n};`;
+
+      const newSymbol: SavedSymbol = {
+          id: symbolId,
+          name: symbolName,
+          dataUrl: activeSel.dataUrl,
+          isAnimated: false,
+          scripts: defaultScript,
+          createdAt: Date.now()
+      };
+      setProjectSymbols(prev => [...prev, newSymbol]);
+
       const newActor: Actor = {
           id: crypto.randomUUID(),
-          name: `Symbol_${actors.length + 1}`,
+          symbolId: symbolId,
+          name: symbolName,
           dataUrl: activeSel.dataUrl,
           x: activeSel.x,
           y: activeSel.y,
@@ -1573,7 +1676,7 @@ export default function App() {
           opacity: 1,
           targetFrame: currentFrameIndex,
           isAnimated: false,
-          scripts: `// Code runs when game starts\nthis.onUpdate = function() {\n  // Runs every frame\n};\n\nthis.onClick = function() {\n  // To control this symbol's timeline:\n  // this.play();\n  // this.gotoAndStop(2);\n\n  // To control the main game timeline:\n  // gotoAndStop(2);\n};`
+          scripts: defaultScript
       };
       setActors(prev => [...prev, newActor]);
       setSelection(null);
@@ -1583,9 +1686,53 @@ export default function App() {
   const handleSelectionDelete = () => {
       if (!selection) return;
       if (selection.actorId) {
+          const removedActor = actors.find(a => a.id === selection.actorId);
+          // Delete ONLY the instance from canvas stage (actors array)
+          // The symbol stays permanently saved in the project's Symbol Library (projectSymbols)!
           setActors(prev => prev.filter(a => a.id !== selection.actorId));
+          // If the removed actor was not in projectSymbols yet, preserve it in the library
+          if (removedActor) {
+              setProjectSymbols(prev => {
+                  const symId = removedActor.symbolId || removedActor.id;
+                  const baseName = removedActor.name.replace(/_\d+$/, '');
+                  if (prev.some(s => s.id === symId || s.name.toLowerCase() === removedActor.name.toLowerCase() || s.name.toLowerCase() === baseName.toLowerCase())) {
+                      return prev;
+                  }
+                  return [...prev, {
+                      id: symId,
+                      name: baseName || removedActor.name,
+                      dataUrl: removedActor.dataUrl,
+                      scripts: removedActor.scripts || '',
+                      createdAt: Date.now(),
+                      isAnimated: removedActor.isAnimated,
+                      symbolFrames: removedActor.symbolFrames,
+                      symbolLayers: removedActor.symbolLayers,
+                      symbolLayerFolders: removedActor.symbolLayerFolders,
+                      symbolFps: removedActor.symbolFps
+                  }];
+              });
+          }
       }
       setSelection(null);
+      setHasUnsavedChanges(true);
+  };
+
+  const handleDeleteSymbolFromLibrary = (symbolId: string) => {
+      const sym = projectSymbols.find(s => s.id === symbolId);
+      const symName = sym?.name.toLowerCase();
+      // Remove permanently from library
+      setProjectSymbols(prev => prev.filter(s => s.id !== symbolId));
+      // Also remove any active instances of this symbol from the canvas
+      setActors(prev => prev.filter(a => {
+          if (a.symbolId === symbolId || a.id === symbolId) return false;
+          if (symName && (a.name.toLowerCase() === symName || a.name.toLowerCase().startsWith(symName + '_'))) return false;
+          return true;
+      }));
+      setHasUnsavedChanges(true);
+  };
+
+  const handleDuplicateSymbolInLibrary = (symbol: SavedSymbol) => {
+      setProjectSymbols(prev => [...prev, symbol]);
       setHasUnsavedChanges(true);
   };
 
@@ -2567,8 +2714,10 @@ export default function App() {
           motionPaths: [],
           onionSkinSettings,
           actors,
+          projectSymbols,
           projectScript,
-          touchButtons
+          touchButtons,
+          gameTemplate: projectType === 'game' ? gameTemplate : undefined
       };
       try {
         await saveProjectToDB(projectData);
@@ -2656,6 +2805,8 @@ export default function App() {
         setProjectId(data.id);
         setProjectName(data.name);
         setProjectType(data.type || 'animation');
+        const detectedTemplate = data.gameTemplate || (data.name?.toLowerCase().includes('empty') ? 'empty' : 'quiz');
+        setGameTemplate(detectedTemplate);
         setFolderId(data.folderId || null);
         setCanvasSize(data.canvasSize);
         setBackground(data.background || { type: 'color', color: '#ffffff' });
@@ -2674,10 +2825,38 @@ export default function App() {
             let tf = a.targetFrame;
             if ((name.includes('blue') || name.includes('playbutton') || name === 'play') && (tf === undefined || tf !== 0)) { tf = 0; }
             if ((name.includes('green') || name.includes('correctbutton') || name.includes('red') || name.includes('wrongbutton')) && (tf === undefined || tf !== 1)) { tf = 1; }
-            return { ...a, targetFrame: tf };
+            const symId = a.symbolId || a.id;
+            return { ...a, targetFrame: tf, symbolId: symId };
         });
         
         setActors(loadedActors);
+
+        let loadedSymbols: SavedSymbol[] = data.projectSymbols ? [...data.projectSymbols] : [];
+        const seenIds = new Set(loadedSymbols.map(s => s.id));
+        const seenNames = new Set(loadedSymbols.map(s => s.name.toLowerCase()));
+
+        loadedActors.forEach(a => {
+            const symId = a.symbolId || a.id;
+            const baseName = a.name.replace(/_\d+$/, '').toLowerCase();
+            if (!seenIds.has(symId) && !seenNames.has(a.name.toLowerCase()) && !seenNames.has(baseName)) {
+                seenIds.add(symId);
+                seenNames.add(a.name.toLowerCase());
+                loadedSymbols.push({
+                    id: symId,
+                    name: a.name.replace(/_\d+$/, '') || a.name,
+                    dataUrl: a.dataUrl,
+                    scripts: a.scripts || '',
+                    createdAt: Date.now(),
+                    isAnimated: a.isAnimated,
+                    symbolFrames: a.symbolFrames,
+                    symbolLayers: a.symbolLayers,
+                    symbolLayerFolders: a.symbolLayerFolders,
+                    symbolFps: a.symbolFps
+                });
+            }
+        });
+        setProjectSymbols(loadedSymbols);
+
         setProjectScript(data.projectScript || '');
         if (data.touchButtons && Array.isArray(data.touchButtons) && data.touchButtons.length > 0) {
           setTouchButtons(data.touchButtons);
@@ -2700,12 +2879,16 @@ export default function App() {
       }
   };
 
-  const createNewProject = async (type: 'animation' | 'painting' | 'game' = 'animation', targetFolderId: string | null = currentFolderId) => {
+  const createNewProject = async (
+    type: 'animation' | 'painting' | 'game' = 'animation', 
+    targetFolderId: string | null = currentFolderId,
+    selectedGameTemplate: 'quiz' | 'empty' = 'quiz'
+  ) => {
       let projName = t('menu.newProject');
       if (type === 'painting') {
         projName = t('menu.newPainting', 'New Painting');
       } else if (type === 'game') {
-        projName = 'New Interactive Game';
+        projName = selectedGameTemplate === 'empty' ? 'New Empty Game' : 'New Interactive Game';
       }
       setLoadingProjectName(projName);
       setIsProjectLoading(true);
@@ -2715,6 +2898,7 @@ export default function App() {
       setProjectId(pid);
       setProjectName(projName);
       setProjectType(type);
+      setGameTemplate(selectedGameTemplate);
       setFolderId(targetFolderId || null);
       setCanvasSize({ width: 800, height: 600 });
       setBackground({ type: 'color', color: '#ffffff' });
@@ -2724,7 +2908,7 @@ export default function App() {
       setLayerFolders([]);
       setActiveLayerId(defaultL[0].id);
 
-      if (type === 'game') {
+      if (type === 'game' && selectedGameTemplate === 'quiz') {
         const drawTextOnLayer = (text: string, subtitle: string, color: string = '#1e293b'): string => {
           const canvas = document.createElement('canvas');
           canvas.width = 800;
@@ -2771,8 +2955,10 @@ export default function App() {
         setHistory([[frame1, frame2, frame3]]);
         
         // Setup initial Symbols (Actors)
+        const playBtnId = crypto.randomUUID();
         const playBtn: Actor = {
-          id: crypto.randomUUID(),
+          id: playBtnId,
+          symbolId: playBtnId,
           name: 'playButton',
           dataUrl: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><rect width="120" height="120" rx="24" fill="%23007AFF"/><polygon points="48,36 48,84 84,60" fill="white"/></svg>`,
           x: 340,
@@ -2787,8 +2973,10 @@ export default function App() {
           scripts: '// Click the play button to start the game\nthis.onClick = function() {\n  gotoAndStop(2);\n};\nthis.onUpdate = function() {\n  // Only show play button on Frame 1 and Frame 3\n  this.visible = (this.currentFrame === 1 || this.currentFrame === 3);\n};'
         };
 
+        const correctBtnId = crypto.randomUUID();
         const correctBtn: Actor = {
-          id: crypto.randomUUID(),
+          id: correctBtnId,
+          symbolId: correctBtnId,
           name: 'correctButton',
           dataUrl: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><rect width="120" height="120" rx="24" fill="%2334C759"/><path d="M36,60 L50,74 L84,40" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`,
           x: 240,
@@ -2803,8 +2991,10 @@ export default function App() {
           scripts: '// Click correct option to advance to victory screen\nthis.onClick = function() {\n  gotoAndStop(3);\n};\nthis.onUpdate = function() {\n  // Only show on Frame 2\n  this.visible = (this.currentFrame === 2);\n};'
         };
 
+        const wrongBtnId = crypto.randomUUID();
         const wrongBtn: Actor = {
-          id: crypto.randomUUID(),
+          id: wrongBtnId,
+          symbolId: wrongBtnId,
           name: 'wrongButton',
           dataUrl: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><rect width="120" height="120" rx="24" fill="%23FF3B30"/><path d="M38,38 L82,82 M82,38 L38,82" stroke="white" stroke-width="12" stroke-linecap="round" fill="none"/></svg>`,
           x: 440,
@@ -2819,6 +3009,14 @@ export default function App() {
           scripts: '// Click wrong option to trigger reset and show message\nthis.onClick = function() {\n  alert("Wrong choice! Let\'s go back and try again.");\n  gotoAndStop(1);\n};\nthis.onUpdate = function() {\n  // Only show on Frame 2\n  this.visible = (this.currentFrame === 2);\n};'
         };
 
+        const initialSymbols: SavedSymbol[] = [playBtn, correctBtn, wrongBtn].map(a => ({
+          id: a.symbolId || a.id,
+          name: a.name,
+          dataUrl: a.dataUrl,
+          scripts: a.scripts,
+          createdAt: Date.now()
+        }));
+        setProjectSymbols(initialSymbols);
         setActors([playBtn, correctBtn, wrongBtn]);
         setProjectScript('// Global script runs on startup');
       } else {
@@ -2826,8 +3024,13 @@ export default function App() {
         initialFrame.thumbnailUrl = await compositeLayers(initialFrame, defaultL, 800, 600, { type: 'color', color: '#ffffff' }, null, false);
         setFrames([initialFrame]);
         setHistory([[initialFrame]]);
+        setProjectSymbols([]);
         setActors([]);
-        setProjectScript('');
+        setProjectScript(type === 'game' ? '// Global game script runs on startup\n' : '');
+      }
+
+      if (type === 'game') {
+        setTouchButtons(DEFAULT_TOUCH_BUTTONS);
       }
 
       setHistoryIndex(0);
@@ -2856,7 +3059,7 @@ export default function App() {
       if (mode === 'painting') {
         createNewProject('painting');
       } else if (mode === 'games') {
-        createNewProject('game');
+        createNewProject('game', null, 'quiz');
       } else {
         createNewProject('animation');
       }
@@ -2898,7 +3101,12 @@ export default function App() {
           fps,
           audioTracks,
           motionPaths: [],
-          onionSkinSettings
+          onionSkinSettings,
+          actors,
+          projectSymbols,
+          projectScript,
+          touchButtons,
+          gameTemplate: projectType === 'game' ? gameTemplate : undefined
       };
       const ext = format === 'json' ? 'json' : 'canim';
       const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
@@ -4321,16 +4529,28 @@ export default function App() {
                       <span className="text-[10px] text-gray-500 mt-0.5">Single canvas artwork</span>
                     </button>
 
-                    {/* New Game Button */}
+                    {/* Quiz Game Button */}
                     <button
-                      onClick={() => createNewProject('game')}
+                      onClick={() => createNewProject('game', currentFolderId, 'quiz')}
                       className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-800 hover:border-cyan-500 hover:bg-cyan-500/5 flex flex-col items-center justify-center group transition-all p-4 text-center"
                     >
                       <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 flex items-center justify-center text-cyan-400 mb-2.5 group-hover:scale-110 transition-transform shadow-md">
                         <Icons.Gamepad2 size={24} />
                       </div>
-                      <span className="font-bold text-xs text-gray-200 group-hover:text-white">New Game</span>
+                      <span className="font-bold text-xs text-gray-200 group-hover:text-white">{t('menu.newQuizGame', 'Quiz Game')}</span>
                       <span className="text-[10px] text-gray-500 mt-0.5">Interactive scripted quiz</span>
+                    </button>
+
+                    {/* New Empty Game Button (Green Icon) */}
+                    <button
+                      onClick={() => createNewProject('game', currentFolderId, 'empty')}
+                      className="aspect-[4/3] rounded-2xl border-2 border-dashed border-gray-800 hover:border-emerald-500 hover:bg-emerald-500/5 flex flex-col items-center justify-center group transition-all p-4 text-center"
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 mb-2.5 group-hover:scale-110 transition-transform shadow-md">
+                        <Icons.Gamepad2 size={24} />
+                      </div>
+                      <span className="font-bold text-xs text-gray-200 group-hover:text-white">{t('menu.newEmptyGame', 'Empty Game')}</span>
+                      <span className="text-[10px] text-gray-500 mt-0.5">Blank interactive project</span>
                     </button>
 
                     {/* Import Button */}
@@ -4363,10 +4583,12 @@ export default function App() {
                 {displayProjects.map((project) => {
                   const isPainting = project.type === 'painting';
                   const isGame = project.type === 'game';
+                  const isEmptyGame = isGame && (project.gameTemplate === 'empty' || project.name.toLowerCase().includes('empty'));
                   const projectFolderObj = folders.find(f => f.id === project.folderId);
 
                   let ringClass = 'hover:ring-2 ring-[#FF3B30]/80';
                   if (isPainting) ringClass = 'hover:ring-2 ring-purple-500/80';
+                  else if (isEmptyGame) ringClass = 'hover:ring-2 ring-emerald-500/80';
                   else if (isGame) ringClass = 'hover:ring-2 ring-cyan-500/80';
 
                   return (
@@ -4386,6 +4608,8 @@ export default function App() {
                         <div className="w-full h-full bg-[radial-gradient(#2a2a2a_1px,transparent_1px)] [background-size:12px_12px] bg-[#141414] flex items-center justify-center text-gray-700">
                           {isPainting ? (
                             <Icons.Palette size={40} />
+                          ) : isEmptyGame ? (
+                            <Icons.Gamepad2 size={40} className="text-emerald-400/60" />
                           ) : isGame ? (
                             <Icons.Gamepad2 size={40} className="text-cyan-400/60" />
                           ) : (
@@ -4401,10 +4625,15 @@ export default function App() {
                             <Icons.Palette size={12} />
                             <span>Painting</span>
                           </span>
+                        ) : isEmptyGame ? (
+                          <span className="bg-emerald-600/95 text-white font-bold text-[10px] px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md backdrop-blur-sm border border-emerald-400/40">
+                            <Icons.Gamepad2 size={12} />
+                            <span>Empty Game</span>
+                          </span>
                         ) : isGame ? (
                           <span className="bg-cyan-600/95 text-white font-bold text-[10px] px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md backdrop-blur-sm border border-cyan-400/40">
                             <Icons.Gamepad2 size={12} />
-                            <span>Game</span>
+                            <span>Quiz Game</span>
                           </span>
                         ) : (
                           <span className="bg-[#FF3B30]/95 text-white font-bold text-[10px] px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md backdrop-blur-sm border border-red-400/40">
@@ -4639,9 +4868,34 @@ export default function App() {
               onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)}
               onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)}
               actors={actors}
-              onAddActor={(newActor) => setActors(prev => [...prev, newActor])}
+              symbols={projectSymbols}
+              onAddActor={(newActor) => {
+                setActors(prev => [...prev, newActor]);
+                setProjectSymbols(prev => {
+                  const symId = newActor.symbolId || newActor.id;
+                  const baseName = newActor.name.replace(/_\d+$/, '');
+                  if (prev.some(s => s.id === symId || s.name.toLowerCase() === newActor.name.toLowerCase() || s.name.toLowerCase() === baseName.toLowerCase())) {
+                    return prev;
+                  }
+                  return [...prev, {
+                    id: symId,
+                    name: baseName || newActor.name,
+                    dataUrl: newActor.dataUrl,
+                    scripts: newActor.scripts || '',
+                    createdAt: Date.now(),
+                    isAnimated: newActor.isAnimated,
+                    symbolFrames: newActor.symbolFrames,
+                    symbolLayers: newActor.symbolLayers,
+                    symbolLayerFolders: newActor.symbolLayerFolders,
+                    symbolFps: newActor.symbolFps
+                  }];
+                });
+                setHasUnsavedChanges(true);
+              }}
               onRemoveActor={(id) => setActors(prev => prev.filter(a => a.id !== id))}
+              onDeleteSymbolFromLibrary={handleDeleteSymbolFromLibrary}
               onEnterSymbolEditMode={enterSymbolEditMode}
+              onSelectActor={handleSelectActor}
               backpackItems={backpackItems}
               onStampBackpackItem={handleStampOnLayer}
               onImportImage={handleImportImage}
@@ -4678,6 +4932,16 @@ export default function App() {
                         className="font-bold text-lg hidden sm:block truncate max-w-[150px] bg-transparent hover:bg-gray-800 focus:bg-gray-800 rounded px-2 outline-none border border-transparent focus:border-gray-600 transition-colors cursor-text text-white"
                         title={t('settings.name')}
                     />
+                    {projectType === 'game' && (
+                      <span className={`hidden md:inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full border shadow-sm ${
+                        gameTemplate === 'empty' 
+                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' 
+                          : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40'
+                      }`}>
+                        <Icons.Gamepad2 size={12} />
+                        <span>{gameTemplate === 'empty' ? 'Empty Game' : 'Quiz Game'}</span>
+                      </span>
+                    )}
                 </div>
                 <div className="flex items-center space-x-2">
                     <button onClick={undo} disabled={historyIndex <= 0} className={`p-2 rounded-full ${historyIndex > 0 ? 'text-white' : 'text-gray-600'}`}> <Icons.Undo size={20} /> </button>
@@ -5108,16 +5372,39 @@ export default function App() {
       {isSymbolPanelOpen && view === 'editor' && (
         <SymbolPanel
           actors={actors}
+          symbols={projectSymbols}
           currentFrameIndex={currentFrameIndex}
           frameCount={frames.length}
           onAddActor={(newActor) => {
             setActors(prev => [...prev, newActor]);
+            setProjectSymbols(prev => {
+              const symId = newActor.symbolId || newActor.id;
+              const baseName = newActor.name.replace(/_\d+$/, '');
+              if (prev.some(s => s.id === symId || s.name.toLowerCase() === newActor.name.toLowerCase() || s.name.toLowerCase() === baseName.toLowerCase())) {
+                return prev;
+              }
+              return [...prev, {
+                id: symId,
+                name: baseName || newActor.name,
+                dataUrl: newActor.dataUrl,
+                scripts: newActor.scripts || '',
+                createdAt: Date.now(),
+                isAnimated: newActor.isAnimated,
+                symbolFrames: newActor.symbolFrames,
+                symbolLayers: newActor.symbolLayers,
+                symbolLayerFolders: newActor.symbolLayerFolders,
+                symbolFps: newActor.symbolFps
+              }];
+            });
             setHasUnsavedChanges(true);
           }}
           onRemoveActor={(id) => {
             setActors(prev => prev.filter(a => a.id !== id));
             setHasUnsavedChanges(true);
           }}
+          onDeleteSymbolFromLibrary={handleDeleteSymbolFromLibrary}
+          onDuplicateSymbolInLibrary={handleDuplicateSymbolInLibrary}
+          onEnterSymbolEditMode={enterSymbolEditMode}
           onUpdateActorTargetFrame={(id, targetFrame) => {
             setActors(prev => prev.map(a => a.id === id ? { ...a, targetFrame } : a));
             setHasUnsavedChanges(true);
@@ -5242,6 +5529,24 @@ export default function App() {
         canvasHeight={canvasSize.height}
         onAddActor={(newActor) => {
           setActors(prev => [...prev, newActor]);
+          setProjectSymbols(prev => {
+            const symId = newActor.symbolId || newActor.id;
+            if (prev.some(s => s.id === symId || s.name.toLowerCase() === newActor.name.toLowerCase())) {
+              return prev;
+            }
+            return [...prev, {
+              id: symId,
+              name: newActor.name,
+              dataUrl: newActor.dataUrl,
+              scripts: newActor.scripts || '',
+              createdAt: Date.now(),
+              isAnimated: newActor.isAnimated,
+              symbolFrames: newActor.symbolFrames,
+              symbolLayers: newActor.symbolLayers,
+              symbolLayerFolders: newActor.symbolLayerFolders,
+              symbolFps: newActor.symbolFps
+            }];
+          });
           setHasUnsavedChanges(true);
         }}
         onAddSoundTrack={handleAddSoundLibraryTrack}

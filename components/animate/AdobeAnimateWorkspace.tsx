@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   WorkspaceMode, ToolType, ShapeType, BrushType, SymmetryMode, 
   Frame, Layer, LayerFolder, AudioTrack, BackgroundSettings, 
-  Actor, BackpackItem, SelectionState, OnionSkinSettings, Point 
+  Actor, SavedSymbol, BackpackItem, SelectionState, OnionSkinSettings, Point 
 } from '../../types';
 import { AnimateHeader } from './AnimateHeader';
 import { AnimateTimeline } from './AnimateTimeline';
@@ -116,7 +116,7 @@ interface AdobeAnimateWorkspaceProps {
   // Selections & Symbols
   selection: SelectionState | null;
   onSelectionCreate: (data: SelectionState) => void;
-  onSelectionUpdate: (data: SelectionState) => void;
+  onSelectionUpdate: (data: SelectionState | null) => void;
   onSelectionCommit: (override?: SelectionState) => void;
   onSelectionDelete: () => void;
   onSelectionMakeSymbol?: (override?: SelectionState) => void;
@@ -124,11 +124,14 @@ interface AdobeAnimateWorkspaceProps {
   onFlipVertical: () => void;
   onRotate: () => void;
 
-  // Actors & Backpack
+  // Actors, Symbols & Backpack
   actors: Actor[];
+  symbols?: SavedSymbol[];
   onAddActor: (actor: Actor) => void;
   onRemoveActor: (id: string) => void;
+  onDeleteSymbolFromLibrary?: (id: string) => void;
   onEnterSymbolEditMode?: (actorId: string) => void;
+  onSelectActor?: (actorId: string) => void;
   backpackItems: BackpackItem[];
   onStampBackpackItem: (item: BackpackItem) => void;
 
@@ -247,9 +250,12 @@ export const AdobeAnimateWorkspace: React.FC<AdobeAnimateWorkspaceProps> = ({
   onFlipVertical,
   onRotate,
   actors,
+  symbols = [],
   onAddActor,
   onRemoveActor,
+  onDeleteSymbolFromLibrary,
   onEnterSymbolEditMode,
+  onSelectActor,
   backpackItems,
   onStampBackpackItem,
   onImportImage,
@@ -447,8 +453,8 @@ export const AdobeAnimateWorkspace: React.FC<AdobeAnimateWorkspaceProps> = ({
             onToggleCameraMode={onToggleCameraMode}
             symmetryMode={symmetryMode}
             onApplyMotionPath={onApplyMotionPath}
-            actors={actors}
-            onSelectActor={(actorId) => onEnterSymbolEditMode?.(actorId)}
+            actors={actors.filter(a => a.targetFrame === undefined || a.targetFrame === currentFrameIndex)}
+            onSelectActor={onSelectActor || ((actorId) => onEnterSymbolEditMode?.(actorId))}
           />
         </main>
 
@@ -486,8 +492,11 @@ export const AdobeAnimateWorkspace: React.FC<AdobeAnimateWorkspaceProps> = ({
           background={background}
           setBackground={setBackground}
           actors={actors}
+          symbols={symbols}
+          currentFrameIndex={currentFrameIndex}
           onAddActor={onAddActor}
           onRemoveActor={onRemoveActor}
+          onDeleteSymbolFromLibrary={onDeleteSymbolFromLibrary}
           onEnterSymbolEditMode={onEnterSymbolEditMode}
           onOpenSpritesheetExport={onOpenSpritesheetExport}
           onOpenAssetLibrary={onOpenAssetLibrary}

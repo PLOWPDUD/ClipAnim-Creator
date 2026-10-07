@@ -131,9 +131,9 @@ export const getProjectList = async (): Promise<ProjectMeta[]> => {
       const cursor = (event.target as IDBRequest).result;
       if (cursor) {
         // Extract the metadata fields
-        const { id, name, lastModified, thumbnailUrl, type, folderId, frames } = cursor.value;
+        const { id, name, lastModified, thumbnailUrl, type, folderId, frames, gameTemplate } = cursor.value;
         const frameCount = Array.isArray(frames) ? frames.length : 1;
-        projects.push({ id, name, lastModified, thumbnailUrl, type, folderId, frameCount });
+        projects.push({ id, name, lastModified, thumbnailUrl, type, folderId, frameCount, gameTemplate });
         cursor.continue();
       } else {
         resolve(projects);

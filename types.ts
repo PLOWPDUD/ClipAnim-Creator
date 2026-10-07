@@ -95,6 +95,7 @@ export interface SelectionState {
   maskUrl?: string;
   originX?: number;
   originY?: number;
+  gapCount?: number;
   textData?: {
     text: string;
     font: string;
@@ -157,6 +158,7 @@ export interface Actor {
   symbolLayers?: Layer[];
   symbolLayerFolders?: LayerFolder[];
   symbolFps?: number;
+  symbolId?: string; // Links this canvas instance to the library symbol
 }
 
 export interface SavedSymbol {
@@ -231,6 +233,7 @@ export interface ProjectMeta {
     type?: 'animation' | 'painting' | 'game';
     folderId?: string | null;
     frameCount?: number;
+    gameTemplate?: 'quiz' | 'empty';
 }
 
 export type TouchButtonColor = 'red' | 'blue' | 'green' | 'amber' | 'purple' | 'cyan' | 'gray';
@@ -267,7 +270,9 @@ export interface ProjectData {
     audioTracks: AudioTrack[];
     motionPaths: MotionPath[];
     onionSkinSettings?: OnionSkinSettings;
-    actors?: Actor[]; // New: interactive symbols
+    actors?: Actor[]; // New: interactive symbols on canvas
+    projectSymbols?: SavedSymbol[]; // New: persistent symbol library
     projectScript?: string; // New: global project script
     touchButtons?: TouchButtonConfig[]; // Customizable virtual touchpad buttons
+    gameTemplate?: 'quiz' | 'empty';
 }

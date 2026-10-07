@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ToolType, ShapeType, BrushType, SymmetryMode, Actor, Layer, LayerFolder, BackgroundSettings, BackpackItem, SelectionState } from '../../types';
+import { ToolType, ShapeType, BrushType, SymmetryMode, Actor, SavedSymbol, Layer, LayerFolder, BackgroundSettings, BackpackItem, SelectionState } from '../../types';
 import { Icons } from '../../Icons';
 
 interface AnimateRightDockProps {
@@ -35,8 +35,11 @@ interface AnimateRightDockProps {
   background: BackgroundSettings;
   setBackground: (bg: BackgroundSettings) => void;
   actors: Actor[];
-  onAddActor: (actor: Actor) => void;
+  symbols?: SavedSymbol[];
+  currentFrameIndex?: number;
+  onAddActor?: (actor: Actor) => void;
   onRemoveActor: (id: string) => void;
+  onDeleteSymbolFromLibrary?: (id: string) => void;
   onEnterSymbolEditMode?: (actorId: string) => void;
   onOpenSpritesheetExport: () => void;
   onOpenAssetLibrary: () => void;
@@ -88,7 +91,11 @@ export const AnimateRightDock: React.FC<AnimateRightDockProps> = ({
   background,
   setBackground,
   actors,
+  symbols = [],
+  currentFrameIndex = 0,
+  onAddActor,
   onRemoveActor,
+  onDeleteSymbolFromLibrary,
   onEnterSymbolEditMode,
   onOpenSpritesheetExport,
   onOpenAssetLibrary,
@@ -102,14 +109,47 @@ export const AnimateRightDock: React.FC<AnimateRightDockProps> = ({
   onFlipHorizontal,
   onFlipVertical,
   onRotate,
+  onSelectionCommit,
+  onSelectionDelete,
   onSelectionMakeSymbol,
   onOpenProjectSettings
 }) => {
   const [activeTab, setActiveTab] = useState<'properties' | 'library' | 'layers' | 'backpack'>('properties');
-  const [selectedActorId, setSelectedActorId] = useState<string | null>(actors[0]?.id || null);
+  
+  // Library symbols list combining persistent project symbols and canvas actors
+  const librarySymbols = React.useMemo(() => {
+    const list: (SavedSymbol | Actor)[] = symbols && symbols.length > 0 ? [...symbols] : [];
+    const seenIds = new Set(list.map(s => s.id));
+    const seenNames = new Set(list.map(s => s.name.toLowerCase()));
+
+    actors.forEach(a => {
+      const symId = a.symbolId || a.id;
+      const baseName = a.name.replace(/_\d+$/, '').toLowerCase();
+      if (!seenIds.has(symId) && !seenNames.has(a.name.toLowerCase()) && !seenNames.has(baseName)) {
+        seenIds.add(symId);
+        seenNames.add(a.name.toLowerCase());
+        list.push({
+          id: symId,
+          name: a.name.replace(/_\d+$/, '') || a.name,
+          dataUrl: a.dataUrl,
+          isAnimated: a.isAnimated,
+          symbolFrames: a.symbolFrames,
+          symbolLayers: a.symbolLayers,
+          symbolLayerFolders: a.symbolLayerFolders,
+          symbolFps: a.symbolFps,
+          scripts: a.scripts || '',
+          createdAt: 0
+        });
+      }
+    });
+    return list;
+  }, [symbols, actors]);
+
+  const [selectedSymbolId, setSelectedSymbolId] = useState<string | null>(null);
+  const activeSelectedId = selectedSymbolId || librarySymbols[0]?.id || null;
+  const selectedSymbol = librarySymbols.find(s => s.id === activeSelectedId);
 
   const activeLayer = layers.find(l => l.id === activeLayerId);
-  const selectedActor = actors.find(a => a.id === selectedActorId);
 
   const brushTypes: { id: BrushType; label: string }[] = [
     { id: 'pen', label: 'Ink Pen' },
@@ -178,7 +218,7 @@ export const AnimateRightDock: React.FC<AnimateRightDockProps> = ({
           }`}
         >
           <Icons.Library size={13} className={activeTab === 'library' ? 'text-[#0078d7]' : ''} />
-          <span>Library ({actors.length})</span>
+          <span>Library ({librarySymbols.length})</span>
         </button>
 
         <button
@@ -435,6 +475,26 @@ export const AnimateRightDock: React.FC<AnimateRightDockProps> = ({
                       <Icons.Box size={13} /> Convert to Symbol (F8)
                     </button>
                   )}
+                  <div className="grid grid-cols-2 gap-1 pt-1">
+                    {onSelectionCommit && (
+                      <button
+                        onClick={onSelectionCommit}
+                        className="py-1 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/40 rounded font-bold text-xs flex items-center justify-center gap-1"
+                        title="Commit Selection"
+                      >
+                        <Icons.Check size={12} /> Commit
+                      </button>
+                    )}
+                    {onSelectionDelete && (
+                      <button
+                        onClick={onSelectionDelete}
+                        className="py-1 bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/40 rounded font-bold text-xs flex items-center justify-center gap-1"
+                        title="Delete Selection"
+                      >
+                        <Icons.Trash2 size={12} /> Delete
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -537,15 +597,17 @@ export const AnimateRightDock: React.FC<AnimateRightDockProps> = ({
             {/* Symbol Preview Box */}
             <div className="bg-[#181818] p-2 rounded-lg border border-[#2e2e2e]">
               <div className="w-full aspect-video bg-[#121212] rounded flex items-center justify-center overflow-hidden border border-[#262626]">
-                {selectedActor?.dataUrl ? (
-                  <img src={selectedActor.dataUrl} alt="" className="max-h-full max-w-full object-contain" />
+                {selectedSymbol?.dataUrl ? (
+                  <img src={selectedSymbol.dataUrl} alt="" className="max-h-full max-w-full object-contain" />
                 ) : (
                   <span className="text-[10px] text-gray-600">Select symbol to preview</span>
                 )}
               </div>
               <div className="mt-2 flex items-center justify-between text-[11px]">
-                <span className="font-bold text-gray-200 truncate">{selectedActor?.name || 'No symbol selected'}</span>
-                <span className="text-gray-500 font-mono text-[10px] uppercase">{(selectedActor as any)?.type || 'graphic'}</span>
+                <span className="font-bold text-gray-200 truncate">{selectedSymbol?.name || 'No symbol selected'}</span>
+                <span className="text-gray-500 font-mono text-[10px] uppercase">
+                  {selectedSymbol?.isAnimated ? 'MovieClip' : 'Graphic'}
+                </span>
               </div>
             </div>
 
@@ -568,12 +630,20 @@ export const AnimateRightDock: React.FC<AnimateRightDockProps> = ({
 
             {/* Symbols List */}
             <div className="space-y-1 max-h-60 overflow-y-auto no-scrollbar">
-              {actors.map(actor => {
-                const isSel = actor.id === selectedActorId;
+              {librarySymbols.map(symbol => {
+                const isSel = symbol.id === activeSelectedId;
+                const instances = actors.filter(a => 
+                  a.symbolId === symbol.id || 
+                  a.id === symbol.id || 
+                  a.name.toLowerCase() === symbol.name.toLowerCase() ||
+                  a.name.toLowerCase().startsWith(symbol.name.toLowerCase() + '_')
+                );
+                const isOnStage = instances.length > 0;
+
                 return (
                   <div
-                    key={actor.id}
-                    onClick={() => setSelectedActorId(actor.id)}
+                    key={symbol.id}
+                    onClick={() => setSelectedSymbolId(symbol.id)}
                     className={`flex items-center justify-between px-2.5 py-1.5 rounded cursor-pointer border transition-colors ${
                       isSel 
                         ? 'bg-[#0078d7]/20 border-[#0078d7] text-white font-semibold' 
@@ -582,17 +652,57 @@ export const AnimateRightDock: React.FC<AnimateRightDockProps> = ({
                   >
                     <div className="flex items-center gap-2 truncate">
                       <Icons.Box size={13} className="text-[#0078d7] shrink-0" />
-                      <span className="truncate text-xs">{actor.name}</span>
+                      <span className="truncate text-xs">{symbol.name}</span>
+                      {isOnStage && (
+                        <span className="text-[9px] px-1 py-0.2 bg-emerald-900/60 text-emerald-300 border border-emerald-500/30 rounded font-mono" title={`${instances.length} instance(s) on stage`}>
+                          {instances.length} on stage
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
+                      {onAddActor && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const finalWidth = 140;
+                            const finalHeight = 140;
+                            const newActor: Actor = {
+                              id: crypto.randomUUID(),
+                              symbolId: symbol.id,
+                              name: `${symbol.name}_${actors.length + 1}`,
+                              dataUrl: symbol.dataUrl,
+                              isAnimated: symbol.isAnimated,
+                              symbolFrames: symbol.symbolFrames,
+                              symbolLayers: symbol.symbolLayers,
+                              symbolLayerFolders: symbol.symbolLayerFolders,
+                              symbolFps: symbol.symbolFps || 12,
+                              x: Math.round(((canvasWidth || 800) - finalWidth) / 2),
+                              y: Math.round(((canvasHeight || 600) - finalHeight) / 2),
+                              width: finalWidth,
+                              height: finalHeight,
+                              rotation: 0,
+                              scaleX: 1,
+                              scaleY: 1,
+                              opacity: 1,
+                              targetFrame: currentFrameIndex,
+                              scripts: symbol.scripts || ''
+                            };
+                            onAddActor(newActor);
+                          }}
+                          className="p-1 hover:text-emerald-400 rounded transition-colors"
+                          title={`Place Instance on Frame ${currentFrameIndex + 1}`}
+                        >
+                          <Icons.Plus size={12} />
+                        </button>
+                      )}
                       {onEnterSymbolEditMode && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            onEnterSymbolEditMode(actor.id);
+                            onEnterSymbolEditMode(symbol.id);
                           }}
-                          className="p-1 hover:text-blue-400 rounded"
+                          className="p-1 hover:text-blue-400 rounded transition-colors"
                           title="Edit Symbol Timeline"
                         >
                           <Icons.Film size={12} />
@@ -601,10 +711,16 @@ export const AnimateRightDock: React.FC<AnimateRightDockProps> = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onRemoveActor(actor.id);
+                          if (confirm(`Delete "${symbol.name}" from your project's Symbol Library? Any instances on the canvas will also be removed.`)) {
+                            if (onDeleteSymbolFromLibrary) {
+                              onDeleteSymbolFromLibrary(symbol.id);
+                            } else {
+                              onRemoveActor(symbol.id);
+                            }
+                          }
                         }}
-                        className="p-1 hover:text-red-400 rounded"
-                        title="Delete Symbol"
+                        className="p-1 hover:text-red-400 rounded transition-colors"
+                        title="Delete Symbol from Library"
                       >
                         <Icons.Trash2 size={12} />
                       </button>
@@ -613,7 +729,7 @@ export const AnimateRightDock: React.FC<AnimateRightDockProps> = ({
                 );
               })}
 
-              {actors.length === 0 && (
+              {librarySymbols.length === 0 && (
                 <div className="text-center py-6 text-gray-500 text-xs">
                   No symbols yet. Press <kbd className="bg-black px-1 rounded text-white">F8</kbd> or use Convert to Symbol.
                 </div>

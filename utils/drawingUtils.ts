@@ -242,6 +242,11 @@ export const floodFill = (
   ctx.putImageData(imageData, 0, 0);
 };
 
+export interface MagicWandResult extends SelectionState {
+  tempCanvas?: HTMLCanvasElement;
+  maskCanvas?: HTMLCanvasElement;
+}
+
 /**
  * Optimized Magic Wand Selection tool using scanline-like approach or efficient BFS/DFS
  * with TypedArrays to avoid memory overhead and object allocation.
@@ -249,8 +254,9 @@ export const floodFill = (
 export const magicWandSelect = (
   ctx: CanvasRenderingContext2D,
   startX: number,
-  startY: number
-): SelectionState | null => {
+  startY: number,
+  tolerance: number = 0
+): MagicWandResult | null => {
   const canvas = ctx.canvas;
   const width = canvas.width;
   const height = canvas.height;
@@ -275,13 +281,25 @@ export const magicWandSelect = (
   visited[startY * width + startX] = 1;
 
   let minX = width, minY = height, maxX = 0, maxY = 0;
-  let touchesEdge = false;
   let pixelCount = 0;
 
-  // Comparison function that respects original transparency matching logic
+  // Comparison function that respects original transparency matching logic and tolerance
   const isMatch = (pixel32: number) => {
     if (targetAlpha === 0) return (pixel32 & 0xFF000000) === 0;
-    return pixel32 === targetColor32;
+    if (tolerance === 0) return pixel32 === targetColor32;
+
+    const r1 = targetColor32 & 0xFF;
+    const g1 = (targetColor32 >> 8) & 0xFF;
+    const b1 = (targetColor32 >> 16) & 0xFF;
+    const a1 = (targetColor32 >> 24) & 0xFF;
+
+    const r2 = pixel32 & 0xFF;
+    const g2 = (pixel32 >> 8) & 0xFF;
+    const b2 = (pixel32 >> 16) & 0xFF;
+    const a2 = (pixel32 >> 24) & 0xFF;
+
+    const t = (tolerance / 100) * 255;
+    return Math.abs(r1 - r2) <= t && Math.abs(g1 - g2) <= t && Math.abs(b1 - b2) <= t && Math.abs(a1 - a2) <= t;
   };
 
   // Perform the selection flood fill
@@ -296,10 +314,6 @@ export const magicWandSelect = (
     if (x > maxX) maxX = x;
     if (y < minY) minY = y;
     if (y > maxY) maxY = y;
-
-    if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
-      touchesEdge = true;
-    }
 
     // Neighbors (4-connectivity)
     // Up
@@ -334,12 +348,6 @@ export const magicWandSelect = (
         queue[tail++] = rightIdx;
       }
     }
-  }
-
-  // If selecting transparent/empty space and it touches the canvas edge, 
-  // it means it's not fully enclosed by an outline.
-  if (targetAlpha === 0 && touchesEdge) {
-    return null;
   }
 
   if (pixelCount === 0) return null;
@@ -393,6 +401,8 @@ export const magicWandSelect = (
   return {
     x: minX,
     y: minY,
+    originX: minX,
+    originY: minY,
     width: selWidth,
     height: selHeight,
     dataUrl: tempCanvas.toDataURL(),
@@ -402,7 +412,300 @@ export const magicWandSelect = (
     scaleY: 1,
     anchorX: selWidth / 2,
     anchorY: selHeight / 2,
-    selectionType: 'wand'
+    selectionType: 'wand',
+    gapCount: 1,
+    tempCanvas,
+    maskCanvas
+  };
+};
+
+/**
+ * Merges a newly selected wand gap into an existing wand selection,
+ * expanding the bounding box and combining image data and masks.
+ */
+export const mergeWandSelections = (
+  currentSel: SelectionState,
+  newSel: MagicWandResult,
+  currentCanvas?: HTMLCanvasElement | null,
+  currentMaskCanvas?: HTMLCanvasElement | null,
+  currentMaskImage?: HTMLImageElement | null
+): MagicWandResult => {
+  const minX = Math.min(currentSel.x, newSel.x);
+  const minY = Math.min(currentSel.y, newSel.y);
+  const maxX = Math.max(currentSel.x + currentSel.width, newSel.x + newSel.width);
+  const maxY = Math.max(currentSel.y + currentSel.height, newSel.y + newSel.height);
+  const combinedWidth = maxX - minX;
+  const combinedHeight = maxY - minY;
+
+  const combinedCanvas = document.createElement('canvas');
+  combinedCanvas.width = combinedWidth;
+  combinedCanvas.height = combinedHeight;
+  const combCtx = combinedCanvas.getContext('2d');
+
+  const combinedMaskCanvas = document.createElement('canvas');
+  combinedMaskCanvas.width = combinedWidth;
+  combinedMaskCanvas.height = combinedHeight;
+  const combMaskCtx = combinedMaskCanvas.getContext('2d');
+
+  if (combCtx && combMaskCtx) {
+    // 1. Draw existing selection content
+    const curOffsetX = currentSel.x - minX;
+    const curOffsetY = currentSel.y - minY;
+
+    if (currentCanvas) {
+      combCtx.drawImage(currentCanvas, curOffsetX, curOffsetY);
+    }
+    if (currentMaskCanvas) {
+      combMaskCtx.drawImage(currentMaskCanvas, curOffsetX, curOffsetY);
+    } else if (currentMaskImage) {
+      combMaskCtx.drawImage(currentMaskImage, curOffsetX, curOffsetY);
+    }
+
+    // 2. Draw new selection content
+    const newOffsetX = newSel.x - minX;
+    const newOffsetY = newSel.y - minY;
+
+    if (newSel.tempCanvas) {
+      combCtx.drawImage(newSel.tempCanvas, newOffsetX, newOffsetY);
+    }
+    if (newSel.maskCanvas) {
+      combMaskCtx.drawImage(newSel.maskCanvas, newOffsetX, newOffsetY);
+    }
+  }
+
+  const dataUrl = combinedCanvas.toDataURL();
+  const maskUrl = combinedMaskCanvas.toDataURL();
+
+  return {
+    x: minX,
+    y: minY,
+    originX: minX,
+    originY: minY,
+    width: combinedWidth,
+    height: combinedHeight,
+    dataUrl,
+    maskUrl,
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+    anchorX: combinedWidth / 2,
+    anchorY: combinedHeight / 2,
+    selectionType: 'wand',
+    gapCount: (currentSel.gapCount || 1) + 1,
+    tempCanvas: combinedCanvas,
+    maskCanvas: combinedMaskCanvas
+  };
+};
+
+/**
+ * Deselects a specific gap from an active multi-gap wand selection,
+ * restoring its pixels back to the canvas, and updating the remaining selection.
+ * Returns null if no selected pixels remain.
+ */
+export const deselectWandGap = (
+  targetCtx: CanvasRenderingContext2D,
+  currentSel: SelectionState,
+  clickLocalX: number,
+  clickLocalY: number,
+  currentCanvas?: HTMLCanvasElement | null,
+  currentMaskCanvas?: HTMLCanvasElement | null
+): MagicWandResult | null => {
+  if (!currentCanvas && !currentMaskCanvas) return null;
+
+  const w = currentSel.width;
+  const h = currentSel.height;
+  if (clickLocalX < 0 || clickLocalX >= w || clickLocalY < 0 || clickLocalY >= h) {
+    return { ...currentSel };
+  }
+
+  // Work with canvas data
+  const sCtx = currentCanvas?.getContext('2d');
+  const sImgData = sCtx ? sCtx.getImageData(0, 0, w, h) : null;
+  const sData32 = sImgData ? new Uint32Array(sImgData.data.buffer) : null;
+
+  const mCtx = currentMaskCanvas?.getContext('2d');
+  const mImgData = mCtx ? mCtx.getImageData(0, 0, w, h) : null;
+  const mData32 = mImgData ? new Uint32Array(mImgData.data.buffer) : null;
+
+  let startIdx = clickLocalY * w + clickLocalX;
+  let hasPixel = (sData32 && (sData32[startIdx] >> 24) !== 0) || (mData32 && (mData32[startIdx] >> 24) !== 0);
+
+  // If not hit directly, search within 4px radius in case user clicked near an edge/boundary
+  if (!hasPixel) {
+    let found = false;
+    for (let r = 1; r <= 4 && !found; r++) {
+      for (let dy = -r; dy <= r && !found; dy++) {
+        for (let dx = -r; dx <= r && !found; dx++) {
+          const nx = clickLocalX + dx;
+          const ny = clickLocalY + dy;
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+            const idx = ny * w + nx;
+            if ((sData32 && (sData32[idx] >> 24) !== 0) || (mData32 && (mData32[idx] >> 24) !== 0)) {
+              startIdx = idx;
+              hasPixel = true;
+              found = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (!hasPixel) {
+    return { ...currentSel };
+  }
+
+  // Flood fill all connected selected pixels of this clicked gap
+  const queue = new Int32Array(w * h);
+  let head = 0;
+  let tail = 0;
+  queue[tail++] = startIdx;
+
+  const visited = new Uint8Array(w * h);
+  visited[startIdx] = 1;
+
+  const isGapPixel = (idx: number) => {
+    const sAlpha = sData32 ? ((sData32[idx] >> 24) & 0xFF) : 0;
+    const mAlpha = mData32 ? ((mData32[idx] >> 24) & 0xFF) : 0;
+    return sAlpha > 0 || mAlpha > 0;
+  };
+
+  // Get target canvas image data to restore the gap's colored pixels
+  const tCanvas = targetCtx.canvas;
+  const tW = tCanvas.width;
+  const tH = tCanvas.height;
+  const tImgData = targetCtx.getImageData(0, 0, tW, tH);
+  const tData32 = new Uint32Array(tImgData.data.buffer);
+
+  while (head < tail) {
+    const idx = queue[head++];
+    const x = idx % w;
+    const y = (idx / w) | 0;
+
+    // Restore pixel back to target canvas if it had color
+    const canvasX = currentSel.x + x;
+    const canvasY = currentSel.y + y;
+    if (canvasX >= 0 && canvasX < tW && canvasY >= 0 && canvasY < tH) {
+      if (sData32 && (sData32[idx] >> 24) !== 0) {
+        tData32[canvasY * tW + canvasX] = sData32[idx];
+      }
+    }
+
+    // Clear pixel from selection
+    if (sData32) sData32[idx] = 0;
+    if (mData32) mData32[idx] = 0;
+
+    // Neighbors 4-connectivity
+    if (y > 0) {
+      const up = idx - w;
+      if (!visited[up] && isGapPixel(up)) {
+        visited[up] = 1;
+        queue[tail++] = up;
+      }
+    }
+    if (y < h - 1) {
+      const down = idx + w;
+      if (!visited[down] && isGapPixel(down)) {
+        visited[down] = 1;
+        queue[tail++] = down;
+      }
+    }
+    if (x > 0) {
+      const left = idx - 1;
+      if (!visited[left] && isGapPixel(left)) {
+        visited[left] = 1;
+        queue[tail++] = left;
+      }
+    }
+    if (x < w - 1) {
+      const right = idx + 1;
+      if (!visited[right] && isGapPixel(right)) {
+        visited[right] = 1;
+        queue[tail++] = right;
+      }
+    }
+  }
+
+  // Put updated pixels back to target canvas
+  targetCtx.putImageData(tImgData, 0, 0);
+
+  // Sync in-place modifications to current source canvases
+  if (sCtx && sImgData) sCtx.putImageData(sImgData, 0, 0);
+  if (mCtx && mImgData) mCtx.putImageData(mImgData, 0, 0);
+
+  // Check remaining pixels in selection
+  let remMinX = w, remMinY = h, remMaxX = -1, remMaxY = -1;
+  let remainingCount = 0;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      const sAlpha = sData32 ? ((sData32[idx] >> 24) & 0xFF) : 0;
+      const mAlpha = mData32 ? ((mData32[idx] >> 24) & 0xFF) : 0;
+      if (sAlpha > 0 || mAlpha > 0) {
+        remainingCount++;
+        if (x < remMinX) remMinX = x;
+        if (x > remMaxX) remMaxX = x;
+        if (y < remMinY) remMinY = y;
+        if (y > remMaxY) remMaxY = y;
+      }
+    }
+  }
+
+  // If no remaining pixels, the selection is completely gone
+  if (remainingCount === 0) {
+    return null;
+  }
+
+  // Trim to remaining pixels
+  const remW = remMaxX - remMinX + 1;
+  const remH = remMaxY - remMinY + 1;
+
+  const trimmedCanvas = document.createElement('canvas');
+  trimmedCanvas.width = remW;
+  trimmedCanvas.height = remH;
+  const trCtx = trimmedCanvas.getContext('2d');
+  const trImgData = trCtx?.createImageData(remW, remH);
+  const trData32 = trImgData ? new Uint32Array(trImgData.data.buffer) : null;
+
+  const trimmedMask = document.createElement('canvas');
+  trimmedMask.width = remW;
+  trimmedMask.height = remH;
+  const trMCtx = trimmedMask.getContext('2d');
+  const trMImgData = trMCtx?.createImageData(remW, remH);
+  const trMData32 = trMImgData ? new Uint32Array(trMImgData.data.buffer) : null;
+
+  if (trData32 && trMData32) {
+    for (let y = remMinY; y <= remMaxY; y++) {
+      for (let x = remMinX; x <= remMaxX; x++) {
+        const srcIdx = y * w + x;
+        const dstIdx = (y - remMinY) * remW + (x - remMinX);
+        if (sData32) trData32[dstIdx] = sData32[srcIdx];
+        if (mData32) trMData32[dstIdx] = mData32[srcIdx];
+      }
+    }
+    trCtx?.putImageData(trImgData!, 0, 0);
+    trMCtx?.putImageData(trMImgData!, 0, 0);
+  }
+
+  return {
+    x: currentSel.x + remMinX,
+    y: currentSel.y + remMinY,
+    originX: currentSel.x + remMinX,
+    originY: currentSel.y + remMinY,
+    width: remW,
+    height: remH,
+    dataUrl: trimmedCanvas.toDataURL(),
+    maskUrl: trimmedMask.toDataURL(),
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+    anchorX: remW / 2,
+    anchorY: remH / 2,
+    selectionType: 'wand',
+    gapCount: Math.max(1, (currentSel.gapCount || 2) - 1),
+    tempCanvas: trimmedCanvas,
+    maskCanvas: trimmedMask
   };
 };
 
