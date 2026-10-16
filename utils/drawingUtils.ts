@@ -134,6 +134,10 @@ export const drawSelectionOntoCanvas = async (
     img.onload = () => {
       ctx.save();
       
+      if (typeof selection.opacity === 'number') {
+        ctx.globalAlpha = Math.max(0, Math.min(1, selection.opacity));
+      }
+      
       const anchorX = selection.anchorX ?? selection.width / 2;
       const anchorY = selection.anchorY ?? selection.height / 2;
       
@@ -261,24 +265,87 @@ export const magicWandSelect = (
   const width = canvas.width;
   const height = canvas.height;
   
-  if (startX < 0 || startY < 0 || startX >= width || startY >= height) return null;
+  if (width <= 0 || height <= 0) return null;
 
   const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
   // Use a 32-bit view for much faster pixel comparisons (RGBA as a single integer)
   const data32 = new Uint32Array(data.buffer);
-  
-  const targetColor32 = data32[startY * width + startX];
+
+  let seedX = startX;
+  let seedY = startY;
+
+  const isOutside = startX < 0 || startY < 0 || startX >= width || startY >= height;
+  if (isOutside) {
+    // Clicked outside canvas boundaries: select the "outside canvas" gap!
+    const clampedX = Math.max(0, Math.min(width - 1, startX));
+    const clampedY = Math.max(0, Math.min(height - 1, startY));
+    const clampedAlpha = (data32[clampedY * width + clampedX] >> 24) & 0xFF;
+
+    if (clampedAlpha === 0) {
+      seedX = clampedX;
+      seedY = clampedY;
+    } else {
+      // Clamped point hit a drawn stroke/color. Search corners and border for the transparent / outer gap
+      let foundTransparent = false;
+      const corners = [
+        [0, 0],
+        [width - 1, 0],
+        [0, height - 1],
+        [width - 1, height - 1]
+      ];
+      for (const [cx, cy] of corners) {
+        if (((data32[cy * width + cx] >> 24) & 0xFF) === 0) {
+          seedX = cx;
+          seedY = cy;
+          foundTransparent = true;
+          break;
+        }
+      }
+
+      if (!foundTransparent) {
+        let bestX = clampedX;
+        let bestY = clampedY;
+        let minAlpha = clampedAlpha;
+        const maxDim = Math.max(width, height);
+        for (let offset = 1; offset < maxDim; offset++) {
+          const testPoints = [
+            [Math.max(0, Math.min(width - 1, clampedX + offset)), clampedY],
+            [Math.max(0, Math.min(width - 1, clampedX - offset)), clampedY],
+            [clampedX, Math.max(0, Math.min(height - 1, clampedY + offset))],
+            [clampedX, Math.max(0, Math.min(height - 1, clampedY - offset))]
+          ];
+          for (const [tx, ty] of testPoints) {
+            const a = (data32[ty * width + tx] >> 24) & 0xFF;
+            if (a < minAlpha) {
+              minAlpha = a;
+              bestX = tx;
+              bestY = ty;
+              if (a === 0) {
+                foundTransparent = true;
+                break;
+              }
+            }
+          }
+          if (foundTransparent) break;
+        }
+        seedX = bestX;
+        seedY = bestY;
+      }
+    }
+  }
+
+  const targetColor32 = data32[seedY * width + seedX];
   const targetAlpha = (targetColor32 >> 24) & 0xFF;
 
   // Faster queue using TypedArray to avoid object creation
   const queue = new Int32Array(width * height);
   let head = 0;
   let tail = 0;
-  queue[tail++] = startY * width + startX;
+  queue[tail++] = seedY * width + seedX;
 
   const visited = new Uint8Array(width * height);
-  visited[startY * width + startX] = 1;
+  visited[seedY * width + seedX] = 1;
 
   let minX = width, minY = height, maxX = 0, maxY = 0;
   let pixelCount = 0;
@@ -492,6 +559,7 @@ export const mergeWandSelections = (
     anchorY: combinedHeight / 2,
     selectionType: 'wand',
     gapCount: (currentSel.gapCount || 1) + 1,
+    opacity: currentSel.opacity !== undefined ? currentSel.opacity : 1,
     tempCanvas: combinedCanvas,
     maskCanvas: combinedMaskCanvas
   };
@@ -704,9 +772,114 @@ export const deselectWandGap = (
     anchorY: remH / 2,
     selectionType: 'wand',
     gapCount: Math.max(1, (currentSel.gapCount || 2) - 1),
+    opacity: currentSel.opacity !== undefined ? currentSel.opacity : 1,
     tempCanvas: trimmedCanvas,
     maskCanvas: trimmedMask
   };
+};
+
+/**
+ * Pastes an image into an active wand selection, scaling/positioning it to cover
+ * the wand gap bounding box and clipping it to the exact shape of the wand gap mask(s).
+ */
+export const pasteImageIntoWandSelection = (
+  wandSelection: SelectionState,
+  imageSource: string | HTMLImageElement | HTMLCanvasElement,
+  existingMaskCanvas?: HTMLCanvasElement | null
+): Promise<MagicWandResult> => {
+  return new Promise((resolve) => {
+    const selW = wandSelection.width;
+    const selH = wandSelection.height;
+    if (selW <= 0 || selH <= 0) {
+      resolve(wandSelection as MagicWandResult);
+      return;
+    }
+
+    const applyMask = (imgEl: CanvasImageSource, maskSrc: CanvasImageSource) => {
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = selW;
+      offCanvas.height = selH;
+      const offCtx = offCanvas.getContext('2d');
+      if (!offCtx) {
+        resolve(wandSelection as MagicWandResult);
+        return;
+      }
+
+      // 1. Draw pasted image centered & scaled to cover the selection bounds
+      const imgW = (imgEl as any).naturalWidth || (imgEl as any).videoWidth || (imgEl as any).width || selW;
+      const imgH = (imgEl as any).naturalHeight || (imgEl as any).videoHeight || (imgEl as any).height || selH;
+
+      const scale = Math.max(selW / imgW, selH / imgH);
+      const drawW = Math.round(imgW * scale);
+      const drawH = Math.round(imgH * scale);
+      const drawX = Math.round((selW - drawW) / 2);
+      const drawY = Math.round((selH - drawH) / 2);
+
+      offCtx.save();
+      offCtx.drawImage(imgEl, drawX, drawY, drawW, drawH);
+
+      // 2. Mask the pasted image to the exact wand gap shape using destination-in
+      offCtx.globalCompositeOperation = 'destination-in';
+      offCtx.drawImage(maskSrc, 0, 0, selW, selH);
+      offCtx.restore();
+
+      const maskedDataUrl = offCanvas.toDataURL('image/png');
+
+      resolve({
+        ...wandSelection,
+        dataUrl: maskedDataUrl,
+        type: 'image',
+        selectionType: 'wand',
+        tempCanvas: offCanvas
+      });
+    };
+
+    const processWithMask = (maskSrc: CanvasImageSource) => {
+      if (typeof imageSource === 'string') {
+        const pImg = new Image();
+        pImg.crossOrigin = 'anonymous';
+        pImg.onload = () => applyMask(pImg, maskSrc);
+        pImg.onerror = () => resolve(wandSelection as MagicWandResult);
+        pImg.src = imageSource;
+      } else {
+        applyMask(imageSource, maskSrc);
+      }
+    };
+
+    if (existingMaskCanvas && existingMaskCanvas.width > 0 && existingMaskCanvas.height > 0) {
+      processWithMask(existingMaskCanvas);
+    } else if (wandSelection.maskUrl) {
+      const mImg = new Image();
+      mImg.crossOrigin = 'anonymous';
+      mImg.onload = () => processWithMask(mImg);
+      mImg.onerror = () => {
+        // Fallback: draw directly if mask fails
+        if (typeof imageSource === 'string') {
+          const pImg = new Image();
+          pImg.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = selW;
+            canvas.height = selH;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(pImg, 0, 0, selW, selH);
+            resolve({
+              ...wandSelection,
+              dataUrl: canvas.toDataURL('image/png'),
+              type: 'image',
+              selectionType: 'wand',
+              tempCanvas: canvas
+            });
+          };
+          pImg.src = imageSource;
+        } else {
+          resolve(wandSelection as MagicWandResult);
+        }
+      };
+      mImg.src = wandSelection.maskUrl;
+    } else {
+      resolve(wandSelection as MagicWandResult);
+    }
+  });
 };
 
 

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { motion } from 'motion/react';
 import { Icons } from '../Icons';
 import { ToolType, Frame, Layer, LayerFolder, SelectionState, ShapeType, BrushType, OnionSkinSettings, BackgroundSettings, Point, SymmetryMode, Actor } from '../types';
-import { floodFill, magicWandSelect, lassoSelect, mergeWandSelections, deselectWandGap } from '../utils/drawingUtils';
+import { floodFill, magicWandSelect, lassoSelect, mergeWandSelections, deselectWandGap, pasteImageIntoWandSelection } from '../utils/drawingUtils';
 
 export interface CanvasAreaHandle {
   resetView: () => void;
@@ -635,6 +635,101 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     }
   };
 
+  const handleSelectionOpacityChange = (newOpacity: number) => {
+    if (!selection) return;
+    if (selectionCanvasRef.current) {
+      selectionCanvasRef.current.style.opacity = String(newOpacity);
+    }
+    const updated = { ...selection, opacity: newOpacity };
+    latestSelectionState.current = updated;
+    onSelectionUpdate(updated);
+  };
+
+  const handleSelectionRotationChange = (newRotation: number) => {
+    if (!selection) return;
+    const normalized = ((Math.round(newRotation) % 360) + 360) % 360;
+    if (selectionOverlayRef.current) {
+      selectionOverlayRef.current.style.transform = `rotate(${normalized}deg) scale(${selection.scaleX}, ${selection.scaleY})`;
+      selectionOverlayRef.current.style.transformOrigin = `${selection.anchorX ?? selection.width / 2}px ${selection.anchorY ?? selection.height / 2}px`;
+    }
+    const updated = { ...selection, rotation: normalized };
+    latestSelectionState.current = updated;
+    onSelectionUpdate(updated);
+  };
+
+  const handleRotate90SelectionAction = () => {
+    if (!selection) return;
+    const nextRot = ((Math.round((selection.rotation || 0) + 90) % 360) + 360) % 360;
+    handleSelectionRotationChange(nextRot);
+  };
+
+  const wandFileInputRef = useRef<HTMLInputElement>(null);
+
+  const applyPastedImageToWandGap = async (imgDataUrl: string) => {
+    if (!selection) return;
+    const updated = await pasteImageIntoWandSelection(
+      selection,
+      imgDataUrl,
+      selectionMaskCanvasRef.current
+    );
+    if (selectionCanvasRef.current) {
+      selectionCanvasRef.current.width = updated.width;
+      selectionCanvasRef.current.height = updated.height;
+      const sc = selectionCanvasRef.current.getContext('2d');
+      if (sc) {
+        const pImg = new Image();
+        pImg.onload = () => {
+          sc.clearRect(0, 0, updated.width, updated.height);
+          sc.drawImage(pImg, 0, 0);
+        };
+        pImg.src = updated.dataUrl;
+      }
+    }
+    latestSelectionState.current = updated;
+    onSelectionUpdate(updated);
+  };
+
+  const handlePasteIntoWandGapAction = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const imgType = item.types.find(t => t.startsWith('image/'));
+          if (imgType) {
+            const blob = await item.getType(imgType);
+            const reader = new FileReader();
+            reader.onload = async (ev) => {
+              const dataUrl = ev.target?.result as string;
+              if (dataUrl) {
+                await applyPastedImageToWandGap(dataUrl);
+              }
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Clipboard read not available, falling back to file picker:", e);
+    }
+    wandFileInputRef.current?.click();
+  };
+
+  const handleWandFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const dataUrl = ev.target?.result as string;
+        if (dataUrl) {
+          await applyPastedImageToWandGap(dataUrl);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
+  };
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isPlaying || !currentFrame) return;
 
@@ -892,7 +987,6 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   };
 
   const handleResizePointerDown = (e: React.PointerEvent, type: 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | 'resize-l' | 'resize-r') => {
-      if (tool !== 'select') return;
       e.stopPropagation();
       if (e.button === 2) return;
       try {
@@ -925,7 +1019,6 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   };
 
   const handleRotatePointerDown = (e: React.PointerEvent) => {
-      if (tool !== 'select') return;
       e.stopPropagation();
       if (e.button === 2) return;
       try {
@@ -956,7 +1049,6 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   };
 
   const handleAnchorPointerDown = (e: React.PointerEvent) => {
-      if (tool !== 'select') return;
       e.stopPropagation();
       if (e.button === 2) return;
 
@@ -1096,7 +1188,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
         }
     }
 
-    if ((tool === 'select' || tool === 'lasso' || tool === 'wand') && selectionMode.current) {
+    if (selectionMode.current) {
         const init = initialSelection.current;
         if (selectionMode.current === 'create' && dragStart.current) {
             if (tool === 'select' && marqueeRef.current) {
@@ -1121,7 +1213,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             // Calculate angle from anchor to pointer
             const angle = Math.atan2(y - anchorY, x - anchorX) * (180 / Math.PI);
             // Since the handle is at the top, add 90 degrees to align
-            const newRotation = (angle + 90) % 360;
+            const newRotation = ((Math.round(angle + 90) % 360) + 360) % 360;
             
             if (selectionOverlayRef.current) {
                 selectionOverlayRef.current.style.transform = `rotate(${newRotation}deg) scale(${init.scaleX}, ${init.scaleY})`;
@@ -1771,25 +1863,38 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 // Check if user clicked on an already-selected gap in the current wand selection
                 let didDeselect = false;
                 if (currentSel) {
-                    const clickX = Math.floor(action.x);
-                    const clickY = Math.floor(action.y);
+                    const isOutsideClick = action.x < 0 || action.y < 0 || action.x >= ctx.canvas.width || action.y >= ctx.canvas.height;
+                    const clickX = isOutsideClick ? Math.max(0, Math.min(ctx.canvas.width - 1, Math.floor(action.x))) : Math.floor(action.x);
+                    const clickY = isOutsideClick ? Math.max(0, Math.min(ctx.canvas.height - 1, Math.floor(action.y))) : Math.floor(action.y);
                     const localX = clickX - currentSel.x;
                     const localY = clickY - currentSel.y;
 
+                    // Ensure selectionMaskCanvasRef is available
+                    if (!selectionMaskCanvasRef.current && maskImageRef.current) {
+                        const mCanvas = document.createElement('canvas');
+                        mCanvas.width = currentSel.width;
+                        mCanvas.height = currentSel.height;
+                        const mc = mCanvas.getContext('2d');
+                        mc?.drawImage(maskImageRef.current, 0, 0, currentSel.width, currentSel.height);
+                        selectionMaskCanvasRef.current = mCanvas;
+                    }
+
+                    const sCtx = selectionCanvasRef.current?.getContext('2d');
+                    const mCtx = selectionMaskCanvasRef.current?.getContext('2d');
+                    
+                    const checkPixel = (lx: number, ly: number) => {
+                        if (lx < 0 || lx >= currentSel.width || ly < 0 || ly >= currentSel.height) return false;
+                        const sPix = sCtx?.getImageData(lx, ly, 1, 1).data;
+                        const mPix = mCtx?.getImageData(lx, ly, 1, 1).data;
+                        return Boolean((sPix && sPix[3] > 0) || (mPix && mPix[3] > 0));
+                    };
+
+                    let isSelected = false;
+                    let targetX = localX;
+                    let targetY = localY;
+
                     if (localX >= 0 && localX < currentSel.width && localY >= 0 && localY < currentSel.height) {
-                        const sCtx = selectionCanvasRef.current?.getContext('2d');
-                        const mCtx = selectionMaskCanvasRef.current?.getContext('2d');
-                        
-                        const checkPixel = (lx: number, ly: number) => {
-                            const sPix = sCtx?.getImageData(lx, ly, 1, 1).data;
-                            const mPix = mCtx?.getImageData(lx, ly, 1, 1).data;
-                            return (sPix && sPix[3] > 0) || (mPix && mPix[3] > 0);
-                        };
-
-                        let isSelected = checkPixel(localX, localY);
-                        let targetX = localX;
-                        let targetY = localY;
-
+                        isSelected = checkPixel(localX, localY);
                         if (!isSelected) {
                             // Search within small 3px radius in case user clicked near an edge/boundary
                             for (let r = 1; r <= 3 && !isSelected; r++) {
@@ -1797,29 +1902,69 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                                     for (let dx = -r; dx <= r && !isSelected; dx++) {
                                         const nx = localX + dx;
                                         const ny = localY + dy;
-                                        if (nx >= 0 && nx < currentSel.width && ny >= 0 && ny < currentSel.height) {
-                                            if (checkPixel(nx, ny)) {
-                                                isSelected = true;
-                                                targetX = nx;
-                                                targetY = ny;
-                                            }
+                                        if (checkPixel(nx, ny)) {
+                                            isSelected = true;
+                                            targetX = nx;
+                                            targetY = ny;
                                         }
                                     }
                                 }
                             }
                         }
+                    }
 
-                        if (isSelected) {
-                            didDeselect = true;
-                            // User clicked an already selected gap -> toggle/unselect it!
-                            const updatedSel = deselectWandGap(
-                                ctx,
-                                currentSel,
-                                targetX,
-                                targetY,
-                                selectionCanvasRef.current,
-                                selectionMaskCanvasRef.current
-                            );
+                    // If clicked outside the canvas, check if the outside canvas gap is currently selected
+                    if (isOutsideClick && !isSelected) {
+                        const corners = [
+                            [0, 0],
+                            [ctx.canvas.width - 1, 0],
+                            [0, ctx.canvas.height - 1],
+                            [ctx.canvas.width - 1, ctx.canvas.height - 1]
+                        ];
+                        for (const [cx, cy] of corners) {
+                            const clx = cx - currentSel.x;
+                            const cly = cy - currentSel.y;
+                            if (checkPixel(clx, cly)) {
+                                isSelected = true;
+                                targetX = clx;
+                                targetY = cly;
+                                break;
+                            }
+                        }
+                        if (!isSelected) {
+                            const maxDist = Math.max(ctx.canvas.width, ctx.canvas.height);
+                            for (let offset = 0; offset < maxDist && !isSelected; offset++) {
+                                const testPts = [
+                                    [Math.max(0, Math.min(ctx.canvas.width - 1, clickX + offset)), clickY],
+                                    [Math.max(0, Math.min(ctx.canvas.width - 1, clickX - offset)), clickY],
+                                    [clickX, Math.max(0, Math.min(ctx.canvas.height - 1, clickY + offset))],
+                                    [clickX, Math.max(0, Math.min(ctx.canvas.height - 1, clickY - offset))]
+                                ];
+                                for (const [tx, ty] of testPts) {
+                                    const lx = tx - currentSel.x;
+                                    const ly = ty - currentSel.y;
+                                    if (checkPixel(lx, ly)) {
+                                        isSelected = true;
+                                        targetX = lx;
+                                        targetY = ly;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (isSelected) {
+                        didDeselect = true;
+                        // User clicked an already selected gap -> toggle/unselect it!
+                        const updatedSel = deselectWandGap(
+                            ctx,
+                            currentSel,
+                            targetX,
+                            targetY,
+                            selectionCanvasRef.current,
+                            selectionMaskCanvasRef.current
+                        );
 
                             saveCanvas();
                             if (!updatedSel) {
@@ -1843,7 +1988,6 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                                 onSelectionUpdate(updatedSel);
                             }
                         }
-                    }
                 }
 
                 if (!didDeselect) {
@@ -2098,6 +2242,29 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
       onPointerLeave={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onContextMenu={(e) => e.preventDefault()}
+      onDragOver={(e) => {
+        if (selection && selection.selectionType === 'wand') {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }
+      }}
+      onDrop={(e) => {
+        if (selection && selection.selectionType === 'wand') {
+          const files = e.dataTransfer.files;
+          if (files && files.length > 0 && files[0].type.startsWith('image/')) {
+            e.preventDefault();
+            e.stopPropagation();
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              const dataUrl = ev.target?.result as string;
+              if (dataUrl) {
+                applyPastedImageToWandGap(dataUrl);
+              }
+            };
+            reader.readAsDataURL(files[0]);
+          }
+        }
+      }}
     >
         <div 
             ref={transformRef}
@@ -2223,7 +2390,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         width: actor.width,
                         height: actor.height,
                         transform: `rotate(${actor.rotation}deg) scale(${actor.scaleX}, ${actor.scaleY})`,
-                        opacity: actor.opacity,
+                        opacity: (selection && selection.actorId === actor.id && selection.opacity !== undefined) ? selection.opacity : actor.opacity,
                         pointerEvents: tool === 'select' && (!selection || selection.actorId !== actor.id) ? 'auto' : 'none',
                         cursor: tool === 'select' ? 'pointer' : 'default'
                     }}
@@ -2262,7 +2429,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         ref={selectionCanvasRef} 
                         width={selection.width} 
                         height={selection.height} 
-                        className="w-full h-full select-none pointer-events-none" 
+                        className="w-full h-full select-none pointer-events-none transition-opacity duration-75" 
+                        style={{ opacity: selection.opacity !== undefined ? selection.opacity : 1 }}
                     />
                     <canvas 
                         ref={selectionMaskCanvasRef} 
@@ -2274,7 +2442,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                     {/* Interactive Selection UI */}
                     <div className="absolute inset-0 border-4 border-[#007AFF] pointer-events-none shadow-[0_0_15px_rgba(0,122,255,0.3)]"></div>
 
-                    {/* Commit/Delete/Make Symbol Direct Overlay Buttons */}
+                    {/* Commit/Delete/Make Symbol/Opacity/Rotate Direct Overlay Toolbar - Positioned below the selection so top rotation handle is completely unobstructed */}
                     <div 
                         data-interactive="true"
                         onPointerDown={(e) => { e.stopPropagation(); }}
@@ -2282,17 +2450,117 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         onMouseDown={(e) => { e.stopPropagation(); }}
                         onTouchStart={(e) => { e.stopPropagation(); }}
                         onTouchEnd={(e) => { e.stopPropagation(); }}
-                        className="absolute -top-14 left-1/2 -translate-x-1/2 flex items-center gap-2 pointer-events-auto z-[260] bg-[#141414]/95 backdrop-blur-md px-2.5 py-1.5 rounded-full shadow-2xl border border-white/25 select-none"
+                        className="absolute top-[calc(100%+16px)] left-1/2 -translate-x-1/2 flex items-center gap-2 pointer-events-auto z-[260] bg-[#141414]/95 backdrop-blur-md px-2.5 py-1.5 rounded-full shadow-2xl border border-white/25 select-none"
                     >
                         {selection.selectionType === 'wand' && (
                             <div 
-                                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-600/30 text-blue-300 text-xs font-semibold border border-blue-500/30 whitespace-nowrap shadow-inner mr-1" 
+                                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-600/30 text-blue-300 text-xs font-semibold border border-blue-500/30 whitespace-nowrap shadow-inner mr-0.5" 
                                 title="Click more gaps to select alongside existing ones, or click an already selected gap to remove it"
                             >
                                 <Icons.Wand2 size={13} className="text-blue-400 animate-pulse" />
                                 <span>{selection.gapCount && selection.gapCount > 1 ? `${selection.gapCount} Gaps Selected` : '1 Gap Selected'}</span>
                             </div>
                         )}
+                        {selection.selectionType === 'wand' && (
+                            <button 
+                                type="button"
+                                data-interactive="true"
+                                onPointerDown={(e) => { e.stopPropagation(); }}
+                                onPointerUp={(e) => { e.stopPropagation(); }}
+                                onMouseDown={(e) => { e.stopPropagation(); }}
+                                onTouchStart={(e) => { e.stopPropagation(); }}
+                                onTouchEnd={(e) => { e.stopPropagation(); }}
+                                onClick={handlePasteIntoWandGapAction}
+                                className="bg-indigo-600/90 hover:bg-indigo-500 active:scale-95 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer transition-all border border-indigo-400/30 shrink-0"
+                                title="Paste image into selected gap(s) from clipboard or file (Ctrl+V)"
+                            >
+                                <Icons.Clipboard size={14} className="text-indigo-200" />
+                                <span>Paste into Gap</span>
+                            </button>
+                        )}
+                        {/* Real-time Opacity Slider */}
+                        <div 
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 transition-colors border border-white/20 text-white text-xs shrink-0 select-none shadow-inner"
+                            title="Selection Opacity (fade active selection in real-time)"
+                            data-interactive="true"
+                            onPointerDown={(e) => { e.stopPropagation(); }}
+                            onPointerUp={(e) => { e.stopPropagation(); }}
+                            onMouseDown={(e) => { e.stopPropagation(); }}
+                            onTouchStart={(e) => { e.stopPropagation(); }}
+                            onTouchEnd={(e) => { e.stopPropagation(); }}
+                        >
+                            <Icons.SlidersHorizontal size={13} className="text-blue-400 shrink-0" />
+                            <span className="text-[11px] font-semibold text-gray-200 shrink-0">Opacity</span>
+                            <input 
+                                type="range"
+                                min="0"
+                                max="100"
+                                data-interactive="true"
+                                value={Math.round((selection.opacity !== undefined ? selection.opacity : 1) * 100)}
+                                onChange={(e) => {
+                                    const val = Math.max(0, Math.min(100, Number(e.target.value))) / 100;
+                                    handleSelectionOpacityChange(val);
+                                }}
+                                onInput={(e) => {
+                                    const val = Math.max(0, Math.min(100, Number((e.target as HTMLInputElement).value))) / 100;
+                                    if (selectionCanvasRef.current) {
+                                        selectionCanvasRef.current.style.opacity = String(val);
+                                    }
+                                }}
+                                className="w-14 sm:w-16 h-1.5 bg-gray-700/80 rounded-lg appearance-none cursor-pointer accent-[#007AFF] hover:accent-blue-400"
+                            />
+                            <span className="text-[11px] font-mono font-bold text-blue-300 min-w-[28px] text-right">
+                                {Math.round((selection.opacity !== undefined ? selection.opacity : 1) * 100)}%
+                            </span>
+                        </div>
+
+                        {/* Real-time Manual Rotation Slider & Angle Display */}
+                        <div 
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 transition-colors border border-white/20 text-white text-xs shrink-0 select-none shadow-inner"
+                            title="Manual Rotation (drag slider or handle above to rotate)"
+                            data-interactive="true"
+                            onPointerDown={(e) => { e.stopPropagation(); }}
+                            onPointerUp={(e) => { e.stopPropagation(); }}
+                            onMouseDown={(e) => { e.stopPropagation(); }}
+                            onTouchStart={(e) => { e.stopPropagation(); }}
+                            onTouchEnd={(e) => { e.stopPropagation(); }}
+                        >
+                            <Icons.RotateCw size={13} className="text-blue-400 shrink-0" />
+                            <span className="text-[11px] font-semibold text-gray-200 shrink-0">Rotate</span>
+                            <input 
+                                type="range"
+                                min="0"
+                                max="360"
+                                step="1"
+                                data-interactive="true"
+                                value={Math.round((((selection.rotation || 0) % 360) + 360) % 360)}
+                                onChange={(e) => {
+                                    handleSelectionRotationChange(Number(e.target.value));
+                                }}
+                                className="w-14 sm:w-16 h-1.5 bg-gray-700/80 rounded-lg appearance-none cursor-pointer accent-[#007AFF] hover:accent-blue-400"
+                            />
+                            <span className="text-[11px] font-mono font-bold text-blue-300 min-w-[28px] text-right">
+                                {Math.round((((selection.rotation || 0) % 360) + 360) % 360)}°
+                            </span>
+                        </div>
+
+                        {/* Quick 90° Rotate Button */}
+                        <button 
+                            type="button"
+                            data-interactive="true"
+                            onPointerDown={(e) => { e.stopPropagation(); }}
+                            onPointerUp={(e) => { e.stopPropagation(); }}
+                            onMouseDown={(e) => { e.stopPropagation(); }}
+                            onTouchStart={(e) => { e.stopPropagation(); }}
+                            onTouchEnd={(e) => { e.stopPropagation(); }}
+                            onClick={handleRotate90SelectionAction}
+                            className="bg-blue-600/80 hover:bg-blue-500 active:scale-95 text-white px-2.5 py-1.5 rounded-full text-xs font-bold shadow-md flex items-center gap-1 cursor-pointer transition-all border border-blue-400/30 shrink-0"
+                            title="Rotate 90° Clockwise"
+                        >
+                            <Icons.RotateCw size={13} />
+                            <span>90°</span>
+                        </button>
+
                         <button 
                             type="button"
                             data-interactive="true"
@@ -2356,27 +2624,31 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         )}
                     </div>
                     
-                    {/* Bigger Corner Handles */}
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tl')} className="absolute -top-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40" style={{ pointerEvents: tool === 'select' ? 'auto' : 'none', display: tool === 'select' ? 'block' : 'none', cursor: getResizeCursor('resize-tl', selection.rotation, selection.scaleX, selection.scaleY) }} />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tr')} className="absolute -top-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40" style={{ pointerEvents: tool === 'select' ? 'auto' : 'none', display: tool === 'select' ? 'block' : 'none', cursor: getResizeCursor('resize-tr', selection.rotation, selection.scaleX, selection.scaleY) }} />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-bl')} className="absolute -bottom-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40" style={{ pointerEvents: tool === 'select' ? 'auto' : 'none', display: tool === 'select' ? 'block' : 'none', cursor: getResizeCursor('resize-bl', selection.rotation, selection.scaleX, selection.scaleY) }} />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-br')} className="absolute -bottom-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40" style={{ pointerEvents: tool === 'select' ? 'auto' : 'none', display: tool === 'select' ? 'block' : 'none', cursor: getResizeCursor('resize-br', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    {/* Corner Handles - Always accessible */}
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tl')} className="absolute -top-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 cursor-nwse-resize pointer-events-auto" style={{ cursor: getResizeCursor('resize-tl', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-tr')} className="absolute -top-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 cursor-nesw-resize pointer-events-auto" style={{ cursor: getResizeCursor('resize-tr', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-bl')} className="absolute -bottom-3 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 cursor-nesw-resize pointer-events-auto" style={{ cursor: getResizeCursor('resize-bl', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-br')} className="absolute -bottom-3 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 cursor-nwse-resize pointer-events-auto" style={{ cursor: getResizeCursor('resize-br', selection.rotation, selection.scaleX, selection.scaleY) }} />
 
                     {/* Middle Edge Handles */}
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-l')} className="absolute top-1/2 -translate-y-1/2 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40" style={{ pointerEvents: tool === 'select' ? 'auto' : 'none', display: tool === 'select' ? 'block' : 'none', cursor: getResizeCursor('resize-l', selection.rotation, selection.scaleX, selection.scaleY) }} />
-                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-r')} className="absolute top-1/2 -translate-y-1/2 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40" style={{ pointerEvents: tool === 'select' ? 'auto' : 'none', display: tool === 'select' ? 'block' : 'none', cursor: getResizeCursor('resize-r', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-l')} className="absolute top-1/2 -translate-y-1/2 -left-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 cursor-ew-resize pointer-events-auto" style={{ cursor: getResizeCursor('resize-l', selection.rotation, selection.scaleX, selection.scaleY) }} />
+                    <div onPointerDown={(e) => handleResizePointerDown(e, 'resize-r')} className="absolute top-1/2 -translate-y-1/2 -right-3 w-6 h-6 bg-white border-2 border-[#007AFF] rounded shadow-lg z-40 cursor-ew-resize pointer-events-auto" style={{ cursor: getResizeCursor('resize-r', selection.rotation, selection.scaleX, selection.scaleY) }} />
 
-                    {/* Interactive Rotation Handle */}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none" style={{ transform: 'translateY(-100%)', display: tool === 'select' ? 'flex' : 'none' }}>
-                        <div className="w-0.5 h-10 bg-[#007AFF]"></div>
+                    {/* Interactive Manual Rotation Handle - Always visible, unblocked and prominent at top */}
+                    <div 
+                        className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none z-[270]" 
+                        style={{ transform: 'translateY(-100%)' }}
+                    >
                         <motion.div 
                             onPointerDown={handleRotatePointerDown}
-                            whileHover={{ scale: 1.1, backgroundColor: "#f0f7ff" }}
+                            whileHover={{ scale: 1.15, backgroundColor: "#eff6ff" }}
                             whileTap={{ scale: 0.95 }}
-                            className="w-8 h-8 rounded-full bg-white border-2 border-[#007AFF] flex items-center justify-center text-[#007AFF] shadow-xl cursor-grab active:cursor-grabbing pointer-events-auto transition-colors"
+                            title="Drag to Rotate (Manual Rotation Handle)"
+                            className="w-9 h-9 rounded-full bg-white border-2 border-[#007AFF] flex items-center justify-center text-[#007AFF] shadow-2xl cursor-grab active:cursor-grabbing pointer-events-auto transition-transform hover:shadow-[0_0_15px_rgba(0,122,255,0.6)]"
                         >
-                            <Icons.RotateCw size={20} />
+                            <Icons.RotateCw size={19} className="pointer-events-none" />
                         </motion.div>
+                        <div className="w-0.5 h-10 bg-[#007AFF]"></div>
                     </div>
 
                     {/* Anchor Point */}
@@ -2387,10 +2659,8 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                         animate={{ scale: 1, opacity: 1 }}
                         whileHover={{ scale: 1.2, boxShadow: "0 0 15px rgba(255, 59, 48, 0.4)" }}
                         whileTap={{ scale: 0.9 }}
-                        className="absolute w-6 h-6 rounded-full bg-white border-2 border-[#FF3B30] flex items-center justify-center text-[#FF3B30] shadow-xl z-50 cursor-crosshair transition-colors hover:bg-red-50"
+                        className="absolute w-6 h-6 rounded-full bg-white border-2 border-[#FF3B30] flex items-center justify-center text-[#FF3B30] shadow-xl z-50 cursor-crosshair transition-colors hover:bg-red-50 pointer-events-auto"
                         style={{
-                            pointerEvents: tool === 'select' ? 'auto' : 'none',
-                            display: tool === 'select' ? 'flex' : 'none',
                             left: selection.anchorX ?? selection.width / 2,
                             top: selection.anchorY ?? selection.height / 2,
                             transform: 'translate(-50%, -50%)'
@@ -2513,6 +2783,73 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
                 onTouchEnd={(e) => { e.stopPropagation(); }}
                 className="absolute top-4 right-4 flex items-center gap-2 z-[260] bg-black/85 p-1.5 rounded-xl border border-white/25 shadow-2xl backdrop-blur-md select-none"
             >
+                {/* Opacity Slider in Dock */}
+                <div 
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 text-white text-xs border border-white/15 select-none"
+                    title="Selection Opacity (fade active selection in real-time)"
+                    data-interactive="true"
+                    onPointerDown={(e) => { e.stopPropagation(); }}
+                    onPointerUp={(e) => { e.stopPropagation(); }}
+                    onMouseDown={(e) => { e.stopPropagation(); }}
+                    onTouchStart={(e) => { e.stopPropagation(); }}
+                    onTouchEnd={(e) => { e.stopPropagation(); }}
+                >
+                    <Icons.SlidersHorizontal size={12} className="text-blue-400 shrink-0" />
+                    <span className="text-[10px] font-semibold text-gray-300">Opacity</span>
+                    <input 
+                        type="range"
+                        min="0"
+                        max="100"
+                        data-interactive="true"
+                        value={Math.round((selection.opacity !== undefined ? selection.opacity : 1) * 100)}
+                        onChange={(e) => {
+                            const val = Math.max(0, Math.min(100, Number(e.target.value))) / 100;
+                            handleSelectionOpacityChange(val);
+                        }}
+                        onInput={(e) => {
+                            const val = Math.max(0, Math.min(100, Number((e.target as HTMLInputElement).value))) / 100;
+                            if (selectionCanvasRef.current) {
+                                selectionCanvasRef.current.style.opacity = String(val);
+                            }
+                        }}
+                        className="w-16 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#007AFF]"
+                    />
+                    <span className="text-[10px] font-mono font-bold text-blue-300 min-w-[28px] text-right">
+                        {Math.round((selection.opacity !== undefined ? selection.opacity : 1) * 100)}%
+                    </span>
+                </div>
+                <button
+                    type="button"
+                    data-interactive="true"
+                    onPointerDown={(e) => { e.stopPropagation(); }}
+                    onPointerUp={(e) => { e.stopPropagation(); }}
+                    onMouseDown={(e) => { e.stopPropagation(); }}
+                    onTouchStart={(e) => { e.stopPropagation(); }}
+                    onTouchEnd={(e) => { e.stopPropagation(); }}
+                    onClick={handleRotate90SelectionAction}
+                    className="bg-blue-600/80 hover:bg-blue-500 active:scale-95 text-white px-2 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1 transition-all cursor-pointer border border-blue-400/30"
+                    title="Rotate 90° Clockwise"
+                >
+                    <Icons.RotateCw size={13} />
+                    <span>{Math.round((((selection.rotation || 0) % 360) + 360) % 360)}°</span>
+                </button>
+                {selection.selectionType === 'wand' && (
+                    <button
+                        type="button"
+                        data-interactive="true"
+                        onPointerDown={(e) => { e.stopPropagation(); }}
+                        onPointerUp={(e) => { e.stopPropagation(); }}
+                        onMouseDown={(e) => { e.stopPropagation(); }}
+                        onTouchStart={(e) => { e.stopPropagation(); }}
+                        onTouchEnd={(e) => { e.stopPropagation(); }}
+                        onClick={handlePasteIntoWandGapAction}
+                        className="bg-indigo-600/80 hover:bg-indigo-500 active:scale-95 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer border border-indigo-400/30"
+                        title="Paste image into wand gap(s) from clipboard or file (Ctrl+V)"
+                    >
+                        <Icons.Clipboard size={13} className="text-indigo-200" />
+                        <span>Paste into Gap</span>
+                    </button>
+                )}
                 <button
                     type="button"
                     data-interactive="true"
@@ -2605,6 +2942,13 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             </div>
           </>
         )}
+        <input 
+            type="file" 
+            ref={wandFileInputRef} 
+            accept="image/*" 
+            className="hidden" 
+            onChange={handleWandFileInputChange} 
+        />
     </div>
   );
 });

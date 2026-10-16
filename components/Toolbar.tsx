@@ -22,6 +22,8 @@ interface ToolbarProps {
   onImportImage: (file: File) => void;
   onImportVideo: (file: File) => void;
   hasSelection: boolean;
+  selectionOpacity?: number;
+  onSelectionOpacityChange?: (opacity: number) => void;
   onFlipHorizontal: () => void;
   onFlipVertical: () => void;
   onRotate: () => void;
@@ -69,6 +71,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onImportImage,
   onImportVideo,
   hasSelection,
+  selectionOpacity,
+  onSelectionOpacityChange,
   onFlipHorizontal,
   onFlipVertical,
   onRotate,
@@ -406,6 +410,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                   <button onClick={onSelectionMakeSymbol} className="p-2 rounded-xl text-white bg-amber-600 hover:bg-amber-500 shadow-md" title="Convert to Interactive Symbol">
                       <Icons.Box size={18} />
                   </button>
+                )}
+                {onSelectionOpacityChange && (
+                    <div className="flex flex-col items-center gap-1 p-1 bg-gray-800/90 rounded-xl" title="Selection Opacity (fade active selection in real-time)">
+                        <Icons.SlidersHorizontal size={14} className="text-blue-400" />
+                        <span className="text-[9px] font-bold text-gray-200 font-mono">
+                            {Math.round((selectionOpacity ?? 1) * 100)}%
+                        </span>
+                        <input 
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={Math.round((selectionOpacity ?? 1) * 100)}
+                            onChange={(e) => {
+                                onSelectionOpacityChange(Math.max(0, Math.min(100, Number(e.target.value))) / 100);
+                            }}
+                            className="w-12 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#007AFF]"
+                        />
+                    </div>
                 )}
                 <button onClick={onRotate} className="p-2 rounded-xl text-white bg-blue-600 hover:bg-blue-500 shadow-md" title={t('tooltips.rotate', 'Rotate 90°')}>
                     <Icons.RotateCw size={18} />

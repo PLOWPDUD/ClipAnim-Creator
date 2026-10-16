@@ -36,28 +36,37 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
     const tick = (now: number) => {
       if (isDone) return;
       const elapsed = now - startTime;
-      const timeRatio = Math.min(1, elapsed / minDurationMs);
 
-      // Fast progress curve
-      let target = Math.floor(timeRatio * 90);
-      if (isReady && (timeRatio >= 0.75 || elapsed >= 300)) {
+      // Instant bypass if minDurationMs is 0 and already ready
+      if (minDurationMs <= 0 && isReady) {
+        isDone = true;
+        setProgress(100);
+        onFinished?.();
+        return;
+      }
+
+      const timeRatio = minDurationMs > 0 ? Math.min(1, elapsed / minDurationMs) : 1;
+
+      // Smooth progress curve that fills smoothly across the duration
+      let target = Math.floor(timeRatio * 100);
+      if (isReady && (timeRatio >= 0.8 || elapsed >= minDurationMs)) {
         target = 100;
       }
 
       if (target > currentProgress) {
-        // Step quickly towards target
-        const step = Math.max(3, Math.ceil((target - currentProgress) * 0.35));
+        const step = Math.max(3, Math.ceil((target - currentProgress) * 0.4));
         currentProgress = Math.min(100, currentProgress + step);
         setProgress(currentProgress);
 
         // Update informative status message based on mode
         if (isProjectMode) {
+          const isPainting = projectName?.toLowerCase().includes('painting');
           if (currentProgress < 30) {
             setStatusText(projectName ? `Opening "${projectName}"...` : 'Reading project data...');
           } else if (currentProgress < 65) {
-            setStatusText('Decoding layers, frames & assets...');
+            setStatusText(isPainting ? 'Preparing canvas & brushes...' : 'Decoding layers, frames & assets...');
           } else if (currentProgress < 95) {
-            setStatusText('Configuring timeline & canvas...');
+            setStatusText(isPainting ? 'Initializing painting easel...' : 'Configuring timeline & canvas...');
           } else {
             setStatusText('Project Ready!');
           }
@@ -74,16 +83,19 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
         }
       }
 
-      // Completion check
-      if (currentProgress >= 100 && isReady && elapsed >= Math.min(minDurationMs, 400)) {
+      // Snappy completion check
+      const requiredElapsed = minDurationMs;
+      if (currentProgress >= 100 && isReady && elapsed >= requiredElapsed) {
         isDone = true;
+        const holdDelay = minDurationMs <= 200 ? 20 : 40;
+        const fadeDuration = minDurationMs <= 200 ? 80 : 140;
         setTimeout(() => {
           setIsFadingOut(true);
           setTimeout(() => {
             setIsVisible(false);
             onFinished?.();
-          }, 200); // Quick, clean fade-out
-        }, 50); // Minimal hold at 100%
+          }, fadeDuration);
+        }, holdDelay);
         return;
       }
 

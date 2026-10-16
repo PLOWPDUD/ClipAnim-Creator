@@ -96,6 +96,7 @@ export interface SelectionState {
   originX?: number;
   originY?: number;
   gapCount?: number;
+  opacity?: number;
   textData?: {
     text: string;
     font: string;

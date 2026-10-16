@@ -32,7 +32,7 @@ import { VideoImportModal } from './components/VideoImportModal';
 import { TweenModal } from './components/TweenModal';
 import { FolderModal } from './components/FolderModal';
 import { MoveToFolderModal } from './components/MoveToFolderModal';
-import { compositeLayers, drawSelectionOntoCanvas } from './utils/drawingUtils';
+import { compositeLayers, drawSelectionOntoCanvas, pasteImageIntoWandSelection } from './utils/drawingUtils';
 import { getLayerStats, renderTweenLayer, renderMotionPathStep } from './utils/motionBlurUtils';
 import { generateLiveHtmlGame } from './utils/htmlGameExporter';
 import { exportWindowsGameExe, exportDesktopGamePackageZip } from './utils/windowsExeExporter';
@@ -78,6 +78,7 @@ export default function App() {
   const [isAppInitialized, setIsAppInitialized] = useState(false);
   const [isProjectLoading, setIsProjectLoading] = useState(false);
   const [isProjectReady, setIsProjectReady] = useState(false);
+  const [projectLoadingMinDuration, setProjectLoadingMinDuration] = useState(200);
   const [loadingProjectName, setLoadingProjectName] = useState('');
   const [savedProjects, setSavedProjects] = useState<ProjectMeta[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -1749,6 +1750,7 @@ export default function App() {
           rotation: actor.rotation,
           scaleX: actor.scaleX,
           scaleY: actor.scaleY,
+          opacity: actor.opacity ?? 1,
           type: 'image',
           selectionType: 'rectangle'
       });
@@ -1769,7 +1771,8 @@ export default function App() {
                       height: activeSel.height, 
                       rotation: activeSel.rotation, 
                       scaleX: activeSel.scaleX, 
-                      scaleY: activeSel.scaleY 
+                      scaleY: activeSel.scaleY,
+                      opacity: typeof activeSel.opacity === 'number' ? activeSel.opacity : a.opacity
                     }
                   : a
           ));
@@ -2787,6 +2790,7 @@ export default function App() {
 
   const loadProject = async (id: string, name?: string) => {
       setLoadingProjectName(name || '');
+      setProjectLoadingMinDuration(180);
       setIsProjectLoading(true);
       setIsProjectReady(false);
       try {
@@ -2891,6 +2895,9 @@ export default function App() {
         projName = selectedGameTemplate === 'empty' ? 'New Empty Game' : 'New Interactive Game';
       }
       setLoadingProjectName(projName);
+      // Keep loading screen active with a short, snappy duration (180ms)
+      const duration = type === 'painting' ? 180 : (type === 'game' ? 180 : 180);
+      setProjectLoadingMinDuration(duration);
       setIsProjectLoading(true);
       setIsProjectReady(false);
       clearAudio();
@@ -3180,7 +3187,15 @@ export default function App() {
               if (!dataUrl) return;
 
               const img = new Image();
-              img.onload = () => {
+              img.onload = async () => {
+                // If an active wand selection exists, paste directly into the wand tool gap(s)!
+                if (selection && selection.selectionType === 'wand') {
+                  const updatedSel = await pasteImageIntoWandSelection(selection, dataUrl);
+                  setSelection(updatedSel);
+                  setHasUnsavedChanges(true);
+                  return;
+                }
+
                 const width = img.width;
                 const height = img.height;
                 let targetWidth = width;
@@ -3262,7 +3277,15 @@ export default function App() {
               const dataUrl = event.target?.result as string;
               if (!dataUrl) return;
               const img = new Image();
-              img.onload = () => {
+              img.onload = async () => {
+                // If an active wand selection exists, paste directly into the wand tool gap(s)!
+                if (selection && selection.selectionType === 'wand') {
+                  const updatedSel = await pasteImageIntoWandSelection(selection, dataUrl);
+                  setSelection(updatedSel);
+                  setHasUnsavedChanges(true);
+                  return;
+                }
+
                 const width = img.width;
                 const height = img.height;
                 let targetWidth = width;
@@ -3317,6 +3340,12 @@ export default function App() {
     }
 
     if (clipboard) {
+      if (selection && selection.selectionType === 'wand') {
+        const updatedSel = await pasteImageIntoWandSelection(selection, clipboard.dataUrl);
+        setSelection(updatedSel);
+        setHasUnsavedChanges(true);
+        return;
+      }
       if (selection) {
         await handleSelectionCommit();
       }
@@ -3342,7 +3371,15 @@ export default function App() {
       const dataUrl = event.target?.result as string;
       if (!dataUrl) return;
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
+        // If an active wand selection exists, paste directly into the wand tool gap(s)!
+        if (selection && selection.selectionType === 'wand') {
+          const updatedSel = await pasteImageIntoWandSelection(selection, dataUrl);
+          setSelection(updatedSel);
+          setHasUnsavedChanges(true);
+          return;
+        }
+
         const width = img.width;
         const height = img.height;
         let targetWidth = width;
@@ -5060,6 +5097,8 @@ export default function App() {
             onImportImage={handleImportImage} 
             onImportVideo={(file) => { setImportingVideoFile(file); setIsVideoImportOpen(true); }}
             hasSelection={!!selection} 
+            selectionOpacity={selection?.opacity ?? 1}
+            onSelectionOpacityChange={(opacity) => setSelection(prev => prev ? { ...prev, opacity } : null)}
             onFlipHorizontal={() => setSelection(selection ? {...selection, scaleX: selection.scaleX * -1} : null)} 
             onFlipVertical={() => setSelection(selection ? {...selection, scaleY: selection.scaleY * -1} : null)} 
             onRotate={() => setSelection(selection ? {...selection, rotation: (selection.rotation + 90) % 360} : null)} 
@@ -5642,7 +5681,7 @@ export default function App() {
           onFinished={() => {
             setIsProjectLoading(false);
           }}
-          minDurationMs={350}
+          minDurationMs={projectLoadingMinDuration}
         />
       )}
     </div>
